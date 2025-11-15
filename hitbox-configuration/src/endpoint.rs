@@ -49,10 +49,10 @@ where
 
 impl<ReqBody, ResBody> Default for Endpoint<ReqBody, ResBody>
 where
-    ReqBody: hyper::body::Body + Send + Debug + 'static,
+    ReqBody: hyper::body::Body + Send + Unpin + Debug + 'static,
     ReqBody::Error: Debug + Send,
     ReqBody::Data: Send,
-    ResBody: hyper::body::Body + Send + 'static,
+    ResBody: hyper::body::Body + Send + Unpin + 'static,
     ResBody::Error: Debug + Send,
     ResBody::Data: Send,
 {

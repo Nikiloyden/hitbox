@@ -50,10 +50,10 @@ impl ConfigEndpoint {
 
     pub fn into_endpoint<ReqBody, ResBody>(self) -> Result<Endpoint<ReqBody, ResBody>, ConfigError>
     where
-        ReqBody: hyper::body::Body + Send + Debug + 'static,
+        ReqBody: hyper::body::Body + Send + Unpin + Debug + 'static,
         ReqBody::Error: Debug + Send,
         ReqBody::Data: Send,
-        ResBody: hyper::body::Body + Send + 'static,
+        ResBody: hyper::body::Body + Send + Unpin + 'static,
         ResBody::Error: Debug + Send,
         ResBody::Data: Send,
     {

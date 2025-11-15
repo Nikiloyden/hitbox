@@ -42,6 +42,7 @@ prost = "0.14"
 prost-reflect = { version = "0.16", features = ["serde", "derive"] }
 protox = "0.9"
 regex = { workspace = true }
+bytesize = { version = "1", features = ["serde"] }
 
 # test for axum body
 axum = { workspace = true }

@@ -21,7 +21,7 @@ impl Operation {
         inner: RequestPredicate<ReqBody>,
     ) -> Result<RequestPredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + Send + 'static,
+        ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {

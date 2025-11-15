@@ -26,7 +26,7 @@ impl Predicate {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + Send + 'static,
+        ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
@@ -50,7 +50,7 @@ impl Operation {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + Send + 'static,
+        ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
@@ -97,7 +97,7 @@ impl Expression {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + Send + 'static,
+        ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
@@ -124,7 +124,7 @@ impl Default for Response {
 impl Response {
     pub fn into_predicates<Req>(self) -> Result<CorePredicate<Req>, ConfigError>
     where
-        Req: HttpBody + Send + 'static,
+        Req: HttpBody + Send + Unpin + 'static,
         Req::Error: std::fmt::Debug + Send,
         Req::Data: Send,
     {

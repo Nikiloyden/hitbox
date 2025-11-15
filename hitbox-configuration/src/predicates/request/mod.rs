@@ -37,7 +37,7 @@ impl Default for Request {
 impl Request {
     pub fn into_predicates<Req>(self) -> Result<RequestPredicate<Req>, ConfigError>
     where
-        Req: HttpBody + Send + 'static,
+        Req: HttpBody + Send + Unpin + 'static,
         Req::Error: std::fmt::Debug + Send,
         Req::Data: Send,
     {

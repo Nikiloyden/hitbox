@@ -19,6 +19,7 @@ pub enum Operation {
     Eq(Value),
     Exist,
     In(Vec<Value>), // TODO: Add key-value pairs
+    Limit { bytes: usize },
 }
 
 #[derive(Debug)]
@@ -96,7 +97,7 @@ fn apply(expression: &str, input: Value) -> Option<Value> {
 #[async_trait]
 impl<P, ResBody> Predicate for Body<P>
 where
-    ResBody: HttpBody + Send + 'static,
+    ResBody: HttpBody + Send + Unpin + 'static,
     P: Predicate<Subject = CacheableHttpResponse<ResBody>> + Send + Sync,
     ResBody::Error: Debug + Send,
     ResBody::Data: Send,
@@ -104,56 +105,79 @@ where
     type Subject = P::Subject;
 
     async fn check(&self, response: Self::Subject) -> PredicateResult<Self::Subject> {
-        match self.inner.check(response).await {
-            PredicateResult::Cacheable(response) => {
-                let (parts, body) = response.into_response().into_parts();
+        self.inner.check(response).await.map(|response| async move {
+            let (parts, body) = response.into_response().into_parts();
 
-                // Collect body, handling errors by returning NonCacheable with error body
-                let payload = match body.collect().await {
-                    Ok(bytes) => bytes,
-                    Err(error_body) => {
-                        let response = Response::from_parts(parts, error_body);
-                        return PredicateResult::NonCacheable(
-                            CacheableHttpResponse::from_response(response),
-                        );
+            match &self.operation {
+                // Handle Limit operation - use collect_partial
+                Operation::Limit { bytes } => {
+                    match body.collect_partial(*bytes).await {
+                        Ok(buffered_body) => {
+                            // Within limit - cacheable
+                            let http_response = Response::from_parts(parts, buffered_body);
+                            PredicateResult::Cacheable(
+                                CacheableHttpResponse::from_response(http_response)
+                            )
+                        }
+                        Err(buffered_body) => {
+                            // Exceeds limit - non-cacheable
+                            let http_response = Response::from_parts(parts, buffered_body);
+                            PredicateResult::NonCacheable(
+                                CacheableHttpResponse::from_response(http_response)
+                            )
+                        }
                     }
-                };
+                }
 
-                let body_str = String::from_utf8_lossy(&payload);
-                let json_value = match &self.parsing_type {
-                    ParsingType::Jq => serde_json::from_str(&body_str).unwrap_or(Value::Null),
-                    ParsingType::ProtoBuf(message) => {
-                        let dynamic_message =
-                            DynamicMessage::decode(message.clone(), payload.as_ref()).unwrap();
-                        let mut serializer = serde_json::Serializer::new(vec![]);
-                        let options = SerializeOptions::new().skip_default_fields(false);
-                        dynamic_message
-                            .serialize_with_options(&mut serializer, &options)
-                            .unwrap();
-                        serde_json::from_slice(&serializer.into_inner()).unwrap()
-                    }
-                };
-                let found_value = apply(&self.expression, json_value);
+                // Handle content-based operations - need to parse body
+                Operation::Eq(_) | Operation::Exist | Operation::In(_) => {
+                    // Collect full body, handling errors
+                    let payload = match body.collect().await {
+                        Ok(bytes) => bytes,
+                        Err(error_body) => {
+                            let response = Response::from_parts(parts, error_body);
+                            return PredicateResult::NonCacheable(
+                                CacheableHttpResponse::from_response(response)
+                            );
+                        }
+                    };
 
-                let is_cacheable = match &self.operation {
-                    Operation::Eq(expected) => {
-                        found_value.map(|v| v.eq(expected)).unwrap_or_default()
-                    }
-                    Operation::Exist => found_value.is_some(),
-                    Operation::In(values) => {
-                        found_value.map(|v| values.contains(&v)).unwrap_or_default()
-                    }
-                };
+                    let body_str = String::from_utf8_lossy(&payload);
+                    let json_value = match &self.parsing_type {
+                        ParsingType::Jq => serde_json::from_str(&body_str).unwrap_or(Value::Null),
+                        ParsingType::ProtoBuf(message) => {
+                            let dynamic_message =
+                                DynamicMessage::decode(message.clone(), payload.as_ref()).unwrap();
+                            let mut serializer = serde_json::Serializer::new(vec![]);
+                            let options = SerializeOptions::new().skip_default_fields(false);
+                            dynamic_message
+                                .serialize_with_options(&mut serializer, &options)
+                                .unwrap();
+                            serde_json::from_slice(&serializer.into_inner()).unwrap()
+                        }
+                    };
+                    let found_value = apply(&self.expression, json_value);
 
-                let body = BufferedBody::Complete(Some(payload));
-                let response = Response::from_parts(parts, body);
-                if is_cacheable {
-                    PredicateResult::Cacheable(CacheableHttpResponse::from_response(response))
-                } else {
-                    PredicateResult::NonCacheable(CacheableHttpResponse::from_response(response))
+                    let is_cacheable = match &self.operation {
+                        Operation::Eq(expected) => {
+                            found_value.map(|v| v.eq(expected)).unwrap_or_default()
+                        }
+                        Operation::Exist => found_value.is_some(),
+                        Operation::In(values) => {
+                            found_value.map(|v| values.contains(&v)).unwrap_or_default()
+                        }
+                        Operation::Limit { .. } => true, // Already handled above
+                    };
+
+                    let body = BufferedBody::Complete(Some(payload));
+                    let response = Response::from_parts(parts, body);
+                    if is_cacheable {
+                        PredicateResult::Cacheable(CacheableHttpResponse::from_response(response))
+                    } else {
+                        PredicateResult::NonCacheable(CacheableHttpResponse::from_response(response))
+                    }
                 }
             }
-            PredicateResult::NonCacheable(response) => PredicateResult::NonCacheable(response),
-        }
+        }).await
     }
 }

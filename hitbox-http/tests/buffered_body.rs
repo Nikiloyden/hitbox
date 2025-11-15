@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::stream;
-use hitbox_http::BufferedBody;
+use hitbox_http::{BufferedBody, PartialBufferedBody, Remaining};
 use http_body::Body;
 use http_body_util::{BodyExt, Full, StreamBody};
 
@@ -205,4 +205,123 @@ async fn test_is_end_stream_passthrough() {
 
     // Full body with data is not at end
     assert!(!body.is_end_stream());
+}
+
+#[tokio::test]
+async fn test_collect_partial_with_partial_body_within_limit() {
+    // Create a Partial body with prefix "hello" and remaining stream "world"
+    let prefix = Some(Bytes::from("hello"));
+    let remaining_stream = Full::new(Bytes::from("world"));
+    let partial = PartialBufferedBody::new(
+        prefix,
+        Remaining::Body(remaining_stream),
+    );
+    let body = BufferedBody::Partial(partial);
+
+    // Limit is 20 bytes, total is 10 bytes ("hello" + "world")
+    let result = body.collect_partial(20).await;
+
+    // Should be Ok(Complete) with combined data
+    match result {
+        Ok(BufferedBody::Complete(Some(data))) => {
+            assert_eq!(data, Bytes::from("helloworld"));
+        }
+        other => panic!("Expected Ok(Complete) but got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_collect_partial_with_partial_body_exceeds_limit() {
+    // Create a Partial body with prefix "hello" (5 bytes) and remaining stream with 10 bytes
+    let prefix = Some(Bytes::from("hello"));
+    let remaining_stream = Full::new(Bytes::from("1234567890"));
+    let partial = PartialBufferedBody::new(
+        prefix,
+        Remaining::Body(remaining_stream),
+    );
+    let body = BufferedBody::Partial(partial);
+
+    // Limit is 10 bytes, total is 15 bytes
+    let result = body.collect_partial(10).await;
+
+    // Should be Err - body exceeds limit
+    match result {
+        Err(BufferedBody::Partial(partial)) => {
+            // Should have buffered the prefix (size_hint indicated stream would exceed remaining limit)
+            let prefix = partial.prefix();
+            assert!(prefix.is_some());
+            let buffered = prefix.unwrap();
+            // Prefix is 5 bytes, and size_hint of remaining stream (10 bytes) exceeded remaining limit (5 bytes)
+            // So we get back just the prefix without reading from the stream
+            assert_eq!(buffered.len(), 5);
+        }
+        Err(BufferedBody::Complete(Some(data))) => {
+            // Or it might have collected all data and determined it exceeds limit
+            assert_eq!(data.len(), 15);
+        }
+        other => panic!("Expected Err but got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_collect_partial_with_partial_body_prefix_exceeds_limit() {
+    // Create a Partial body with prefix that already exceeds limit
+    let prefix_bytes = Bytes::from("hello world this is too long");
+    let prefix = Some(prefix_bytes.clone());
+    let remaining_stream = Full::new(Bytes::from("more"));
+    let partial = PartialBufferedBody::new(
+        prefix,
+        Remaining::Body(remaining_stream),
+    );
+    let body = BufferedBody::Partial(partial);
+
+    // Limit is 10 bytes, prefix is 28 bytes
+    let result = body.collect_partial(10).await;
+
+    // Should immediately return Err without reading from stream
+    match result {
+        Err(BufferedBody::Partial(result_partial)) => {
+            assert_eq!(result_partial.prefix(), Some(&prefix_bytes));
+        }
+        other => panic!("Expected Err(Partial) but got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_collect_partial_with_partial_body_no_prefix() {
+    // Create a Partial body with no prefix, only remaining stream
+    let remaining_stream = Full::new(Bytes::from("hello"));
+    let partial = PartialBufferedBody::new(None, Remaining::Body(remaining_stream));
+    let body = BufferedBody::Partial(partial);
+
+    // Limit is 10 bytes
+    let result = body.collect_partial(10).await;
+
+    // Should be Ok(Complete) with data from stream
+    match result {
+        Ok(BufferedBody::Complete(Some(data))) => {
+            assert_eq!(data, Bytes::from("hello"));
+        }
+        other => panic!("Expected Ok(Complete) but got: {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn test_collect_partial_with_partial_body_with_error() {
+    // Create a Partial body with prefix and error in remaining
+    let prefix_bytes = Bytes::from("hello");
+    let prefix = Some(prefix_bytes.clone());
+    let partial = PartialBufferedBody::<Full<Bytes>>::new(prefix, Remaining::Error(None));
+    let body = BufferedBody::Partial(partial);
+
+    // Limit is 10 bytes
+    let result = body.collect_partial(10).await;
+
+    // Should be Ok(Partial) - we can't read more but prefix is within limit
+    match result {
+        Ok(BufferedBody::Partial(result_partial)) => {
+            assert_eq!(result_partial.prefix(), Some(&prefix_bytes));
+        }
+        other => panic!("Expected Ok(Partial) but got: {:?}", other),
+    }
 }
