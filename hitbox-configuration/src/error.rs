@@ -31,6 +31,10 @@ pub enum ConfigError {
         error: regex::Error,
     },
 
+    /// Invalid predicate configuration
+    #[error("Invalid predicate: {0}")]
+    InvalidPredicate(String),
+
     /// Backend not available (feature not enabled)
     #[error("Backend '{0}' is not available. Enable the corresponding feature flag.")]
     BackendNotAvailable(String),

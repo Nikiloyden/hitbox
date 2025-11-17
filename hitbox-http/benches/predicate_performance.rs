@@ -1,7 +1,6 @@
 use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
 use hitbox::predicate::Predicate;
-use hitbox_http::{BufferedBody, CacheableHttpRequest};
 use hitbox_http::predicates::{
     NeutralRequestPredicate,
     conditions::{NotPredicate, OrPredicate},
@@ -13,6 +12,7 @@ use hitbox_http::predicates::{
         query::{Operation as QueryOperation, QueryPredicate},
     },
 };
+use hitbox_http::{BufferedBody, CacheableHttpRequest};
 use http::{Method, Request};
 use http_body_util::Empty;
 use std::hint::black_box;
@@ -166,8 +166,7 @@ fn bench_small_chains(c: &mut Criterion) {
 
     group.bench_function("not_method", |b| {
         let inner = NeutralRequestPredicate::new().method(Method::POST);
-        let predicate =
-            NeutralRequestPredicate::<BufferedBody<Empty<Bytes>>>::new().not(inner);
+        let predicate = NeutralRequestPredicate::<BufferedBody<Empty<Bytes>>>::new().not(inner);
         b.to_async(&rt).iter(|| async {
             let req = CacheableHttpRequest::from_request(create_simple_request());
             black_box(predicate.check(black_box(req)).await)

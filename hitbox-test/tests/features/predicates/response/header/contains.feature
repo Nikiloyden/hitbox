@@ -73,18 +73,14 @@ Feature: Response Header Contains Predicate
       ```
     When execute request
       ```hurl
-      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
-      [Query]
-      test_headers: true
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime?test_headers=true
       ```
     Then response status is 200
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
     When execute request
       ```hurl
-      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
-      [Query]
-      test_headers: true
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime?test_headers=true
       ```
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"

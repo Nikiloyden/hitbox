@@ -53,15 +53,18 @@ use std::task::{Context, Poll};
 
 /// Enum to represent the remaining body state after partial consumption.
 #[pin_project(project = RemainingProj)]
+#[derive(Debug)]
 pub enum Remaining<B>
 where
     B: HttpBody,
 {
     /// The body stream continues
     Body(#[pin] B),
-    /// An error was encountered during consumption - yield once then end stream
+    /// An error was encountered during consumption - yield once then end stream.
+    /// The Option allows us to yield the error once, then return None on subsequent polls.
     Error(Option<B::Error>),
 }
+
 
 /// Represents a partially consumed body with a buffered prefix and remaining stream.
 ///
@@ -93,89 +96,6 @@ where
         (self.prefix, self.remaining)
     }
 
-    /// Attempts to collect this partial body up to the specified limit.
-    ///
-    /// Returns:
-    /// - `Ok(BufferedBody)` if the body is within limit or an error prevents further reading
-    /// - `Err(PartialBody)` if the body exceeds the limit (may have different inner type)
-    pub async fn collect_partial(self, limit_bytes: usize) -> Result<BufferedBody<B>, BufferedBody<B>>
-    where
-        B: Unpin,
-    {
-        let prefix_len = self.prefix.as_ref().map(|b| b.len()).unwrap_or(0);
-
-        // If prefix already exceeds limit, return immediately
-        if prefix_len > limit_bytes {
-            return Err(BufferedBody::Partial(self));
-        }
-
-        match self.remaining {
-            // If there's an error, we can't read more - return as-is wrapped in BufferedBody
-            Remaining::Error(_) => Ok(BufferedBody::Partial(self)),
-
-            // Need to read from remaining stream
-            Remaining::Body(stream) => {
-                // Use collect_stream on the inner stream with the remaining limit
-                let remaining_limit = limit_bytes - prefix_len;
-                match collect_stream(stream, Some(remaining_limit)).await {
-                    CollectResult::Complete(new_data) => {
-                        // Combine prefix with newly read data
-                        let combined = match self.prefix {
-                            Some(prefix_bytes) if !new_data.is_empty() => {
-                                let mut buf = BytesMut::from(prefix_bytes.as_ref());
-                                buf.extend_from_slice(&new_data);
-                                buf.freeze()
-                            }
-                            Some(prefix_bytes) => prefix_bytes,
-                            None => new_data,
-                        };
-
-                        if combined.len() <= limit_bytes {
-                            Ok(BufferedBody::Complete(
-                                if combined.is_empty() { None } else { Some(combined) }
-                            ))
-                        } else {
-                            Err(BufferedBody::Complete(Some(combined)))
-                        }
-                    }
-                    CollectResult::ExceedsLimit { buffered: new_data, remaining: new_stream } => {
-                        // Combine prefix with new data
-                        let combined = match self.prefix {
-                            Some(prefix_bytes) if !new_data.is_empty() => {
-                                let mut buf = BytesMut::from(prefix_bytes.as_ref());
-                                buf.extend_from_slice(&new_data);
-                                buf.freeze()
-                            }
-                            Some(prefix_bytes) => prefix_bytes,
-                            None => new_data,
-                        };
-
-                        Err(BufferedBody::Partial(PartialBufferedBody::new(
-                            if combined.is_empty() { None } else { Some(combined) },
-                            Remaining::Body(new_stream),
-                        )))
-                    }
-                    CollectResult::Error { buffered: new_data, error } => {
-                        // Combine prefix with new data
-                        let combined = match self.prefix {
-                            Some(prefix_bytes) if !new_data.is_empty() => {
-                                let mut buf = BytesMut::from(prefix_bytes.as_ref());
-                                buf.extend_from_slice(&new_data);
-                                buf.freeze()
-                            }
-                            Some(prefix_bytes) => prefix_bytes,
-                            None => new_data,
-                        };
-
-                        Ok(BufferedBody::Partial(PartialBufferedBody::new(
-                            if combined.is_empty() { None } else { Some(combined) },
-                            Remaining::Error(Some(error)),
-                        )))
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl<B: HttpBody> HttpBody for PartialBufferedBody<B> {
@@ -195,17 +115,15 @@ impl<B: HttpBody> HttpBody for PartialBufferedBody<B> {
 
         // Then handle the remaining body or error
         match this.remaining.project() {
-            RemainingProj::Body(body) => {
-                match body.poll_frame(cx) {
-                    Poll::Ready(Some(Ok(frame))) => {
-                        let frame = frame.map_data(|mut data| data.copy_to_bytes(data.remaining()));
-                        Poll::Ready(Some(Ok(frame)))
-                    }
-                    Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-                    Poll::Ready(None) => Poll::Ready(None),
-                    Poll::Pending => Poll::Pending,
+            RemainingProj::Body(body) => match body.poll_frame(cx) {
+                Poll::Ready(Some(Ok(frame))) => {
+                    let frame = frame.map_data(|mut data| data.copy_to_bytes(data.remaining()));
+                    Poll::Ready(Some(Ok(frame)))
                 }
-            }
+                Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            },
             RemainingProj::Error(error) => {
                 if let Some(err) = error.take() {
                     Poll::Ready(Some(Err(err)))
@@ -221,12 +139,24 @@ impl<B: HttpBody> HttpBody for PartialBufferedBody<B> {
 
         match &self.remaining {
             Remaining::Body(body) => {
-                let mut hint = body.size_hint();
-                hint.set_lower(hint.lower().saturating_add(prefix_len));
-                if let Some(upper) = hint.upper() {
-                    hint.set_upper(upper.saturating_add(prefix_len));
+                let hint = body.size_hint();
+                let lower = hint.lower().saturating_add(prefix_len);
+
+                // The upper bound needs careful handling:
+                // If we have a prefix, it means we already consumed those bytes from the stream.
+                // The body's upper hint might not have been updated (e.g., if based on Content-Length).
+                // So we need to ensure: lower <= upper
+                let upper = hint.upper().map(|u| {
+                    // Upper should be at least lower to maintain the invariant
+                    u.saturating_add(prefix_len).max(lower)
+                });
+
+                let mut result = http_body::SizeHint::new();
+                result.set_lower(lower);
+                if let Some(u) = upper {
+                    result.set_upper(u);
                 }
-                hint
+                result
             }
             Remaining::Error(_) => http_body::SizeHint::with_exact(prefix_len),
         }
@@ -343,81 +273,87 @@ where
     }
 }
 
-/// Result of collecting a stream with an optional limit
-enum CollectResult<B: HttpBody> {
-    /// Body completed within limit (or no limit)
-    Complete(Bytes),
-    /// Body exceeded limit - contains buffered data and remaining stream
-    ExceedsLimit { buffered: Bytes, remaining: B },
-    /// Error occurred during reading - contains buffered data and error
-    Error { buffered: Bytes, error: B::Error },
+/// Result of attempting to collect at least N bytes from a body.
+///
+/// Used by [`BufferedBody::collect_exact`] to read a fixed number of bytes
+/// from the body stream, regardless of size hints or total body size.
+///
+/// This is useful for operations that need to inspect a prefix of the body
+/// (e.g., checking if body starts with specific bytes).
+///
+/// Note: When reading from frames, the buffered data may contain more than
+/// the requested number of bytes if an entire frame was consumed.
+#[derive(Debug)]
+pub enum CollectExactResult<B: HttpBody> {
+    /// Successfully collected at least the requested number of bytes.
+    ///
+    /// The buffered bytes contains at least the requested amount (possibly more
+    /// if a frame was consumed). The remaining field contains either:
+    /// - `Some(Remaining::Body(stream))` - more data to stream
+    /// - `Some(Remaining::Error(err))` - error occurred after collecting enough bytes
+    /// - `None` - stream ended cleanly
+    AtLeast {
+        buffered: Bytes,
+        remaining: Option<Remaining<B>>,
+    },
+
+    /// Failed to collect the requested bytes.
+    ///
+    /// This occurs when either:
+    /// - The body stream ended before reaching the requested number of bytes (error is None)
+    /// - An error occurred while reading the stream (error is Some)
+    ///
+    /// The buffered field contains any bytes successfully read before the failure.
+    Incomplete {
+        buffered: Option<Bytes>,
+        error: Option<B::Error>,
+    },
 }
 
-/// Helper function to read body stream chunks with an optional size limit
-async fn collect_stream<B>(mut stream: B, limit: Option<usize>) -> CollectResult<B>
-where
-    B: HttpBody + Unpin,
-{
-    use http_body_util::BodyExt;
-
-    // Check size_hint if we have a limit
-    if let Some(limit_bytes) = limit
-        && let Some(upper) = stream.size_hint().upper()
-        && upper > limit_bytes as u64
-    {
-        // Size hint indicates body exceeds limit
-        return CollectResult::ExceedsLimit {
-            buffered: Bytes::new(),
-            remaining: stream,
-        };
-    }
-
-    let mut buffer = BytesMut::new();
-
-    loop {
-        match stream.frame().await {
-            Some(Ok(frame)) => {
-                if let Ok(mut data) = frame.into_data() {
-                    let data_len = data.remaining();
-
-                    // Check if adding this chunk would exceed limit
-                    if let Some(limit_bytes) = limit
-                        && buffer.len() + data_len > limit_bytes
-                    {
-                        // Exceeds limit - buffer this chunk and return
-                        while data.has_remaining() {
-                            buffer.extend_from_slice(data.chunk());
-                            data.advance(data.chunk().len());
-                        }
-                        return CollectResult::ExceedsLimit {
-                            buffered: buffer.freeze(),
-                            remaining: stream,
-                        };
-                    }
-
-                    // Within limit (or no limit) - buffer the chunk
-                    while data.has_remaining() {
-                        buffer.extend_from_slice(data.chunk());
-                        data.advance(data.chunk().len());
-                    }
+impl<B: HttpBody> CollectExactResult<B> {
+    /// Converts the result into a [`BufferedBody`], using the buffered data as prefix.
+    ///
+    /// This reconstructs the body:
+    /// - `AtLeast { buffered, remaining }` → `BufferedBody::Partial` with buffered as prefix and remaining, or `BufferedBody::Complete` if no remaining
+    /// - `Incomplete { buffered, error }` → `BufferedBody::Partial` with error, or `BufferedBody::Complete` if no error
+    pub fn into_buffered_body(self) -> BufferedBody<B> {
+        match self {
+            CollectExactResult::AtLeast { buffered, remaining } => {
+                match remaining {
+                    Some(rem) => BufferedBody::Partial(PartialBufferedBody::new(Some(buffered), rem)),
+                    None => BufferedBody::Complete(Some(buffered)),
                 }
-                // Ignore trailers and other frame types
             }
-            Some(Err(err)) => {
-                // Error reading body
-                return CollectResult::Error {
-                    buffered: buffer.freeze(),
-                    error: err,
-                };
-            }
-            None => {
-                // Body complete
-                return CollectResult::Complete(buffer.freeze());
+            CollectExactResult::Incomplete { buffered, error } => {
+                match error {
+                    Some(err) => BufferedBody::Partial(PartialBufferedBody::new(
+                        buffered,
+                        Remaining::Error(Some(err)),
+                    )),
+                    None => BufferedBody::Complete(buffered),
+                }
             }
         }
     }
 }
 
+/// Helper function to combine an optional prefix with new data.
+///
+/// This is used when buffering partial bodies - we may have already consumed
+/// a prefix from the stream, and now need to combine it with newly read data.
+fn combine_bytes(prefix: Option<Bytes>, data: Bytes) -> Bytes {
+    match prefix {
+        Some(prefix_bytes) if !data.is_empty() => {
+            let mut buf = BytesMut::from(prefix_bytes.as_ref());
+            buf.extend_from_slice(&data);
+            buf.freeze()
+        }
+        Some(prefix_bytes) => prefix_bytes,
+        None => data,
+    }
+}
+
+/// Internal result type for the low-level stream collection function.
 impl<B> BufferedBody<B>
 where
     B: HttpBody,
@@ -475,87 +411,163 @@ where
         }
     }
 
-    /// Collects body up to a specified limit.
+    /// Collects exactly `limit_bytes` from the body, ignoring size hints.
     ///
-    /// This method reads the body in chunks until either:
-    /// - The body completes within the limit → Ok(Complete)
-    /// - The body exactly reaches the limit → Ok(Partial)
-    /// - The body exceeds the limit → Err(Partial) with buffered prefix + remaining stream
-    ///
-    /// Errors during reading are stored in `Remaining::Error` and returned as Ok(Partial).
-    ///
-    /// # Arguments
-    /// * `limit_bytes` - Maximum number of bytes to buffer
+    /// This method always attempts to read the requested number of bytes from the stream,
+    /// unlike `collect_partial` which may return early based on size hints.
     ///
     /// # Returns
-    /// * `Ok(BufferedBody::Complete)` - Body completed within limit
-    /// * `Ok(BufferedBody::Partial)` - Body reached limit or encountered error
-    /// * `Err(BufferedBody::Partial)` - Body exceeded limit (contains buffered data + remaining stream)
-    pub async fn collect_partial(self, limit_bytes: usize) -> Result<Self, Self>
+    ///
+    /// * [`CollectExactResult::AtLeast`] - Collected at least `limit_bytes`
+    /// * [`CollectExactResult::Incomplete`] - Body ended or error occurred before reaching `limit_bytes`
+    ///
+    /// # Use Cases
+    ///
+    /// This is useful for operations that need to inspect a fixed-size prefix of the body,
+    /// such as:
+    /// - Checking if body starts with specific bytes
+    /// - Reading file format magic numbers
+    /// - Protocol header parsing
+    pub async fn collect_exact(self, limit_bytes: usize) -> CollectExactResult<B>
     where
         B: Unpin,
     {
         match self {
-            // Already complete - just check size
-            BufferedBody::Complete(Some(ref data)) => {
-                if data.len() <= limit_bytes {
-                    Ok(self)
+            // Already complete - check if we have enough bytes
+            BufferedBody::Complete(Some(data)) => {
+                if data.len() >= limit_bytes {
+                    // Have at least limit_bytes, stream ended cleanly
+                    CollectExactResult::AtLeast {
+                        buffered: data,
+                        remaining: None,
+                    }
                 } else {
-                    Err(self)
+                    // Not enough bytes
+                    CollectExactResult::Incomplete {
+                        buffered: Some(data),
+                        error: None,
+                    }
                 }
             }
             BufferedBody::Complete(None) => {
-                // Empty body is always within limit
-                Ok(self)
+                // Empty body
+                CollectExactResult::Incomplete {
+                    buffered: None,
+                    error: None,
+                }
             }
 
-            // Delegate to PartialBody's collect_partial method
-            BufferedBody::Partial(partial) => partial.collect_partial(limit_bytes).await,
+            // Partial - combine prefix with remaining stream
+            BufferedBody::Partial(partial) => {
+                let (prefix, remaining) = partial.into_parts();
+                let prefix_len = prefix.as_ref().map(|p| p.len()).unwrap_or(0);
 
-            // Passthrough - need to read and check
-            BufferedBody::Passthrough(stream) => {
-                match collect_stream(stream, Some(limit_bytes)).await {
-                    CollectResult::Complete(buffered) => {
-                        // Body completed, check if it's within limit
-                        if buffered.len() <= limit_bytes {
-                            Ok(BufferedBody::Complete(if buffered.is_empty() {
-                                None
-                            } else {
-                                Some(buffered)
-                            }))
-                        } else {
-                            // Entire body exceeded limit but we buffered it all
-                            Err(BufferedBody::Complete(Some(buffered)))
-                        }
+                if prefix_len >= limit_bytes {
+                    // Prefix already has enough bytes - preserve the remaining state
+                    CollectExactResult::AtLeast {
+                        buffered: prefix.unwrap(),
+                        remaining: Some(remaining),
                     }
-                    CollectResult::ExceedsLimit {
-                        buffered,
-                        remaining,
-                    } => {
-                        // Body exceeds limit
-                        if buffered.is_empty() {
-                            Err(BufferedBody::Passthrough(remaining))
-                        } else {
-                            Err(BufferedBody::Partial(PartialBufferedBody::new(
-                                Some(buffered),
-                                Remaining::Body(remaining),
-                            )))
+                } else {
+                    // Need to read more from remaining stream
+                    match remaining {
+                        Remaining::Body(stream) => {
+                            // Read more bytes from stream
+                            let needed = limit_bytes - prefix_len;
+                            let result = collect_exact_from_stream(stream, needed).await;
+                            match result {
+                                CollectExactResult::AtLeast {
+                                    buffered: new_bytes,
+                                    remaining,
+                                } => {
+                                    let combined = combine_bytes(prefix, new_bytes);
+                                    CollectExactResult::AtLeast {
+                                        buffered: combined,
+                                        remaining,
+                                    }
+                                }
+                                CollectExactResult::Incomplete {
+                                    buffered: new_bytes,
+                                    error,
+                                } => {
+                                    let combined = if let Some(new) = new_bytes {
+                                        Some(combine_bytes(prefix, new))
+                                    } else {
+                                        prefix
+                                    };
+                                    CollectExactResult::Incomplete {
+                                        buffered: combined,
+                                        error,
+                                    }
+                                }
+                            }
                         }
-                    }
-                    CollectResult::Error { buffered, error } => {
-                        // Error reading body
-                        Ok(BufferedBody::Partial(PartialBufferedBody::new(
-                            if buffered.is_empty() {
-                                None
-                            } else {
-                                Some(buffered)
-                            },
-                            Remaining::Error(Some(error)),
-                        )))
+                        Remaining::Error(error) => {
+                            // Already have an error, can't read more
+                            CollectExactResult::Incomplete {
+                                buffered: prefix,
+                                error,
+                            }
+                        }
                     }
                 }
             }
+
+            // Passthrough - read from stream
+            BufferedBody::Passthrough(stream) => {
+                collect_exact_from_stream(stream, limit_bytes).await
+            }
         }
+    }
+}
+
+/// Helper function to collect exactly N bytes from a stream.
+async fn collect_exact_from_stream<B>(mut stream: B, limit_bytes: usize) -> CollectExactResult<B>
+where
+    B: HttpBody + Unpin,
+{
+    use http_body_util::BodyExt;
+
+    let mut buffer = BytesMut::new();
+
+    // Read until we have at least limit_bytes
+    while buffer.len() < limit_bytes {
+        match stream.frame().await {
+            Some(Ok(frame)) => {
+                if let Ok(mut data) = frame.into_data() {
+                    buffer.extend_from_slice(&data.copy_to_bytes(data.remaining()));
+                }
+            }
+            Some(Err(error)) => {
+                // Error while reading
+                return CollectExactResult::Incomplete {
+                    buffered: if buffer.is_empty() {
+                        None
+                    } else {
+                        Some(buffer.freeze())
+                    },
+                    error: Some(error),
+                };
+            }
+            None => {
+                // Stream ended before we got limit_bytes
+                return CollectExactResult::Incomplete {
+                    buffered: if buffer.is_empty() {
+                        None
+                    } else {
+                        Some(buffer.freeze())
+                    },
+                    error: None,
+                };
+            }
+        }
+    }
+
+    // We have at least limit_bytes
+    // Return the buffered data and the remaining stream
+    CollectExactResult::AtLeast {
+        buffered: buffer.freeze(),
+        remaining: Some(Remaining::Body(stream)),
     }
 }
 

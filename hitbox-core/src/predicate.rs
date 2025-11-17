@@ -18,12 +18,10 @@ impl<S> PredicateResult<S> {
     {
         match self {
             PredicateResult::Cacheable(value) => f(value).await,
-            PredicateResult::NonCacheable(value) => {
-                match f(value).await {
-                    PredicateResult::Cacheable(t) => PredicateResult::NonCacheable(t),
-                    PredicateResult::NonCacheable(t) => PredicateResult::NonCacheable(t),
-                }
-            }
+            PredicateResult::NonCacheable(value) => match f(value).await {
+                PredicateResult::Cacheable(t) => PredicateResult::NonCacheable(t),
+                PredicateResult::NonCacheable(t) => PredicateResult::NonCacheable(t),
+            },
         }
     }
 }

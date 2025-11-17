@@ -27,6 +27,11 @@ pub async fn main() {
                 .tee(cucumber::writer::JUnit::for_tee(file, 0))
                 .normalized(),
         )
-        .run("tests/features")
+        // Filter: only @integration scenarios, skip @allow.failed
+        .filter_run("tests/features", |_feature, _rule, scenario| {
+            let has_integration = scenario.tags.iter().any(|tag| tag == "integration");
+            let has_allow_failed = scenario.tags.iter().any(|tag| tag == "allow.failed");
+            has_integration && !has_allow_failed
+        })
         .await;
 }

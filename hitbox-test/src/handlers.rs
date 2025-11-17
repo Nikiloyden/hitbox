@@ -20,15 +20,16 @@ pub struct Pagination {
 }
 
 #[derive(Deserialize, Debug, Default)]
-pub struct TestHeadersQuery {
+pub struct QueryParams {
     test_headers: Option<String>,
+    streaming: Option<String>,
 }
 
 #[axum::debug_handler]
 pub(crate) async fn get_book(
     State(state): State<AppState>,
     Path((_author_id, book_id)): Path<(String, String)>,
-    Query(query): Query<TestHeadersQuery>,
+    Query(query): Query<QueryParams>,
 ) -> Result<Response, StatusCode> {
     match book_id.as_str() {
         "invalid-book-id" => Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -38,6 +39,36 @@ pub(crate) async fn get_book(
                 .get_book(BookId::new(&book_id))
                 .await
                 .ok_or(StatusCode::NOT_FOUND)?;
+
+            // Serialize book to JSON
+            let json_bytes = serde_json::to_vec(&*book).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Handle streaming response if streaming=true query param is present
+            if query.streaming.as_deref() == Some("true") {
+                use futures::stream;
+                use http_body_util::StreamBody;
+                use http::header;
+
+                // Split JSON into chunks to test pattern spanning boundaries
+                // We'll split at a known position to create a boundary in the middle of "robert-sheckley"
+                let chunk_size = 50; // Small chunks to force boundaries
+                let chunks: Vec<Result<_, std::io::Error>> = json_bytes.chunks(chunk_size)
+                    .map(|chunk| {
+                        let data = Bytes::copy_from_slice(chunk);
+                        Ok(http_body::Frame::data(data))
+                    })
+                    .collect();
+
+                let stream = stream::iter(chunks);
+                let stream_body = StreamBody::new(stream);
+
+                let mut response = Response::new(axum::body::Body::new(stream_body));
+                response.headers_mut().insert(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("application/json"),
+                );
+                return Ok(response);
+            }
 
             // Add custom headers for testing if test_headers=true query param is present
             if query.test_headers.as_deref() == Some("true") {
@@ -74,11 +105,14 @@ pub(crate) async fn get_books(
     Path(author_id): Path<String>,
     pagination: Query<Pagination>,
 ) -> Result<Json<Vec<Arc<Book>>>, StatusCode> {
-    let books = state
+    let mut books = state
         .database()
         .get_books(AuthorId::new(author_id))
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Sort books by ID for deterministic ordering
+    books.sort();
 
     let page = pagination.page.unwrap_or(1);
     let per_page = pagination.per_page.unwrap_or(DEFAULT_PER_PAGE);
@@ -132,4 +166,52 @@ pub(crate) async fn post_book(
 
     // Return the created book
     Ok(Json(book))
+}
+
+#[axum::debug_handler]
+pub(crate) async fn get_book_cover(
+    Path(book_id): Path<String>,
+    Query(query): Query<QueryParams>,
+) -> Result<Response, StatusCode> {
+    // Try to load cover image from covers directory
+    let cover_path = format!("covers/{}.png", book_id);
+    let cover_path_fallback = format!("hitbox-test/covers/{}.png", book_id);
+
+    let cover_data = std::fs::read(&cover_path)
+        .or_else(|_| std::fs::read(&cover_path_fallback))
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Handle streaming response if streaming=true query param is present
+    if query.streaming.as_deref() == Some("true") {
+        use futures::stream;
+        use http_body_util::StreamBody;
+        use http::header;
+
+        // Split binary data into chunks to test pattern spanning boundaries
+        let chunk_size = 20; // Small chunks to force boundaries in PNG header
+        let chunks: Vec<Result<_, std::io::Error>> = cover_data.chunks(chunk_size)
+            .map(|chunk| {
+                let data = Bytes::copy_from_slice(chunk);
+                Ok(http_body::Frame::data(data))
+            })
+            .collect();
+
+        let stream = stream::iter(chunks);
+        let stream_body = StreamBody::new(stream);
+
+        let mut response = Response::new(axum::body::Body::new(stream_body));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("image/png"),
+        );
+        return Ok(response);
+    }
+
+    // Regular response
+    let mut response = Response::new(axum::body::Body::from(cover_data));
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        HeaderValue::from_static("image/png"),
+    );
+    Ok(response)
 }

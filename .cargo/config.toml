@@ -1,5 +1,5 @@
 [alias]
-bdd = "test -p hitbox-test --test integration -- --tags @integration --fail-fast"
+bdd = "test -p hitbox-test --test integration -- --fail-fast"
 
 # Local development: use path dependencies for hurl when available
 # This overrides the git dependencies defined in Cargo.toml
