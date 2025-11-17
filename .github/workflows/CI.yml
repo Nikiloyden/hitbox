@@ -105,6 +105,7 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   clippy:
     runs-on: ubuntu-latest
