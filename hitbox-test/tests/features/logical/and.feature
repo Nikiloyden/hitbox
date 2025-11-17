@@ -7,7 +7,7 @@ Feature: Logical And Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @logical @and
   Scenario: And predicate - both predicates match - request cached
     Given request predicates
       ```yaml
@@ -29,7 +29,7 @@ Feature: Logical And Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @and
   Scenario: And predicate - first predicate matches, second doesn't - request not cached
     Given request predicates
       ```yaml
@@ -45,7 +45,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - first predicate doesn't match - short-circuit - request not cached
     Given request predicates
       ```yaml
@@ -61,7 +61,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - both predicates don't match - request not cached
     Given request predicates
       ```yaml
@@ -77,7 +77,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - three predicates all match - request cached
     Given request predicates
       ```yaml
@@ -103,7 +103,7 @@ Feature: Logical And Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @and
   Scenario: And predicate - Method AND Header AND Query all match
     Given request predicates
       ```yaml
@@ -134,14 +134,15 @@ Feature: Logical And Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @and
   Scenario: And predicate - Method AND Path AND Body all match
     Given request predicates
       ```yaml
       And:
         - Method: POST
         - Path: /v1/authors/robert-sheckley/books/new-book-test
-        - Body: ".title != null"
+        - Body:
+            jq: ".title != null"
       ```
     And key extractors
       ```yaml
@@ -166,7 +167,7 @@ Feature: Logical And Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @and
   Scenario: And predicate - three predicates - first fails - not cached
     Given request predicates
       ```yaml
@@ -185,7 +186,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - three predicates - second fails - not cached
     Given request predicates
       ```yaml
@@ -204,7 +205,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - three predicates - third fails - not cached
     Given request predicates
       ```yaml
@@ -223,7 +224,7 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - Method AND Header AND Query - Query fails - not cached
     Given request predicates
       ```yaml
@@ -245,14 +246,15 @@ Feature: Logical And Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @and
   Scenario: And predicate - Method AND Path AND Body - Body fails - not cached
     Given request predicates
       ```yaml
       And:
         - Method: POST
         - Path: /v1/authors/robert-sheckley/books/new-book-negative-test
-        - Body: '.description == "Specific Description"'
+        - Body:
+            jq: '.description == "Specific Description"'
       ```
     When execute request
       ```hurl

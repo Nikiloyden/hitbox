@@ -9,7 +9,9 @@ use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+use crate::CacheableSubject;
 use crate::body::BufferedBody;
+use crate::predicates::header::HasHeaders;
 
 #[derive(Debug)]
 pub struct CacheableHttpResponse<ResBody>
@@ -31,6 +33,31 @@ where
 
     pub fn into_response(self) -> Response<BufferedBody<ResBody>> {
         Response::from_parts(self.parts, self.body)
+    }
+}
+
+impl<ResBody> CacheableSubject for CacheableHttpResponse<ResBody>
+where
+    ResBody: HttpBody,
+{
+    type Body = ResBody;
+    type Parts = Parts;
+
+    fn into_parts(self) -> (Self::Parts, BufferedBody<Self::Body>) {
+        (self.parts, self.body)
+    }
+
+    fn from_parts(parts: Self::Parts, body: BufferedBody<Self::Body>) -> Self {
+        Self { parts, body }
+    }
+}
+
+impl<ResBody> HasHeaders for CacheableHttpResponse<ResBody>
+where
+    ResBody: HttpBody,
+{
+    fn headers(&self) -> &http::HeaderMap {
+        &self.parts.headers
     }
 }
 

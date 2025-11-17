@@ -7,7 +7,7 @@ Feature: Response Body Jq In Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - field value in list - response cached
     Given response predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - field value not in list - response not cached
     Given response predicates
       ```yaml
@@ -47,7 +47,7 @@ Feature: Response Body Jq In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - empty list - response not cached
     Given response predicates
       ```yaml
@@ -64,7 +64,7 @@ Feature: Response Body Jq In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - single value in list - response cached
     Given response predicates
       ```yaml
@@ -87,7 +87,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - number value in list - response cached
     Given response predicates
       ```yaml
@@ -110,7 +110,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - number value not in list - response not cached
     Given response predicates
       ```yaml
@@ -127,7 +127,7 @@ Feature: Response Body Jq In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - mixed value types in list - response cached
     Given response predicates
       ```yaml
@@ -150,7 +150,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - missing field - response not cached
     Given response predicates
       ```yaml
@@ -167,7 +167,7 @@ Feature: Response Body Jq In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - nested field value in list - response cached
     Given response predicates
       ```yaml
@@ -190,7 +190,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - array element value in list - response cached
     Given response predicates
       ```yaml
@@ -213,7 +213,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - multiple in predicates - all must match
     Given response predicates
       ```yaml
@@ -240,7 +240,7 @@ Feature: Response Body Jq In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @in
   Scenario: Jq In - multiple predicates, one not in list - response not cached
     Given response predicates
       ```yaml

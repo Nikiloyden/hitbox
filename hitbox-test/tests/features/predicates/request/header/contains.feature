@@ -7,7 +7,7 @@ Feature: Request Header Contains Predicate
         ttl: 10
       ```
 
-  @integration
+  @request @header @contains
   Scenario: Header Contains - header value contains substring - request cached
     Given request predicates
       ```yaml
@@ -31,7 +31,7 @@ Feature: Request Header Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @contains
   Scenario: Header Contains - header value doesn't contain substring - request not cached
     Given request predicates
       ```yaml
@@ -48,7 +48,7 @@ Feature: Request Header Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @contains
   Scenario: Header Contains - case-sensitive substring matching - request not cached
     Given request predicates
       ```yaml
@@ -65,7 +65,7 @@ Feature: Request Header Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @contains
   Scenario: Header Contains - multiple headers with contains - request cached
     Given request predicates
       ```yaml
@@ -93,7 +93,7 @@ Feature: Request Header Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @contains
   Scenario: Header Contains - header missing - request not cached
     Given request predicates
       ```yaml

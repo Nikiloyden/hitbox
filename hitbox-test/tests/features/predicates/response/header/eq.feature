@@ -7,7 +7,7 @@ Feature: Response Header Eq Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - exact header value match - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - different header value - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - case-insensitive header name - response cached
     Given response predicates
       ```yaml
@@ -64,7 +64,7 @@ Feature: Response Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - multiple header predicates all must match - response cached
     Given response predicates
       ```yaml
@@ -90,7 +90,7 @@ Feature: Response Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - header missing - response not cached
     Given response predicates
       ```yaml
@@ -105,7 +105,7 @@ Feature: Response Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - header with empty value - response cached
     Given response predicates
       ```yaml
@@ -130,7 +130,7 @@ Feature: Response Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - multiple header values with EQ operation - response cached
     Given response predicates
       ```yaml
@@ -155,7 +155,7 @@ Feature: Response Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - header value case sensitivity - response not cached
     Given response predicates
       ```yaml
@@ -170,7 +170,7 @@ Feature: Response Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @eq
   Scenario: Header Eq - header with whitespace trimmed - response cached
     Given response predicates
       ```yaml

@@ -7,7 +7,7 @@ Feature: Response Body Starts Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - body starts with prefix - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Starts Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - body doesn't start with prefix - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Starts Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - empty prefix matches any body - response cached
     Given response predicates
       ```yaml
@@ -58,7 +58,7 @@ Feature: Response Body Starts Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - prefix longer than body - response not cached
     Given response predicates
       ```yaml
@@ -73,7 +73,7 @@ Feature: Response Body Starts Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - long prefix match - response cached
     Given response predicates
       ```yaml
@@ -94,7 +94,7 @@ Feature: Response Body Starts Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - streaming body with prefix check - response cached
     Given response predicates
       ```yaml
@@ -115,7 +115,7 @@ Feature: Response Body Starts Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - case-sensitive matching - response not cached
     Given response predicates
       ```yaml
@@ -130,7 +130,7 @@ Feature: Response Body Starts Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - multiple starts predicates - all must match
     Given response predicates
       ```yaml
@@ -153,7 +153,7 @@ Feature: Response Body Starts Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @starts
   Scenario: Body Starts - multiple predicates, one doesn't match - response not cached
     Given response predicates
       ```yaml

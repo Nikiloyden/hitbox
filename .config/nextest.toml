@@ -1,0 +1,39 @@
+[profile.default]
+# Number of retries for failed tests
+retries = 0
+
+# Number of threads to use for running tests
+# "num-cpus" means use the number of logical CPUs
+test-threads = "num-cpus"
+
+# Test output display
+# Options: "immediate", "final", "immediate-final", "never"
+# - immediate: Show test output as soon as it's available
+# - final: Show test output at the end of the test run
+# - immediate-final: Show output immediately and at the end
+# - never: Don't show test output
+success-output = "never"
+failure-output = "immediate"
+
+# Show slower tests (tests taking longer than 60s)
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# Exclude cucumber test binary (has harness = false)
+# This is applied by default to all test runs
+default-filter = 'not binary(integration)'
+
+[profile.ci]
+# CI-specific profile with more retries and verbose output
+retries = 2
+success-output = "immediate-final"
+failure-output = "immediate-final"
+
+# Fail fast in CI to save time
+fail-fast = true
+
+# JUnit XML report for CI integration
+[profile.ci.junit]
+path = "junit.xml"
+# Store output for both successful and failed tests
+store-success-output = true
+store-failure-output = true

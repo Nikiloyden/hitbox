@@ -1,4 +1,3 @@
-pub mod body;
 pub mod header;
 pub mod status;
 
@@ -9,6 +8,7 @@ use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
+use crate::predicates::body::BodyPredicate;
 
 type CorePredicate<ReqBody> =
     Box<dyn hitbox_core::Predicate<Subject = CacheableHttpResponse<ReqBody>> + Send + Sync>;
@@ -16,7 +16,7 @@ type CorePredicate<ReqBody> =
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub enum Predicate {
     Status(status::Operation),
-    Body(body::Operation),
+    Body(BodyPredicate),
     Header(header::HeaderOperation),
 }
 
@@ -32,7 +32,7 @@ impl Predicate {
     {
         match self {
             Predicate::Status(status_op) => status_op.into_predicates(inner),
-            Predicate::Body(body_op) => body_op.into_predicates(inner),
+            Predicate::Body(body_op) => Ok(Box::new(body_op.into_predicates(inner)?)),
             Predicate::Header(header_op) => header::into_predicates(header_op, inner),
         }
     }

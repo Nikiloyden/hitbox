@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{RequestPredicate, error::ConfigError};
 
-mod body;
 mod expression;
 mod header;
 mod method;
@@ -12,7 +11,6 @@ mod operation;
 mod predicate;
 mod query;
 
-pub use body::BodyPredicate;
 pub use expression::Expression;
 pub use header::HeaderOperation;
 pub use method::MethodOperation;

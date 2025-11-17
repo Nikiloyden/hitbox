@@ -7,7 +7,7 @@ Feature: Response Body Jq Complex Expressions
         ttl: 10
       ```
 
-  @integration
+  @response @body @jq @complex
   Scenario: Array mapping - extract all author values - response cached
     Given response predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Response Body Jq Complex Expressions
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @complex
   Scenario: Array mapping - extract all ids - response cached
     Given response predicates
       ```yaml
@@ -53,7 +53,7 @@ Feature: Response Body Jq Complex Expressions
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @complex
   Scenario: Array mapping - wrong values - response not cached
     Given response predicates
       ```yaml
@@ -70,7 +70,7 @@ Feature: Response Body Jq Complex Expressions
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @complex
   Scenario: Array mapping with exist - check if mapping produces results
     Given response predicates
       ```yaml
@@ -93,7 +93,7 @@ Feature: Response Body Jq Complex Expressions
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @complex
   Scenario: Array mapping with in - check if all values in list
     Given response predicates
       ```yaml

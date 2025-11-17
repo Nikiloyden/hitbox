@@ -146,9 +146,6 @@ pub(crate) fn app() -> Router {
             "/v1/authors/{author_id}/books/{book_id}",
             get(get_book).post(post_book),
         )
-        .route(
-            "/v1/books/{book_id}/covers",
-            get(get_book_cover),
-        )
+        .route("/v1/books/{book_id}/covers", get(get_book_cover))
         .with_state(AppState::new())
 }

@@ -7,7 +7,7 @@ Feature: Request Query Cache Key Extractor
         ttl: 10
       ```
 
-  @integration
+  @extractor @query
   Scenario: Extract query parameter for cache key
     Given request predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Request Query Cache Key Extractor
       page: "1"
       ```
 
-  @integration
+  @extractor @query
   Scenario: Missing query parameter creates cache key without that part
     Given request predicates
       ```yaml
@@ -48,7 +48,7 @@ Feature: Request Query Cache Key Extractor
       method: "GET"
       ```
 
-  @integration
+  @extractor @query
   Scenario: Multiple query parameters
     Given request predicates
       ```yaml

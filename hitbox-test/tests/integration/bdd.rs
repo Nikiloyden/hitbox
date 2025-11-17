@@ -1,6 +1,9 @@
+use cucumber::writer::{Basic, JUnit};
 use cucumber::writer::{Verbosity, basic::Coloring};
 use cucumber::{World, WriterExt};
 use hitbox_test::core::HitboxWorld;
+use std::fs::{File, create_dir_all};
+use std::io::stdout;
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -13,25 +16,21 @@ pub async fn main() {
         .expect("Failed to find workspace root");
     let target_dir = workspace_root.join("target");
 
-    // Ensure target directory exists
-    std::fs::create_dir_all(&target_dir).expect("Failed to create target directory");
+    create_dir_all(&target_dir).expect("Failed to create target directory");
 
     let junit_path = target_dir.join("cucumber-junit.xml");
-    let file = std::fs::File::create(&junit_path).expect("Failed to create JUnit XML file");
+    let file = File::create(&junit_path).expect("Failed to create JUnit XML file");
 
     HitboxWorld::cucumber()
+        .max_concurrent_scenarios(None) // Remove any concurrency limits
         .with_writer(
-            // Basic provides console output and can be combined with JUnit
-            cucumber::writer::Basic::new(std::io::stdout(), Coloring::Auto, Verbosity::Default)
+            Basic::new(stdout(), Coloring::Auto, Verbosity::Default)
                 .summarized()
-                .tee(cucumber::writer::JUnit::for_tee(file, 0))
+                .tee(JUnit::for_tee(file, 0))
                 .normalized(),
         )
-        // Filter: only @integration scenarios, skip @allow.failed
         .filter_run("tests/features", |_feature, _rule, scenario| {
-            let has_integration = scenario.tags.iter().any(|tag| tag == "integration");
-            let has_allow_failed = scenario.tags.iter().any(|tag| tag == "allow.failed");
-            has_integration && !has_allow_failed
+            !scenario.tags.iter().any(|tag| tag == "allow.failed")
         })
         .await;
 }

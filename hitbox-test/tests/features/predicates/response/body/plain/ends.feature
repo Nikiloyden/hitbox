@@ -7,7 +7,7 @@ Feature: Response Body Ends Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - body ends with suffix - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Ends Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - body doesn't end with suffix - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Ends Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - empty suffix matches any body - response cached
     Given response predicates
       ```yaml
@@ -58,7 +58,7 @@ Feature: Response Body Ends Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - suffix longer than body - response not cached
     Given response predicates
       ```yaml
@@ -73,7 +73,7 @@ Feature: Response Body Ends Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - long suffix match - response cached
     Given response predicates
       ```yaml
@@ -94,7 +94,7 @@ Feature: Response Body Ends Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - streaming body with suffix check - response cached
     Given response predicates
       ```yaml
@@ -115,7 +115,7 @@ Feature: Response Body Ends Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - case-sensitive matching - response not cached
     Given response predicates
       ```yaml
@@ -130,7 +130,7 @@ Feature: Response Body Ends Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - multiple ends predicates - all must match
     Given response predicates
       ```yaml
@@ -153,7 +153,7 @@ Feature: Response Body Ends Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @ends
   Scenario: Body Ends - multiple predicates, one doesn't match - response not cached
     Given response predicates
       ```yaml

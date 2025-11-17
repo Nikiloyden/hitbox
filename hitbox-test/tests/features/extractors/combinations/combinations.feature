@@ -7,7 +7,7 @@ Feature: Cache Key Extractor Combinations
         ttl: 10
       ```
 
-  @integration
+  @extractor @combinations
   Scenario: Method + Path extractors combined
     Given request predicates
       ```yaml
@@ -29,7 +29,7 @@ Feature: Cache Key Extractor Combinations
       book_id: "victim-prime"
       ```
 
-  @integration
+  @extractor @combinations
   Scenario: Method + Query extractors combined
     Given request predicates
       ```yaml
@@ -55,7 +55,7 @@ Feature: Cache Key Extractor Combinations
       limit: "10"
       ```
 
-  @integration
+  @extractor @combinations
   Scenario: Header + Body extractors combined
     Given request predicates
       ```yaml
@@ -78,7 +78,7 @@ Feature: Cache Key Extractor Combinations
       .userId: "user-456"
       ```
 
-  @integration
+  @extractor @combinations
   Scenario: All extractors combined (Method + Path + Query + Header + Body)
     Given request predicates
       ```yaml

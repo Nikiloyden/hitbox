@@ -1,7 +1,8 @@
 use bytes::Bytes;
 use hitbox::predicate::{Predicate, PredicateResult};
 use hitbox_http::predicates::NeutralResponsePredicate;
-use hitbox_http::predicates::response::body::{BodyPredicate, JqExpression, JqOperation, Operation};
+use hitbox_http::predicates::response::body::BodyPredicate;
+use hitbox_http::predicates::response::{JqExpression, JqOperation, Operation};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use http::Response;
 use serde_json::json;

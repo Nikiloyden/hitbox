@@ -7,7 +7,7 @@ Feature: Response Header In Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @header @in
   Scenario: Header In - value in list - response cached
     Given response predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Response Header In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @in
   Scenario: Header In - value not in list - response not cached
     Given response predicates
       ```yaml
@@ -47,7 +47,7 @@ Feature: Response Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @in
   Scenario: Header In - single value in list - response cached
     Given response predicates
       ```yaml
@@ -69,7 +69,7 @@ Feature: Response Header In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @in
   Scenario: Header In - empty list - response not cached
     Given response predicates
       ```yaml
@@ -84,7 +84,7 @@ Feature: Response Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @in
   Scenario: Header In - header missing - response not cached
     Given response predicates
       ```yaml
@@ -101,7 +101,7 @@ Feature: Response Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @in
   Scenario: Header In - multiple header values with IN operation - response cached
     Given response predicates
       ```yaml
@@ -128,7 +128,7 @@ Feature: Response Header In Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @in
   Scenario: Header In - header value case sensitivity - response not cached
     Given response predicates
       ```yaml

@@ -206,4 +206,3 @@ async fn test_is_end_stream_passthrough() {
     // Full body with data is not at end
     assert!(!body.is_end_stream());
 }
-

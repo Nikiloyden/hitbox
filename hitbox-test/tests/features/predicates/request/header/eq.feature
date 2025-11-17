@@ -7,7 +7,7 @@ Feature: Request Header Eq Predicate
         ttl: 10
       ```
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - exact match caches request
     Given request predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Request Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - different value not cached
     Given request predicates
       ```yaml
@@ -46,7 +46,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - case-insensitive header name
     Given request predicates
       ```yaml
@@ -62,7 +62,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - multiple header predicates all must match
     Given request predicates
       ```yaml
@@ -88,7 +88,7 @@ Feature: Request Header Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - header with empty value
     Given request predicates
       ```yaml
@@ -104,7 +104,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - multiple header values with EQ operation
     Given request predicates
       ```yaml
@@ -121,7 +121,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - value case sensitivity
     Given request predicates
       ```yaml
@@ -137,7 +137,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - header with whitespace trimmed
     Given request predicates
       ```yaml
@@ -153,7 +153,7 @@ Feature: Request Header Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @header @eq
   Scenario: Header Eq - missing header not cached
     Given request predicates
       ```yaml

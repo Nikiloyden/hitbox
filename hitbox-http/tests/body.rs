@@ -2,8 +2,7 @@ use bytes::Bytes;
 use hitbox::predicate::{Predicate, PredicateResult};
 use hitbox_http::predicates::NeutralRequestPredicate;
 use hitbox_http::predicates::request::BodyPredicate;
-use hitbox_http::predicates::request::ParsingType;
-use hitbox_http::predicates::request::body::Operation;
+use hitbox_http::predicates::request::body::{JqExpression, JqOperation, Operation};
 use hitbox_http::{BufferedBody, CacheableHttpRequest};
 use http::Request;
 use serde_json::json;
@@ -23,11 +22,11 @@ mod eq_tests {
             .unwrap();
         let request = CacheableHttpRequest::from_request(request);
 
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::Eq("test-value".into()),
-        );
+        let filter = JqExpression::compile(".field").unwrap();
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter,
+            operation: JqOperation::Eq("test-value".into()),
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -42,11 +41,11 @@ mod eq_tests {
             .unwrap();
         let request = CacheableHttpRequest::from_request(request);
 
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::Eq("wrong-value".into()),
-        );
+        let filter = JqExpression::compile(".field").unwrap();
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter,
+            operation: JqOperation::Eq("wrong-value".into()),
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
@@ -61,11 +60,10 @@ mod eq_tests {
             .unwrap();
         let request = CacheableHttpRequest::from_request(request);
 
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".wrong_field".to_owned(),
-            Operation::Eq("test-value".into()),
-        );
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter: JqExpression::compile(".wrong_field").unwrap(),
+            operation: JqOperation::Eq("test-value".into()),
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
@@ -86,11 +84,10 @@ mod exist_tests {
             .unwrap();
         let request = CacheableHttpRequest::from_request(request);
 
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::Exist,
-        );
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter: JqExpression::compile(".field").unwrap(),
+            operation: JqOperation::Exist,
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -105,11 +102,10 @@ mod exist_tests {
             .unwrap();
         let request = CacheableHttpRequest::from_request(request);
 
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::Exist,
-        );
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter: JqExpression::compile(".field").unwrap(),
+            operation: JqOperation::Exist,
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
@@ -131,11 +127,10 @@ mod in_tests {
         let request = CacheableHttpRequest::from_request(request);
 
         let values = vec!["value-1".to_owned(), "test-value".to_owned()];
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::In(values.into_iter().map(|v| v.into()).collect()),
-        );
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter: JqExpression::compile(".field").unwrap(),
+            operation: JqOperation::In(values.into_iter().map(|v| v.into()).collect()),
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -151,11 +146,10 @@ mod in_tests {
         let request = CacheableHttpRequest::from_request(request);
 
         let values = vec!["value-1".to_owned(), "test-value".to_owned()];
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::Jq,
-            ".field".to_owned(),
-            Operation::In(values.into_iter().map(|v| v.into()).collect()),
-        );
+        let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+            filter: JqExpression::compile(".field").unwrap(),
+            operation: JqOperation::In(values.into_iter().map(|v| v.into()).collect()),
+        });
 
         let prediction = predicate.check(request).await;
         assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
@@ -172,11 +166,10 @@ async fn test_request_body_predicates_positive_basic() {
             .unwrap(),
     );
 
-    let predicate = NeutralRequestPredicate::new().body(
-        ParsingType::Jq,
-        ".inner.field_one".to_owned(),
-        Operation::Eq("value_one".into()),
-    );
+    let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+        filter: JqExpression::compile(".inner.field_one").unwrap(),
+        operation: JqOperation::Eq("value_one".into()),
+    });
 
     let prediction = predicate.check(request).await;
     assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -196,11 +189,10 @@ async fn test_request_body_predicates_positive_array() {
             .unwrap(),
     );
 
-    let predicate = NeutralRequestPredicate::new().body(
-        ParsingType::Jq,
-        ".[1].key".to_owned(),
-        Operation::Eq("my-key-01".into()),
-    );
+    let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+        filter: JqExpression::compile(".[1].key").unwrap(),
+        operation: JqOperation::Eq("my-key-01".into()),
+    });
 
     let prediction = predicate.check(request).await;
     assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -221,11 +213,10 @@ async fn test_request_body_predicates_positive_multiple_value() {
             .unwrap(),
     );
 
-    let predicate = NeutralRequestPredicate::new().body(
-        ParsingType::Jq,
-        ".[].key".to_owned(),
-        Operation::Eq(json!(["my-key-00", "my-key-01", "my-key-02"])),
-    );
+    let predicate = NeutralRequestPredicate::new().body(Operation::Jq {
+        filter: JqExpression::compile(".[].key").unwrap(),
+        operation: JqOperation::Eq(json!(["my-key-00", "my-key-01", "my-key-02"])),
+    });
 
     let prediction = predicate.check(request).await;
     assert!(matches!(prediction, PredicateResult::Cacheable(_)));
@@ -233,12 +224,13 @@ async fn test_request_body_predicates_positive_multiple_value() {
 
 #[cfg(test)]
 mod protobuf_tests {
-    use super::*;
-    use prost_reflect::prost::Message;
-    use prost_reflect::{DescriptorPool, DynamicMessage, Value as ReflectValue};
-    use std::fs;
+    /* COMMENTED OUT - ProtoBuf support temporarily removed
+        use super::*;
+        use prost_reflect::prost::Message;
+        use prost_reflect::{DescriptorPool, DynamicMessage, Value as ReflectValue};
+        use std::fs;
 
-    const TEST_PROTO: &str = r#"
+        const TEST_PROTO: &str = r#"
         syntax = "proto3";
 
         package test;
@@ -247,44 +239,45 @@ mod protobuf_tests {
             int32 foo = 1;
         }
     "#;
-
     #[tokio::test]
-    async fn test_protobuf_body_predicate() {
-        // Create a proto file
-        fs::write("test.proto", TEST_PROTO).unwrap();
+        async fn test_protobuf_body_predicate() {
+            // Create a proto file
+            fs::write("test.proto", TEST_PROTO).unwrap();
 
-        // Create a descriptor pool with our test message
-        let descriptor_set = protox::compile(["test.proto"], ["."]).unwrap();
-        let pool = DescriptorPool::from_file_descriptor_set(descriptor_set).unwrap();
-        let descriptor = pool.get_message_by_name("test.TestMessage").unwrap();
+            // Create a descriptor pool with our test message
+            let descriptor_set = protox::compile(["test.proto"], ["."]).unwrap();
+            let pool = DescriptorPool::from_file_descriptor_set(descriptor_set).unwrap();
+            let descriptor = pool.get_message_by_name("test.TestMessage").unwrap();
 
-        // Create a dynamic message
-        let mut dynamic_msg = DynamicMessage::new(descriptor.clone());
-        dynamic_msg.set_field_by_name("foo", ReflectValue::I32(42));
+            // Create a dynamic message
+            let mut dynamic_msg = DynamicMessage::new(descriptor.clone());
+            dynamic_msg.set_field_by_name("foo", ReflectValue::I32(42));
 
-        // Create a request with the protobuf message
-        let encoded = dynamic_msg.encode_to_vec();
-        let body = http_body_util::Full::new(Bytes::from(encoded));
-        let request = Request::builder()
-            .body(BufferedBody::Passthrough(body))
-            .unwrap();
-        let cacheable_request = CacheableHttpRequest::from_request(request);
+            // Create a request with the protobuf message
+            let encoded = dynamic_msg.encode_to_vec();
+            let body = http_body_util::Full::new(Bytes::from(encoded));
+            let request = Request::builder()
+                .body(BufferedBody::Passthrough(body))
+                .unwrap();
+            let cacheable_request = CacheableHttpRequest::from_request(request);
 
-        // Create the predicate
-        let predicate = NeutralRequestPredicate::new().body(
-            ParsingType::ProtoBuf(descriptor),
-            ".foo".to_string(),
-            Operation::Eq(serde_json::json!(42)),
-        );
+            // Create the predicate
+            let predicate = NeutralRequestPredicate::new().body(
+                ParsingType::ProtoBuf(descriptor),
+                ".foo".to_string(),
+                Operation::Eq(serde_json::json!(42)),
+            );
 
-        // Test the predicate
-        let result = predicate.check(cacheable_request).await;
-        match result {
-            PredicateResult::Cacheable(_) => (),
-            _ => panic!("Expected Cacheable result"),
+            // Test the predicate
+            let result = predicate.check(cacheable_request).await;
+            match result {
+                PredicateResult::Cacheable(_) => (),
+                _ => panic!("Expected Cacheable result"),
+            }
+
+            // Clean up
+            fs::remove_file("test.proto").unwrap();
         }
-
-        // Clean up
-        fs::remove_file("test.proto").unwrap();
     }
+    */
 }

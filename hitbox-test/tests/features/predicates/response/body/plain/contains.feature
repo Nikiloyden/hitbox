@@ -7,7 +7,7 @@ Feature: Response Body Contains Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - body contains text - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - body doesn't contain text - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - empty pattern matches any body - response cached
     Given response predicates
       ```yaml
@@ -64,7 +64,7 @@ Feature: Response Body Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - pattern at beginning of body - response cached
     Given response predicates
       ```yaml
@@ -79,7 +79,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - pattern at end of body - response cached
     Given response predicates
       ```yaml
@@ -94,7 +94,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - pattern in middle of body - response cached
     Given response predicates
       ```yaml
@@ -109,7 +109,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - pattern spanning chunk boundaries - response cached
     Given response predicates
       ```yaml
@@ -130,7 +130,7 @@ Feature: Response Body Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - case-sensitive matching - response not cached
     Given response predicates
       ```yaml
@@ -145,7 +145,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - pattern with special characters - response cached
     Given response predicates
       ```yaml
@@ -160,7 +160,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - multiple contains predicates - all must match
     Given response predicates
       ```yaml
@@ -183,7 +183,7 @@ Feature: Response Body Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @contains
   Scenario: Body Contains - multiple patterns, one doesn't match - response not cached
     Given response predicates
       ```yaml
@@ -200,7 +200,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration @allow.failed
+  @response @body @plain @contains @allow.failed
   Scenario: Body Contains - PNG magic bytes (binary data) - UNSUPPORTED (serde-saphyr limitation)
     # FIXME: Currently unsupported due to serde-saphyr issue with !!binary tags in deserialize_any
     # The deserialize_any function validates UTF-8 for !!binary tags, which fails for non-UTF-8 binary data
@@ -226,7 +226,7 @@ Feature: Response Body Contains Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration @allow.failed
+  @response @body @plain @contains @allow.failed
   Scenario: Body Contains - binary pattern with null bytes - UNSUPPORTED (serde-saphyr limitation)
     # FIXME: Currently unsupported due to serde-saphyr issue with !!binary tags in deserialize_any
     # Pattern contains null bytes (0x00) which are not valid UTF-8 in this context
@@ -243,7 +243,7 @@ Feature: Response Body Contains Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration @allow.failed
+  @response @body @plain @contains @allow.failed
   Scenario: Body Contains - binary pattern spanning chunk boundaries - UNSUPPORTED (serde-saphyr limitation)
     # FIXME: Currently unsupported due to serde-saphyr issue with !!binary tags in deserialize_any
     # Tests streaming with 20-byte chunks where PNG magic bytes span chunk boundaries

@@ -65,7 +65,6 @@ where
     Error(Option<B::Error>),
 }
 
-
 /// Represents a partially consumed body with a buffered prefix and remaining stream.
 ///
 /// This type acts as both a data structure and a streamable body, implementing `HttpBody`
@@ -95,7 +94,6 @@ where
     pub fn into_parts(self) -> (Option<Bytes>, Remaining<B>) {
         (self.prefix, self.remaining)
     }
-
 }
 
 impl<B: HttpBody> HttpBody for PartialBufferedBody<B> {
@@ -318,21 +316,20 @@ impl<B: HttpBody> CollectExactResult<B> {
     /// - `Incomplete { buffered, error }` → `BufferedBody::Partial` with error, or `BufferedBody::Complete` if no error
     pub fn into_buffered_body(self) -> BufferedBody<B> {
         match self {
-            CollectExactResult::AtLeast { buffered, remaining } => {
-                match remaining {
-                    Some(rem) => BufferedBody::Partial(PartialBufferedBody::new(Some(buffered), rem)),
-                    None => BufferedBody::Complete(Some(buffered)),
-                }
-            }
-            CollectExactResult::Incomplete { buffered, error } => {
-                match error {
-                    Some(err) => BufferedBody::Partial(PartialBufferedBody::new(
-                        buffered,
-                        Remaining::Error(Some(err)),
-                    )),
-                    None => BufferedBody::Complete(buffered),
-                }
-            }
+            CollectExactResult::AtLeast {
+                buffered,
+                remaining,
+            } => match remaining {
+                Some(rem) => BufferedBody::Partial(PartialBufferedBody::new(Some(buffered), rem)),
+                None => BufferedBody::Complete(Some(buffered)),
+            },
+            CollectExactResult::Incomplete { buffered, error } => match error {
+                Some(err) => BufferedBody::Partial(PartialBufferedBody::new(
+                    buffered,
+                    Remaining::Error(Some(err)),
+                )),
+                None => BufferedBody::Complete(buffered),
+            },
         }
     }
 }

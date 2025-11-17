@@ -7,7 +7,7 @@ Feature: Response Body Eq Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - exact body match - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - different body - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - streaming body collection - response cached
     Given response predicates
       ```yaml
@@ -64,7 +64,7 @@ Feature: Response Body Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - case-sensitive matching - response not cached
     Given response predicates
       ```yaml
@@ -79,7 +79,7 @@ Feature: Response Body Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - whitespace sensitive - response not cached
     Given response predicates
       ```yaml
@@ -94,7 +94,7 @@ Feature: Response Body Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - partial match not sufficient - response not cached
     Given response predicates
       ```yaml
@@ -109,7 +109,7 @@ Feature: Response Body Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - multiple eq predicates - all must match
     Given response predicates
       ```yaml
@@ -132,7 +132,7 @@ Feature: Response Body Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @eq
   Scenario: Body Eq - multiple predicates, one doesn't match - response not cached
     Given response predicates
       ```yaml

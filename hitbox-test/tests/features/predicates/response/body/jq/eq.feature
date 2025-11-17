@@ -7,7 +7,7 @@ Feature: Response Body Jq Eq Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - JSON field equals value - response cached
     Given response predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - JSON field not equals value - response not cached
     Given response predicates
       ```yaml
@@ -47,7 +47,7 @@ Feature: Response Body Jq Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - nested field extraction - response cached
     Given response predicates
       ```yaml
@@ -70,7 +70,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - array index access - response cached
     Given response predicates
       ```yaml
@@ -93,7 +93,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - array index access - value mismatch - response not cached
     Given response predicates
       ```yaml
@@ -110,7 +110,7 @@ Feature: Response Body Jq Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - string field comparison - response cached
     Given response predicates
       ```yaml
@@ -133,7 +133,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - array length check - response cached
     Given response predicates
       ```yaml
@@ -156,7 +156,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - array length check - value mismatch - response not cached
     Given response predicates
       ```yaml
@@ -173,7 +173,7 @@ Feature: Response Body Jq Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - multiple jq predicates - all must match
     Given response predicates
       ```yaml
@@ -200,7 +200,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Eq - multiple predicates, one doesn't match - response not cached
     Given response predicates
       ```yaml
@@ -221,7 +221,7 @@ Feature: Response Body Jq Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - check array length - response cached
     Given response predicates
       ```yaml
@@ -244,7 +244,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - array length mismatch - response not cached
     Given response predicates
       ```yaml
@@ -261,7 +261,7 @@ Feature: Response Body Jq Eq Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - count items matching condition - response cached
     Given response predicates
       ```yaml
@@ -284,7 +284,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - check first item by id - response cached
     Given response predicates
       ```yaml
@@ -307,7 +307,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - complex boolean logic with multiple conditions - response cached
     Given response predicates
       ```yaml
@@ -330,7 +330,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - find value in array with any - response cached
     Given response predicates
       ```yaml
@@ -353,7 +353,7 @@ Feature: Response Body Jq Eq Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @eq
   Scenario: Jq Expression - find value in array with any - no match - response not cached
     Given response predicates
       ```yaml

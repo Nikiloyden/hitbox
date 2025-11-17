@@ -7,7 +7,7 @@ Feature: Response Body Limit Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - body within size limit - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Limit Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - body exceeds size limit - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - body exactly at limit - response cached
     Given response predicates
       ```yaml
@@ -58,7 +58,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - body one byte over limit - response not cached
     Given response predicates
       ```yaml
@@ -73,7 +73,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - very large limit - response cached
     Given response predicates
       ```yaml
@@ -88,7 +88,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - zero limit allows only empty body - response not cached
     Given response predicates
       ```yaml
@@ -103,7 +103,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - streaming body with size hint - response cached
     Given response predicates
       ```yaml
@@ -118,7 +118,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - streaming body exceeds limit - response not cached
     Given response predicates
       ```yaml
@@ -133,7 +133,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - multiple limit predicates - all must match
     Given response predicates
       ```yaml
@@ -150,7 +150,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - multiple predicates, one limit exceeded - response not cached
     Given response predicates
       ```yaml
@@ -167,7 +167,7 @@ Feature: Response Body Limit Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @plain @limit
   Scenario: Body Limit - combined with other predicates - both must match
     Given response predicates
       ```yaml

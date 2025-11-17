@@ -2,7 +2,8 @@ use hitbox_http::predicates::request::Path;
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
-use super::{BodyPredicate, HeaderOperation, MethodOperation, QueryOperation, header};
+use super::{HeaderOperation, MethodOperation, QueryOperation, header};
+use crate::predicates::body::BodyPredicate;
 use crate::{RequestPredicate, error::ConfigError};
 
 // Use standard externally-tagged enum (serde default)
@@ -31,7 +32,7 @@ impl Predicate {
             Predicate::Path(path) => Ok(Box::new(Path::new(inner, path.into()))),
             Predicate::Query(query_operation) => query_operation.into_predicates(inner),
             Predicate::Header(header_operation) => header::into_predicates(header_operation, inner),
-            Predicate::Body(body_predicate) => body_predicate.into_predicates(inner),
+            Predicate::Body(body_predicate) => Ok(Box::new(body_predicate.into_predicates(inner)?)),
         }
     }
 }

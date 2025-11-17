@@ -41,18 +41,20 @@ pub(crate) async fn get_book(
                 .ok_or(StatusCode::NOT_FOUND)?;
 
             // Serialize book to JSON
-            let json_bytes = serde_json::to_vec(&*book).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let json_bytes =
+                serde_json::to_vec(&*book).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             // Handle streaming response if streaming=true query param is present
             if query.streaming.as_deref() == Some("true") {
                 use futures::stream;
-                use http_body_util::StreamBody;
                 use http::header;
+                use http_body_util::StreamBody;
 
                 // Split JSON into chunks to test pattern spanning boundaries
                 // We'll split at a known position to create a boundary in the middle of "robert-sheckley"
                 let chunk_size = 50; // Small chunks to force boundaries
-                let chunks: Vec<Result<_, std::io::Error>> = json_bytes.chunks(chunk_size)
+                let chunks: Vec<Result<_, std::io::Error>> = json_bytes
+                    .chunks(chunk_size)
                     .map(|chunk| {
                         let data = Bytes::copy_from_slice(chunk);
                         Ok(http_body::Frame::data(data))
@@ -130,7 +132,14 @@ pub(crate) async fn get_books(
 #[derive(Deserialize, Serialize, Debug)]
 pub(crate) struct CreateBookRequest {
     title: String,
-    description: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
 }
 
 #[axum::debug_handler]
@@ -158,7 +167,9 @@ pub(crate) async fn post_book(
         BookId::new(book_id),
         AuthorId::new(author_id),
         request.title,
-        request.description,
+        request
+            .description
+            .unwrap_or_else(|| "No description".to_string()),
     ));
 
     // Store in database
@@ -184,12 +195,13 @@ pub(crate) async fn get_book_cover(
     // Handle streaming response if streaming=true query param is present
     if query.streaming.as_deref() == Some("true") {
         use futures::stream;
-        use http_body_util::StreamBody;
         use http::header;
+        use http_body_util::StreamBody;
 
         // Split binary data into chunks to test pattern spanning boundaries
         let chunk_size = 20; // Small chunks to force boundaries in PNG header
-        let chunks: Vec<Result<_, std::io::Error>> = cover_data.chunks(chunk_size)
+        let chunks: Vec<Result<_, std::io::Error>> = cover_data
+            .chunks(chunk_size)
             .map(|chunk| {
                 let data = Bytes::copy_from_slice(chunk);
                 Ok(http_body::Frame::data(data))
@@ -200,10 +212,9 @@ pub(crate) async fn get_book_cover(
         let stream_body = StreamBody::new(stream);
 
         let mut response = Response::new(axum::body::Body::new(stream_body));
-        response.headers_mut().insert(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static("image/png"),
-        );
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, HeaderValue::from_static("image/png"));
         return Ok(response);
     }
 

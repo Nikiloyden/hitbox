@@ -7,7 +7,7 @@ Feature: Request Header In Predicate
         ttl: 10
       ```
 
-  @integration
+  @request @header @in
   Scenario: Header In - value in list cached with same cache entry
     Given request predicates
       ```yaml
@@ -38,7 +38,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "HIT"
     And cache has 1 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - value not in list not cached
     Given request predicates
       ```yaml
@@ -56,7 +56,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - single value in list
     Given request predicates
       ```yaml
@@ -81,7 +81,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - empty list behavior
     Given request predicates
       ```yaml
@@ -97,7 +97,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - value case sensitivity
     Given request predicates
       ```yaml
@@ -115,7 +115,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - missing header not cached
     Given request predicates
       ```yaml
@@ -132,7 +132,7 @@ Feature: Request Header In Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @in
   Scenario: Header In - multiple header values with IN operation
     Given request predicates
       ```yaml

@@ -7,7 +7,7 @@ Feature: Response Body Jq Exist Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - field exists - response cached
     Given response predicates
       ```yaml
@@ -30,7 +30,7 @@ Feature: Response Body Jq Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - field missing - response not cached
     Given response predicates
       ```yaml
@@ -47,7 +47,7 @@ Feature: Response Body Jq Exist Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - null field counts as existing - response cached
     Given response predicates
       ```yaml
@@ -70,7 +70,7 @@ Feature: Response Body Jq Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - nested field exists - response cached
     Given response predicates
       ```yaml
@@ -93,7 +93,7 @@ Feature: Response Body Jq Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - nested field missing - response not cached
     Given response predicates
       ```yaml
@@ -110,7 +110,7 @@ Feature: Response Body Jq Exist Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - array element exists - response cached
     Given response predicates
       ```yaml
@@ -133,7 +133,7 @@ Feature: Response Body Jq Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - array element missing - response not cached
     Given response predicates
       ```yaml
@@ -150,7 +150,7 @@ Feature: Response Body Jq Exist Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - field in object without metadata - response not cached
     Given response predicates
       ```yaml
@@ -167,7 +167,7 @@ Feature: Response Body Jq Exist Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - multiple exist predicates - all must match
     Given response predicates
       ```yaml
@@ -194,7 +194,7 @@ Feature: Response Body Jq Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @exist
   Scenario: Jq Exist - multiple predicates, one field missing - response not cached
     Given response predicates
       ```yaml

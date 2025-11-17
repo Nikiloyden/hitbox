@@ -7,7 +7,7 @@ Feature: Request Body Cache Key Extractor
         ttl: 10
       ```
 
-  @integration
+  @extractor @body
   Scenario: Extract JSON field from request body for cache key
     Given request predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Request Body Cache Key Extractor
       .title: "Test Book"
       ```
 
-  @integration
+  @extractor @body
   Scenario: Extract nested JSON field
     Given request predicates
       ```yaml
@@ -47,7 +47,7 @@ Feature: Request Body Cache Key Extractor
       .user.email: "test@example.com"
       ```
 
-  @integration
+  @extractor @body
   Scenario: Extract array element by index
     Given request predicates
       ```yaml
@@ -67,7 +67,7 @@ Feature: Request Body Cache Key Extractor
       .tags[0]: "fiction"
       ```
 
-  @integration
+  @extractor @body
   Scenario: Extract null value
     Given request predicates
       ```yaml

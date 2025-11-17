@@ -7,7 +7,7 @@ Feature: Response Status Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @response @status
   Scenario: Status Eq operation - exact match - response cached
     Given response predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status Eq operation - mismatch - response not cached
     Given response predicates
       ```yaml
@@ -41,7 +41,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Multiple status predicates - all must match - response cached
     Given response predicates
       ```yaml
@@ -62,7 +62,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Multiple status predicates - one mismatch - response not cached
     Given response predicates
       ```yaml
@@ -77,7 +77,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Status Range operation - status in range - response cached
     Given response predicates
       ```yaml
@@ -98,7 +98,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status Range operation - status outside range - response not cached
     Given response predicates
       ```yaml
@@ -113,7 +113,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Status Range operation - lower boundary inclusive - response cached
     Given response predicates
       ```yaml
@@ -128,7 +128,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @status
   Scenario: Status Range operation - upper boundary inclusive - response cached
     Given response predicates
       ```yaml
@@ -143,7 +143,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @response @status
   Scenario: Status Range operation - single value range - response cached
     Given response predicates
       ```yaml
@@ -164,7 +164,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status In operation - status code in list - response cached
     Given response predicates
       ```yaml
@@ -184,7 +184,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status In operation - status code not in list - response not cached
     Given response predicates
       ```yaml
@@ -198,7 +198,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Status In operation - empty list - response not cached
     Given response predicates
       ```yaml
@@ -212,7 +212,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Status In operation - single status in list - response cached
     Given response predicates
       ```yaml
@@ -232,7 +232,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status In operation - multiple status codes (2-4 codes) - response cached
     Given response predicates
       ```yaml
@@ -253,7 +253,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status Class operation - Success class (2xx) - response cached
     Given response predicates
       ```yaml
@@ -273,7 +273,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status Class operation - Success class (2xx) - status 404 not cached
     Given response predicates
       ```yaml
@@ -287,7 +287,7 @@ Feature: Response Status Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @status
   Scenario: Status Eq operation - explicit syntax - response cached
     Given response predicates
       ```yaml
@@ -308,7 +308,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status In operation - explicit syntax - response cached
     Given response predicates
       ```yaml
@@ -329,7 +329,7 @@ Feature: Response Status Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @status
   Scenario: Status Class operation - explicit syntax - response cached
     Given response predicates
       ```yaml

@@ -7,7 +7,7 @@ Feature: Request Header Cache Key Extractor
         ttl: 10
       ```
 
-  @integration
+  @extractor @header
   Scenario: Extract header value for cache key
     Given request predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Request Header Cache Key Extractor
       X-Api-Key: "secret123"
       ```
 
-  @integration
+  @extractor @header
   Scenario: Missing header creates cache key without that part
     Given request predicates
       ```yaml
@@ -48,7 +48,7 @@ Feature: Request Header Cache Key Extractor
       X-Tenant-Id: null
       ```
 
-  @integration
+  @extractor @header
   Scenario: Multiple header extractors
     Given request predicates
       ```yaml

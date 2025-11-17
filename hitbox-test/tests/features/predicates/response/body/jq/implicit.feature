@@ -7,7 +7,7 @@ Feature: Response Body Jq Implicit Syntax
         ttl: 10
       ```
 
-  @integration
+  @response @body @jq @implicit
   Scenario: Implicit syntax - simple boolean expression - response cached
     Given response predicates
       ```yaml
@@ -28,7 +28,7 @@ Feature: Response Body Jq Implicit Syntax
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @implicit
   Scenario: Implicit syntax - boolean expression false - response not cached
     Given response predicates
       ```yaml
@@ -43,7 +43,7 @@ Feature: Response Body Jq Implicit Syntax
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @body @jq @implicit
   Scenario: Implicit syntax - any() with array search - response cached
     Given response predicates
       ```yaml
@@ -64,7 +64,7 @@ Feature: Response Body Jq Implicit Syntax
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @body @jq @implicit
   Scenario: Implicit syntax - complex boolean logic - response cached
     Given response predicates
       ```yaml
