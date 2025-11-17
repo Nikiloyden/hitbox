@@ -107,6 +107,13 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && matrix.rust == 'stable' && matrix.redis-version == 7 }}
+        uses: codecov/test-results-action@v1
+        with:
+          files: target/nextest/ci/junit.xml,target/cucumber-junit.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   clippy:
     runs-on: ubuntu-latest
     steps:
