@@ -1,7 +1,6 @@
 use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
 use hitbox::predicate::Predicate;
-use hitbox_http::CacheableHttpRequest;
 use hitbox_http::predicates::{
     NeutralRequestPredicate,
     conditions::{NotPredicate, OrPredicate},
@@ -13,6 +12,7 @@ use hitbox_http::predicates::{
         query::{Operation as QueryOperation, QueryPredicate},
     },
 };
+use hitbox_http::{BufferedBody, CacheableHttpRequest};
 use http::{Method, Request};
 use http_body_util::Empty;
 use std::hint::black_box;
@@ -21,17 +21,17 @@ use std::hint::black_box;
 // Helper functions to create test requests
 // ============================================================================
 
-fn create_simple_request() -> Request<Empty<Bytes>> {
+fn create_simple_request() -> Request<BufferedBody<Empty<Bytes>>> {
     Request::builder()
         .method(Method::GET)
         .uri("http://example.com/api/users/123")
         .header("content-type", "application/json")
         .header("authorization", "Bearer token123")
-        .body(Empty::new())
+        .body(BufferedBody::Passthrough(Empty::new()))
         .unwrap()
 }
 
-fn create_complex_request() -> Request<Empty<Bytes>> {
+fn create_complex_request() -> Request<BufferedBody<Empty<Bytes>>> {
     Request::builder()
         .method(Method::POST)
         .uri("http://example.com/api/v2/users/456/posts?filter=active&sort=date&limit=10")
@@ -41,7 +41,7 @@ fn create_complex_request() -> Request<Empty<Bytes>> {
         .header("x-tenant-id", "tenant-a")
         .header("accept", "application/json")
         .header("user-agent", "Mozilla/5.0")
-        .body(Empty::new())
+        .body(BufferedBody::Passthrough(Empty::new()))
         .unwrap()
 }
 
@@ -166,8 +166,7 @@ fn bench_small_chains(c: &mut Criterion) {
 
     group.bench_function("not_method", |b| {
         let inner = NeutralRequestPredicate::new().method(Method::POST);
-        let predicate =
-            NeutralRequestPredicate::<CacheableHttpRequest<Empty<Bytes>>>::new().not(inner);
+        let predicate = NeutralRequestPredicate::<BufferedBody<Empty<Bytes>>>::new().not(inner);
         b.to_async(&rt).iter(|| async {
             let req = CacheableHttpRequest::from_request(create_simple_request());
             black_box(predicate.check(black_box(req)).await)

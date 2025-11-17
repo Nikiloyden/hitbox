@@ -7,7 +7,7 @@ Feature: Request Method Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @request @method
   Scenario: Method Eq operation - match method request
     Given request predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Request Method Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @method
   Scenario: Method Eq operation - non-matching method returns non-cacheable
     Given request predicates
       ```yaml
@@ -41,7 +41,7 @@ Feature: Request Method Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @method
   Scenario: Method In operation - method in allowed list cached
     Given request predicates
       ```yaml
@@ -63,7 +63,7 @@ Feature: Request Method Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @method
   Scenario: Method In operation - empty list behavior
     Given request predicates
       ```yaml

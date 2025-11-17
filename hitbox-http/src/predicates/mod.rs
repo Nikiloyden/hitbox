@@ -5,7 +5,9 @@ use hitbox::predicate::{Predicate, PredicateResult};
 
 use crate::{CacheableHttpRequest, CacheableHttpResponse};
 
+pub mod body;
 pub mod conditions;
+pub mod header;
 pub mod request;
 pub mod response;
 
@@ -30,7 +32,8 @@ impl<ReqBody> NeutralRequestPredicate<ReqBody> {
 #[async_trait]
 impl<ReqBody> Predicate for NeutralRequestPredicate<ReqBody>
 where
-    ReqBody: Send + 'static,
+    ReqBody: hyper::body::Body + Send + 'static,
+    ReqBody::Error: Send,
 {
     type Subject = CacheableHttpRequest<ReqBody>;
 
@@ -67,7 +70,8 @@ impl<ResBody> Debug for NeutralResponsePredicate<ResBody> {
 #[async_trait]
 impl<ResBody> Predicate for NeutralResponsePredicate<ResBody>
 where
-    ResBody: Send + 'static,
+    ResBody: hyper::body::Body + Send + 'static,
+    ResBody::Error: Send,
 {
     type Subject = CacheableHttpResponse<ResBody>;
 

@@ -7,7 +7,7 @@ Feature: Request Path Cache Key Extractor
         ttl: 10
       ```
 
-  @integration
+  @extractor @path
   Scenario: Extract path parameters for cache key
     Given request predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Request Path Cache Key Extractor
       book_id: "victim-prime"
       ```
 
-  @integration
+  @extractor @path
   Scenario: Path with no parameters extracts nothing
     Given request predicates
       ```yaml

@@ -1,14 +1,14 @@
-pub mod body;
 pub mod header;
 pub mod status;
 
+use hitbox_http::CacheableHttpResponse;
 use hitbox_http::predicates::NeutralResponsePredicate;
 use hitbox_http::predicates::conditions::Or;
-use hitbox_http::{CacheableHttpResponse, FromBytes};
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
+use crate::predicates::body::BodyPredicate;
 
 type CorePredicate<ReqBody> =
     Box<dyn hitbox_core::Predicate<Subject = CacheableHttpResponse<ReqBody>> + Send + Sync>;
@@ -16,7 +16,7 @@ type CorePredicate<ReqBody> =
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub enum Predicate {
     Status(status::Operation),
-    Body(body::Operation),
+    Body(BodyPredicate),
     Header(header::HeaderOperation),
 }
 
@@ -26,13 +26,13 @@ impl Predicate {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + FromBytes + Send + 'static,
-        ReqBody::Error: std::fmt::Debug,
+        ReqBody: HttpBody + Send + Unpin + 'static,
+        ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
         match self {
             Predicate::Status(status_op) => status_op.into_predicates(inner),
-            Predicate::Body(body_op) => body_op.into_predicates(inner),
+            Predicate::Body(body_op) => Ok(Box::new(body_op.into_predicates(inner)?)),
             Predicate::Header(header_op) => header::into_predicates(header_op, inner),
         }
     }
@@ -50,8 +50,8 @@ impl Operation {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + FromBytes + Send + 'static,
-        ReqBody::Error: std::fmt::Debug,
+        ReqBody: HttpBody + Send + Unpin + 'static,
+        ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
         match self {
@@ -97,8 +97,8 @@ impl Expression {
         inner: CorePredicate<ReqBody>,
     ) -> Result<CorePredicate<ReqBody>, ConfigError>
     where
-        ReqBody: HttpBody + FromBytes + Send + 'static,
-        ReqBody::Error: std::fmt::Debug,
+        ReqBody: HttpBody + Send + Unpin + 'static,
+        ReqBody::Error: std::fmt::Debug + Send,
         ReqBody::Data: Send,
     {
         match self {
@@ -124,8 +124,8 @@ impl Default for Response {
 impl Response {
     pub fn into_predicates<Req>(self) -> Result<CorePredicate<Req>, ConfigError>
     where
-        Req: HttpBody + FromBytes + Send + 'static,
-        Req::Error: std::fmt::Debug,
+        Req: HttpBody + Send + Unpin + 'static,
+        Req::Error: std::fmt::Debug + Send,
         Req::Data: Send,
     {
         let neutral_predicate: CorePredicate<Req> =

@@ -7,7 +7,7 @@ Feature: Logical Not Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @logical @not
   Scenario: Not predicate - wrapped predicate matches - result is NonCacheable
     Given request predicates
       ```yaml
@@ -24,7 +24,7 @@ Feature: Logical Not Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @not
   Scenario: Not predicate - wrapped predicate doesn't match - result is Cacheable
     Given request predicates
       ```yaml

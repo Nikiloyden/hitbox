@@ -7,7 +7,7 @@ Feature: Response Header Exist Predicate
         ttl: 10
       ```
 
-  @integration
+  @response @header @exist
   Scenario: Header Exist - header exists - response cached
     Given response predicates
       ```yaml
@@ -29,7 +29,7 @@ Feature: Response Header Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @exist
   Scenario: Header Exist - header missing - response not cached
     Given response predicates
       ```yaml
@@ -45,7 +45,7 @@ Feature: Response Header Exist Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @response @header @exist
   Scenario: Header Exist - case-insensitive header name - response cached
     Given response predicates
       ```yaml
@@ -67,7 +67,7 @@ Feature: Response Header Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @exist
   Scenario: Header Exist - additional header doesn't affect cache decision - response cached
     Given response predicates
       ```yaml
@@ -91,7 +91,7 @@ Feature: Response Header Exist Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @response @header @exist
   Scenario: Header Exist - header with any value matches - response cached
     Given response predicates
       ```yaml

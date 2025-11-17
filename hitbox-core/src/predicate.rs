@@ -7,6 +7,25 @@ pub enum PredicateResult<S> {
     NonCacheable(S),
 }
 
+impl<S> PredicateResult<S> {
+    /// Maps a `PredicateResult<S>` to `PredicateResult<T>` by applying a function to the contained value
+    /// only if the result is `Cacheable`. If the result is `NonCacheable`, the value is still transformed
+    /// but remains `NonCacheable`.
+    pub async fn map<T, F, Fut>(self, f: F) -> PredicateResult<T>
+    where
+        F: FnOnce(S) -> Fut,
+        Fut: std::future::Future<Output = PredicateResult<T>>,
+    {
+        match self {
+            PredicateResult::Cacheable(value) => f(value).await,
+            PredicateResult::NonCacheable(value) => match f(value).await {
+                PredicateResult::Cacheable(t) => PredicateResult::NonCacheable(t),
+                PredicateResult::NonCacheable(t) => PredicateResult::NonCacheable(t),
+            },
+        }
+    }
+}
+
 // @FIX: remove Debug bound for Predicate
 #[async_trait]
 pub trait Predicate: Debug {

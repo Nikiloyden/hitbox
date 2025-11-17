@@ -7,7 +7,7 @@ Feature: Request Method Cache Key Extractor
         ttl: 10
       ```
 
-  @integration
+  @extractor @method
   Scenario: Extract HTTP method for cache key
     Given request predicates
       ```yaml

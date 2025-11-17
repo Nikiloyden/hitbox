@@ -70,6 +70,11 @@ impl HitboxWorld {
         for header in &request_spec.headers {
             request = request.add_header(&header.name, &header.value);
         }
+        // Add query params from URL
+        for param in request_spec.url.query_params() {
+            request = request.add_query_param(&param.name, &param.value);
+        }
+        // Add query params from [Query] section
         for param in &request_spec.querystring {
             request = request.add_query_param(&param.name, &param.value);
         }

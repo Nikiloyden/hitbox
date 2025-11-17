@@ -7,7 +7,7 @@ Feature: Request Query Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @request @query
   Scenario: Single query parameter match
     Given request predicates
       ```yaml
@@ -32,7 +32,7 @@ Feature: Request Query Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @query
   Scenario: Multiple query parameters match
     Given request predicates
       ```yaml
@@ -60,7 +60,7 @@ Feature: Request Query Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @query
   Scenario: Query parameter value mismatch not cached
     Given request predicates
       ```yaml
@@ -77,7 +77,7 @@ Feature: Request Query Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @query
   Scenario: Empty query parameter value
     Given request predicates
       ```yaml
@@ -94,7 +94,7 @@ Feature: Request Query Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 1 records
 
-  @integration
+  @request @query
   Scenario: Value in list cached
     Given request predicates
       ```yaml
@@ -121,7 +121,7 @@ Feature: Request Query Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @query
   Scenario: Value not in list not cached
     Given request predicates
       ```yaml
@@ -140,7 +140,7 @@ Feature: Request Query Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @query
   Scenario: Empty list behavior
     Given request predicates
       ```yaml
@@ -157,7 +157,7 @@ Feature: Request Query Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @query
   Scenario: Query parameter exists cached
     Given request predicates
       ```yaml
@@ -187,7 +187,7 @@ Feature: Request Query Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @query
   Scenario: Query parameter missing not cached
     Given request predicates
       ```yaml

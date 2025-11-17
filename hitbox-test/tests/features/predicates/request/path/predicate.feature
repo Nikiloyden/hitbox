@@ -7,7 +7,7 @@ Feature: Request Path Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - exact path match cached
     Given request predicates
       ```yaml
@@ -27,7 +27,7 @@ Feature: Request Path Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - partial path match not cached
     Given request predicates
       ```yaml
@@ -41,7 +41,7 @@ Feature: Request Path Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - path with path parameter cached
     Given request predicates
       ```yaml
@@ -61,7 +61,7 @@ Feature: Request Path Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - path with trailing slash doesn't match path without trailing slash
     Given request predicates
       ```yaml
@@ -75,7 +75,7 @@ Feature: Request Path Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - path case sensitivity
     Given request predicates
       ```yaml
@@ -89,7 +89,7 @@ Feature: Request Path Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @path
   Scenario: Path Eq operation - path with encoded characters
     Given request predicates
       ```yaml

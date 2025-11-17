@@ -4,7 +4,7 @@ use axum::{Router, routing::get};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::handlers::{get_book, get_books, post_book};
+use crate::handlers::{get_book, get_book_cover, get_books, post_book};
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Ord, PartialOrd)]
 pub(crate) struct AuthorId(String);
@@ -25,11 +25,19 @@ impl BookId {
 }
 
 #[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
+pub(crate) struct BookMetadata {
+    year: Option<u32>,
+    pages: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct Book {
     id: BookId,
     author: AuthorId,
     title: String,
     description: String,
+    #[serde(default)]
+    metadata: Option<BookMetadata>,
 }
 
 impl Book {
@@ -39,6 +47,7 @@ impl Book {
             author,
             title,
             description,
+            metadata: None,
         }
     }
 }
@@ -137,5 +146,6 @@ pub(crate) fn app() -> Router {
             "/v1/authors/{author_id}/books/{book_id}",
             get(get_book).post(post_book),
         )
+        .route("/v1/books/{book_id}/covers", get(get_book_cover))
         .with_state(AppState::new())
 }

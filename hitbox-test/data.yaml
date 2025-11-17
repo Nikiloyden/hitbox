@@ -7,6 +7,9 @@ books:
       Victim Prime is a science fiction novel by American writer Robert Sheckley,
       published in 1987. It is the sequel to 1953's "Seventh Victim",
       and is followed by 1988's Hunter/Victim.
+    metadata:
+      year: 1987
+      pages: 256
 
   journey-beyond-tomorrow:
     id: journey-beyond-tomorrow
@@ -17,6 +20,9 @@ books:
       by the American writer Robert Sheckley, originally serialized as The Journey
       of Joenes in The Magazine of Fantasy & Science Fiction
       in October and November 1962.
+    metadata:
+      year: 1962
+      pages: 192
 
   dimension-of-miracles:
     id: dimension-of-miracles

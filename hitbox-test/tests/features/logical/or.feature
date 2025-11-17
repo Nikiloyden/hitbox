@@ -7,7 +7,7 @@ Feature: Logical Or Predicate Functionality
         ttl: 10
       ```
 
-  @integration
+  @logical @or
   Scenario: Or predicate - left predicate matches - request cached
     Given request predicates
       ```yaml
@@ -29,7 +29,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - right predicate matches - request cached
     Given request predicates
       ```yaml
@@ -51,7 +51,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - both predicates match - request cached
     Given request predicates
       ```yaml
@@ -73,7 +73,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - neither predicate matches - request not cached
     Given request predicates
       ```yaml
@@ -89,7 +89,7 @@ Feature: Logical Or Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @or
   Scenario: Or predicate - base predicate fails - request not cached regardless of Or branches
     Given request predicates
       ```yaml
@@ -109,7 +109,7 @@ Feature: Logical Or Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @or
   Scenario: Or predicate - three predicates in Or - first matches
     Given request predicates
       ```yaml
@@ -132,7 +132,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - three predicates in Or - second matches
     Given request predicates
       ```yaml
@@ -155,7 +155,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - three predicates in Or - third matches
     Given request predicates
       ```yaml
@@ -178,7 +178,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - three predicates in Or - none match
     Given request predicates
       ```yaml
@@ -195,7 +195,7 @@ Feature: Logical Or Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @or
   Scenario: Or predicate - different predicate types - Method OR Path OR Header
     Given request predicates
       ```yaml
@@ -219,7 +219,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - different types all fail - Method OR Path OR Header - not cached
     Given request predicates
       ```yaml
@@ -237,7 +237,7 @@ Feature: Logical Or Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @or
   Scenario: Or predicate - Method OR Header OR Query - all fail - not cached
     Given request predicates
       ```yaml
@@ -256,7 +256,7 @@ Feature: Logical Or Predicate Functionality
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @or
   Scenario: Or predicate - four predicates - first matches - cached
     Given request predicates
       ```yaml
@@ -280,7 +280,7 @@ Feature: Logical Or Predicate Functionality
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @or
   Scenario: Or predicate - four predicates - all fail - not cached
     Given request predicates
       ```yaml

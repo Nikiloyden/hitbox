@@ -7,7 +7,7 @@ Feature: Request Header Regex Predicate
         ttl: 10
       ```
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - header value matches regex pattern - request cached
     Given request predicates
       ```yaml
@@ -31,7 +31,7 @@ Feature: Request Header Regex Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - header value doesn't match pattern - request not cached
     Given request predicates
       ```yaml
@@ -48,7 +48,7 @@ Feature: Request Header Regex Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - complex regex patterns - request cached
     Given request predicates
       ```yaml
@@ -72,7 +72,7 @@ Feature: Request Header Regex Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - multiple headers with regex - request cached
     Given request predicates
       ```yaml
@@ -100,7 +100,7 @@ Feature: Request Header Regex Predicate
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - header missing - request not cached
     Given request predicates
       ```yaml
@@ -116,7 +116,7 @@ Feature: Request Header Regex Predicate
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @request @header @regex
   Scenario: Header Regex - case-sensitive regex matching - request not cached
     Given request predicates
       ```yaml

@@ -47,6 +47,7 @@ anyhow = "1"
 hurl_core = { workspace = true }
 hurl = { workspace = true }
 http-body-util = { workspace = true }
+http-body = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["time", "rt-multi-thread"] }
 dashmap = { version = "6.1", features = ["serde"] }

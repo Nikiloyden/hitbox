@@ -30,6 +30,7 @@ bytes = { workspace = true }
 chrono = { workspace = true }
 hyper = { workspace = true }
 futures = { workspace = true }
+pin-project = { workspace = true }
 actix-router = "0.5"
 serde_qs = "0.15"
 serde = { workspace = true }
@@ -41,6 +42,7 @@ prost = "0.14"
 prost-reflect = { version = "0.16", features = ["serde", "derive"] }
 protox = "0.9"
 regex = { workspace = true }
+bytesize = { version = "1", features = ["serde"] }
 
 # test for axum body
 axum = { workspace = true }

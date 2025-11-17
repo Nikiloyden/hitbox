@@ -43,12 +43,7 @@ async fn response_predicates(world: &mut HitboxWorld, step: &Step) -> Result<(),
         step.docstring_content()
             .ok_or(anyhow!("Missing predicates configuration"))?
             .as_str(),
-    )
-    .inspect_err(|err| {
-        use std::error::Error;
-        dbg!(&err.source());
-        dbg!(err.location());
-    })?;
+    )?;
     let predicates = config.into_predicates()?;
     world.config.response_predicates = Arc::new(predicates);
     Ok(())

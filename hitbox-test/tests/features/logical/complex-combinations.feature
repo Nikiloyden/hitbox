@@ -9,7 +9,7 @@ Feature: Logical Complex Predicate Combinations
 
   # And + Or Combinations
 
-  @integration
+  @logical @complex
   Scenario: And + Or - (Method=GET OR Method=HEAD) AND Path matches
     Given request predicates
       ```yaml
@@ -33,7 +33,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: And + Or - Method=GET AND (Path=/users OR Path=/books)
     Given request predicates
       ```yaml
@@ -57,7 +57,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: And + Or - (Header OR Header) AND Method=GET
     Given request predicates
       ```yaml
@@ -85,7 +85,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: And + Or - Method AND (Header OR Header) AND Path - three level
     Given request predicates
       ```yaml
@@ -116,7 +116,7 @@ Feature: Logical Complex Predicate Combinations
 
   # Not + Or Combinations
 
-  @integration
+  @logical @complex
   Scenario: Not + Or - Not(Method=POST OR Method=DELETE) caches GET
     Given request predicates
       ```yaml
@@ -139,7 +139,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Not + Or - Not(Method=POST OR Method=DELETE) doesn't cache POST
     Given request predicates
       ```yaml
@@ -158,7 +158,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + Or - Not(Path OR Path) excludes multiple paths
     Given request predicates
       ```yaml
@@ -175,7 +175,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + Or - Method=GET AND Not(Path OR Query)
     Given request predicates
       ```yaml
@@ -203,7 +203,7 @@ Feature: Logical Complex Predicate Combinations
 
   # Not + And Combinations
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Not(Method=POST AND Path) - DeMorgan's law
     Given request predicates
       ```yaml
@@ -226,7 +226,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Not(Method=POST AND Path) doesn't match POST with matching path
     Given request predicates
       ```yaml
@@ -245,7 +245,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Not(Header exists AND Method=DELETE)
     Given request predicates
       ```yaml
@@ -272,7 +272,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Method=GET AND Not(Header AND Query)
     Given request predicates
       ```yaml
@@ -296,7 +296,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Method=GET AND Not(Header AND Query) - only one condition met
     Given request predicates
       ```yaml
@@ -329,7 +329,7 @@ Feature: Logical Complex Predicate Combinations
 
   # Three-Level Nesting
 
-  @integration
+  @logical @complex
   Scenario: Three-level - And(Or(Method, Method), Not(Query), Header)
     Given request predicates
       ```yaml
@@ -359,7 +359,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Three-level - And(Or(Method, Method), Not(Query), Header) - Or fails before Not evaluated
     Given request predicates
       ```yaml
@@ -384,7 +384,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Three-level - Or(And(Method, Path), And(Method, Header))
     Given request predicates
       ```yaml
@@ -411,7 +411,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Three-level - Or(And(Method, Path), And(Method, Header)) - second branch matches
     Given request predicates
       ```yaml
@@ -444,7 +444,7 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Three-level - (Method OR Method) AND Not(Path) AND Header
     Given request predicates
       ```yaml
@@ -473,15 +473,17 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Three-level - Method AND Body AND Not(Body) AND Or(Header OR Header)
     Given request predicates
       ```yaml
       And:
         - Method: POST
-        - Body: ".title != null"
+        - Body:
+            jq: ".title != null"
         - Not:
-            Body: '.title == "IntrospectionQuery"'
+            Body:
+              jq: '.title == "IntrospectionQuery"'
         - Or:
             - Header:
                 x-tenant-id: "tenant-a"
@@ -513,15 +515,17 @@ Feature: Logical Complex Predicate Combinations
     Then response status is 200
     And response header "X-Cache-Status" is "HIT"
 
-  @integration
+  @logical @complex
   Scenario: Three-level - Method AND Body AND Not(Body) AND Or(Header OR Header) - Not fails
     Given request predicates
       ```yaml
       And:
         - Method: POST
-        - Body: ".title != null"
+        - Body:
+            jq: ".title != null"
         - Not:
-            Body: '.title == "IntrospectionQuery"'
+            Body:
+              jq: '.title == "IntrospectionQuery"'
         - Or:
             - Header:
                 x-tenant-id: "tenant-a"
@@ -539,7 +543,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: And + Or - (Method OR Method) AND Path - Or fails - not cached
     Given request predicates
       ```yaml
@@ -557,7 +561,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: And + Or - (Method OR Method) AND Path - Path fails - not cached
     Given request predicates
       ```yaml
@@ -575,7 +579,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: And + Or - Method AND (Path OR Path) - Method fails - not cached
     Given request predicates
       ```yaml
@@ -593,7 +597,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: And + Or - Method AND (Path OR Path) - both Or branches fail - not cached
     Given request predicates
       ```yaml
@@ -611,7 +615,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + Or - Method AND Not(Path OR Header) - both Or branches match so Not fails
     Given request predicates
       ```yaml
@@ -632,7 +636,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Not + And - Method AND Not(Header AND Path) - Method fails before Not evaluated
     Given request predicates
       ```yaml
@@ -652,7 +656,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Three-level - And(Or, Not, Header) - Or fails - not cached
     Given request predicates
       ```yaml
@@ -675,7 +679,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Three-level - And(Or, Not, Header) - Header fails - not cached
     Given request predicates
       ```yaml
@@ -698,7 +702,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Three-level - Or(And, And) - both And branches fail - not cached
     Given request predicates
       ```yaml
@@ -719,7 +723,7 @@ Feature: Logical Complex Predicate Combinations
     And response header "X-Cache-Status" is "MISS"
     And cache has 0 records
 
-  @integration
+  @logical @complex
   Scenario: Three-level - (Method OR Method) AND Not(Path) AND Header - And fails after Not
     Given request predicates
       ```yaml
