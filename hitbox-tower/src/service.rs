@@ -7,7 +7,8 @@ use http::{Request, Response};
 use hyper::body::Body as HttpBody;
 use tower::Service;
 
-use crate::future::Transformer;
+use crate::future::CacheServiceFuture;
+use crate::upstream::TowerUpstream;
 
 pub struct CacheService<S, B, C> {
     upstream: S,
@@ -60,11 +61,15 @@ where
 {
     type Response = Response<BufferedBody<ResBody>>;
     type Error = S::Error;
-    type Future = CacheFuture<
-        B,
-        CacheableHttpRequest<ReqBody>,
-        Result<CacheableHttpResponse<ResBody>, S::Error>,
-        Transformer<S, ReqBody>,
+    type Future = CacheServiceFuture<
+        CacheFuture<
+            B,
+            CacheableHttpRequest<ReqBody>,
+            Result<CacheableHttpResponse<ResBody>, S::Error>,
+            TowerUpstream<S, ReqBody, ResBody>,
+        >,
+        ResBody,
+        S::Error,
     >;
 
     fn poll_ready(
@@ -75,21 +80,28 @@ where
     }
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let transformer = Transformer::new(self.upstream.clone());
         let configuration = &self.configuration;
 
-        // Wrap the incoming request body in BufferedBody::Passthrough
+        // Convert incoming Request<ReqBody> to CacheableHttpRequest<ReqBody>
         let (parts, body) = req.into_parts();
         let buffered_request = Request::from_parts(parts, BufferedBody::Passthrough(body));
+        let cacheable_req = CacheableHttpRequest::from_request(buffered_request);
 
-        CacheFuture::new(
+        // Create upstream adapter that handles Tower service calls
+        let upstream = TowerUpstream::new(self.upstream.clone());
+
+        // Create CacheFuture with cacheable types only
+        let cache_future = CacheFuture::new(
             self.backend.clone(),
-            CacheableHttpRequest::from_request(buffered_request),
-            transformer,
+            cacheable_req,
+            upstream,
             Arc::new(configuration.request_predicates()),
             Arc::new(configuration.response_predicates()),
             Arc::new(configuration.extractors()),
             Arc::new(configuration.policy().clone()),
-        )
+        );
+
+        // Wrap in CacheServiceFuture to add cache headers
+        CacheServiceFuture::new(cache_future)
     }
 }

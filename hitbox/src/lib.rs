@@ -53,11 +53,38 @@ pub use hitbox_core::{
     RequestCachePolicy, ResponseCachePolicy,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheStatus {
     Hit,
+    #[default]
     Miss,
+    Stale,
 }
+
+/// Context information about a cache operation.
+/// Contains status, timing, metadata, and other information useful for
+/// observability, metrics collection, and debugging.
+#[derive(Debug, Clone, Default)]
+pub struct CacheContext {
+    /// Whether the request resulted in a cache hit, miss, or stale data
+    pub status: CacheStatus,
+
+    /// Time remaining until cache entry expires (for hits)
+    pub ttl_remaining: Option<std::time::Duration>,
+
+    /// Time taken to read from backend (for hits)
+    pub backend_read_latency: Option<std::time::Duration>,
+
+    /// Time taken to write to backend (for misses)
+    pub backend_write_latency: Option<std::time::Duration>,
+
+    /// The cache key used for this operation
+    pub key: Option<CacheKey>,
+
+    /// Size of cached value in bytes (if known)
+    pub value_size: Option<usize>,
+}
+
 pub mod config;
 pub mod policy;
 

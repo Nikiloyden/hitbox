@@ -5,6 +5,7 @@ mod predicate;
 mod request;
 mod response;
 mod time_provider;
+mod upstream;
 mod value;
 
 pub use extractor::Extractor;
@@ -14,6 +15,7 @@ pub use predicate::{Predicate, PredicateResult};
 pub use request::{CacheablePolicyData, CacheableRequest, RequestCachePolicy};
 pub use response::{CacheState, CacheableResponse, ResponseCachePolicy};
 pub use time_provider::TimeProvider;
+pub use upstream::Upstream;
 pub use value::CacheValue;
 
 // Export test helpers when the test-helpers feature is enabled (for integration tests)
