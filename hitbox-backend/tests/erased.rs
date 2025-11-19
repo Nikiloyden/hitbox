@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::{Backend, BackendResult, CacheBackend, CacheKeyFormat, serializer::Raw};
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig};
+use hitbox_backend::{Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend};
+use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug)]
 struct MemBackend {
-    storage: RwLock<HashMap<String, Vec<u8>>>,
+    storage: RwLock<HashMap<String, Raw>>,
 }
 
 impl MemBackend {
@@ -18,7 +18,7 @@ impl MemBackend {
         // URL-encoded format: key1=
         storage.insert(
             "key1=".to_owned(),
-            b"{\"name\": \"test\", \"index\": 42}".to_vec(),
+            bytes::Bytes::from(&b"{\"name\": \"test\", \"index\": 42}"[..]),
         );
         MemBackend {
             storage: RwLock::new(storage),
@@ -51,6 +51,8 @@ impl Backend for MemBackend {
         todo!()
     }
 }
+
+impl CacheBackend for MemBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Value {
@@ -145,6 +147,202 @@ async fn dyn_backend() {
     cache.test().await;
 
     let cache = Cache::new(MemBackend::new());
+    cache.test().await;
+}
+
+#[tokio::test]
+async fn test_composition_with_boxed_backends() {
+    // Create two separate backends
+    let l1: Box<dyn Backend> = Box::new(MemBackend::new());
+    let l2: Box<dyn Backend> = Box::new(MemBackend::new());
+
+    // Compose them
+    let composition = CompositionBackend::new(l1, l2);
+
+    // Test 1: Write through composition - should populate both layers
+    let key_both = CacheKey::from_str("key_both", "");
+    let value_both = CacheValue::new(
+        Value {
+            name: "both_layers".to_owned(),
+            index: 1,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    composition.set::<Value>(&key_both, &value_both, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Read should return the value
+    let result = composition.get::<Value>(&key_both).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "both_layers");
+
+    // Test 2: Key that doesn't exist - should return None
+    let key_missing = CacheKey::from_str("missing", "");
+    let result = composition.get::<Value>(&key_missing).await.unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_composition_with_arc_backends() {
+    use std::sync::Arc;
+
+    // Create two separate backends with Arc
+    let l1: Arc<dyn Backend + Send + 'static> = Arc::new(MemBackend::new());
+    let l2: Arc<dyn Backend + Send + 'static> = Arc::new(MemBackend::new());
+
+    // Compose them
+    let composition = CompositionBackend::new(l1, l2);
+
+    // Write a value
+    let key = CacheKey::from_str("arc_key", "");
+    let value = CacheValue::new(
+        Value {
+            name: "arc_value".to_owned(),
+            index: 42,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    composition.set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Read it back
+    let result = composition.get::<Value>(&key).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "arc_value");
+}
+
+#[tokio::test]
+async fn test_composition_l1_l2_different_keys() {
+    // Create L1 and L2 backends
+    let l1_mem = MemBackend::new();
+    let l2_mem = MemBackend::new();
+
+    // Populate L1 with key1
+    let key1 = CacheKey::from_str("key1", "");
+    let value1 = CacheValue::new(
+        Value {
+            name: "l1_only".to_owned(),
+            index: 10,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    l1_mem.set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Populate L2 with key2
+    let key2 = CacheKey::from_str("key2", "");
+    let value2 = CacheValue::new(
+        Value {
+            name: "l2_only".to_owned(),
+            index: 20,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    l2_mem.set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Create composition with trait objects
+    let l1: Box<dyn Backend> = Box::new(l1_mem);
+    let l2: Box<dyn Backend> = Box::new(l2_mem);
+    let composition = CompositionBackend::new(l1, l2);
+
+    // Test 1: Read key1 - should hit L1
+    let result = composition.get::<Value>(&key1).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "l1_only");
+
+    // Test 2: Read key2 - should miss L1, hit L2
+    let result = composition.get::<Value>(&key2).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "l2_only");
+
+    // Test 3: Read key3 - should miss both
+    let key3 = CacheKey::from_str("key3", "");
+    let result = composition.get::<Value>(&key3).await.unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_composition_backend_as_trait_object() {
+    // Create L1 and L2 backends
+    let l1_mem = MemBackend::new();
+    let l2_mem = MemBackend::new();
+
+    // Populate L1 with one key
+    let key_l1 = CacheKey::from_str("l1_key", "");
+    let value_l1 = CacheValue::new(
+        Value {
+            name: "in_l1".to_owned(),
+            index: 11,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    l1_mem.set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Populate L2 with another key
+    let key_l2 = CacheKey::from_str("l2_key", "");
+    let value_l2 = CacheValue::new(
+        Value {
+            name: "in_l2".to_owned(),
+            index: 22,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    l2_mem.set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Create composition with trait objects
+    let l1: Box<dyn Backend> = Box::new(l1_mem);
+    let l2: Box<dyn Backend> = Box::new(l2_mem);
+    let composition = CompositionBackend::new(l1, l2);
+
+    // Use composition itself as a trait object
+    let backend: Box<dyn Backend> = Box::new(composition);
+
+    // Test 1: Read key from L1 through trait object
+    let result = backend.get::<Value>(&key_l1).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "in_l1");
+
+    // Test 2: Read key from L2 through trait object
+    let result = backend.get::<Value>(&key_l2).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "in_l2");
+
+    // Test 3: Write new key through trait object - should go to both layers
+    let key_new = CacheKey::from_str("new_key", "");
+    let value_new = CacheValue::new(
+        Value {
+            name: "nested_trait".to_owned(),
+            index: 99,
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+    backend.set::<Value>(&key_new, &value_new, Some(std::time::Duration::from_secs(60))).await.unwrap();
+
+    // Read back the new key
+    let result = backend.get::<Value>(&key_new).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.name, "nested_trait");
+
+    // Test 4: Missing key should return None
+    let key_missing = CacheKey::from_str("not_there", "");
+    let result = backend.get::<Value>(&key_missing).await.unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_composition_with_cache_wrapper() {
+    // Test CompositionBackend with the Cache wrapper struct
+    let l1: Box<dyn Backend> = Box::new(MemBackend::new());
+    let l2: Box<dyn Backend> = Box::new(MemBackend::new());
+    let composition = CompositionBackend::new(l1, l2);
+
+    let cache = Cache::new(composition);
+
+    // The Cache::test() method writes and reads a value
     cache.test().await;
 }
 

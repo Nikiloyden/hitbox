@@ -1,3 +1,5 @@
+use bytes::Bytes;
+use hitbox_core::Raw;
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
@@ -10,10 +12,17 @@ pub enum FormatError {
     Deserialize(Box<dyn std::error::Error + Send>),
 }
 
-pub type Raw = Vec<u8>;
+/// Unique identifier for format types, used to compare format equality
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FormatTypeId {
+    Json,
+    Bincode,
+    /// For user-defined custom formats. The string should be a unique identifier.
+    Custom(&'static str),
+}
 
 /// Object-safe format trait (uses erased-serde for type erasure)
-/// This trait can be used with `Arc<dyn Format>` for dynamic dispatch
+/// This trait can be used with `&dyn Format` for dynamic dispatch
 pub trait Format: std::fmt::Debug + Send + Sync {
     fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError>;
 
@@ -23,6 +32,13 @@ pub trait Format: std::fmt::Debug + Send + Sync {
         data: &[u8],
         f: &mut dyn FnMut(&mut dyn erased_serde::Deserializer) -> Result<(), erased_serde::Error>,
     ) -> Result<(), FormatError>;
+
+    /// Clone this format into a box (for object safety)
+    fn clone_box(&self) -> Box<dyn Format>;
+
+    /// Returns a unique identifier for this format type.
+    /// Used to compare format equality without knowing the concrete type.
+    fn format_type_id(&self) -> FormatTypeId;
 }
 
 /// Extension trait providing generic serialize/deserialize methods
@@ -58,7 +74,37 @@ pub trait FormatExt: Format {
 // Blanket implementation: all Formats automatically get generic methods
 impl<T: Format + ?Sized> FormatExt for T {}
 
-// Blanket implementation for Arc<dyn Format>
+// Implement Clone for Box<dyn Format>
+impl Clone for Box<dyn Format> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
+// Implement Format for Box<dyn Format>
+impl Format for Box<dyn Format> {
+    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
+        (**self).erased_serialize(value)
+    }
+
+    fn with_deserializer(
+        &self,
+        data: &[u8],
+        f: &mut dyn FnMut(&mut dyn erased_serde::Deserializer) -> Result<(), erased_serde::Error>,
+    ) -> Result<(), FormatError> {
+        (**self).with_deserializer(data, f)
+    }
+
+    fn clone_box(&self) -> Box<dyn Format> {
+        (**self).clone_box()
+    }
+
+    fn format_type_id(&self) -> FormatTypeId {
+        (**self).format_type_id()
+    }
+}
+
+// Implement Format for Arc<dyn Format>
 impl Format for std::sync::Arc<dyn Format> {
     fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
         (**self).erased_serialize(value)
@@ -71,7 +117,16 @@ impl Format for std::sync::Arc<dyn Format> {
     ) -> Result<(), FormatError> {
         (**self).with_deserializer(data, f)
     }
+
+    fn clone_box(&self) -> Box<dyn Format> {
+        (**self).clone_box()
+    }
+
+    fn format_type_id(&self) -> FormatTypeId {
+        (**self).format_type_id()
+    }
 }
+
 
 /// JSON format (default)
 #[derive(Debug, Clone, Copy, Default)]
@@ -84,7 +139,7 @@ impl Format for JsonFormat {
         value
             .erased_serialize(&mut <dyn erased_serde::Serializer>::erase(&mut ser))
             .map_err(|error| FormatError::Serialize(Box::new(error)))?;
-        Ok(buf)
+        Ok(Bytes::from(buf))
     }
 
     fn with_deserializer(
@@ -95,6 +150,14 @@ impl Format for JsonFormat {
         let mut deser = serde_json::Deserializer::from_slice(data);
         let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deser);
         f(&mut erased).map_err(|error| FormatError::Deserialize(Box::new(error)))
+    }
+
+    fn clone_box(&self) -> Box<dyn Format> {
+        Box::new(*self)
+    }
+
+    fn format_type_id(&self) -> FormatTypeId {
+        FormatTypeId::Json
     }
 }
 
@@ -118,6 +181,7 @@ impl Format for BincodeFormat {
         }
 
         bincode::serde::encode_to_vec(SerdeWrapper(value), bincode::config::standard())
+            .map(Bytes::from)
             .map_err(|error| FormatError::Serialize(Box::new(error)))
     }
 
@@ -136,6 +200,14 @@ impl Format for BincodeFormat {
         // Erase the bincode deserializer
         let mut erased = <dyn erased_serde::Deserializer>::erase(deser);
         f(&mut erased).map_err(|error| FormatError::Deserialize(Box::new(error)))
+    }
+
+    fn clone_box(&self) -> Box<dyn Format> {
+        Box::new(*self)
+    }
+
+    fn format_type_id(&self) -> FormatTypeId {
+        FormatTypeId::Bincode
     }
 }
 

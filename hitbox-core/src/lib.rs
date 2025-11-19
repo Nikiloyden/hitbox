@@ -18,6 +18,10 @@ pub use time_provider::TimeProvider;
 pub use upstream::Upstream;
 pub use value::CacheValue;
 
+/// Raw byte data type used for serialized cache values.
+/// Using `Bytes` provides efficient zero-copy cloning via reference counting.
+pub type Raw = bytes::Bytes;
+
 // Export test helpers when the test-helpers feature is enabled (for integration tests)
 // or when running unit tests
 #[cfg(any(test, feature = "test-helpers"))]

@@ -1,12 +1,13 @@
 use std::{future::Future, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse};
+use bytes::Bytes;
+use hitbox_core::{CacheKey, CacheValue, CacheableResponse, Raw};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
-    serializer::{Format, FormatExt, JsonFormat, Raw},
+    serializer::{Format, FormatExt, JsonFormat},
 };
 
 pub type BackendResult<T> = Result<T, BackendError>;
@@ -38,9 +39,6 @@ pub trait Backend: Sync + Send {
 }
 
 #[async_trait]
-impl<T: Backend> CacheBackend for T {}
-
-#[async_trait]
 impl Backend for &dyn Backend {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         (*self).read(key).await
@@ -56,7 +54,7 @@ impl Backend for &dyn Backend {
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
-        (*self).delete(key).await
+        (*self).remove(key).await
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -159,14 +157,16 @@ pub trait CacheBackend: Backend {
     ) -> impl Future<Output = BackendResult<Option<CacheValue<T::Cached>>>> + Send
     where
         T: CacheableResponse,
-        T::Cached: DeserializeOwned,
+        T::Cached: Serialize + DeserializeOwned + Send + Sync,
     {
         async move {
             match self.read(key).await? {
                 Some(value) => {
                     let (meta, value) = value.into_parts();
+                    let format = self.value_format();
                     let decompressed = self.compressor().decompress(&value)?;
-                    let deserialized = self.value_format().deserialize(&decompressed)?;
+                    let decompressed_bytes = Bytes::from(decompressed);
+                    let deserialized = format.deserialize(&decompressed_bytes)?;
                     Ok(Some(CacheValue::new(deserialized, meta.expire, meta.stale)))
                 }
                 None => Ok(None),
@@ -185,11 +185,12 @@ pub trait CacheBackend: Backend {
         T::Cached: Serialize + Send + Sync,
     {
         async move {
-            let serialized_value = self.value_format().serialize(&value.data)?;
+            let format = self.value_format();
+            let serialized_value = format.serialize(&value.data)?;
             let compressed_value = self.compressor().compress(&serialized_value)?;
             self.write(
                 key,
-                CacheValue::new(compressed_value, value.expire, value.stale),
+                CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
                 ttl,
             )
             .await
@@ -200,3 +201,11 @@ pub trait CacheBackend: Backend {
         async move { self.remove(key).await }
     }
 }
+
+// Explicit CacheBackend implementations for trait objects
+// These use the default implementations from the trait
+impl CacheBackend for &dyn Backend {}
+
+impl CacheBackend for Box<dyn Backend> {}
+
+impl CacheBackend for Arc<dyn Backend + Send + 'static> {}

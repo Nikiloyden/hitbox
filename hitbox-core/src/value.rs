@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use std::time::Duration;
 
 #[cfg(any(test, feature = "test-helpers"))]
 use std::sync::RwLock;
@@ -79,6 +80,21 @@ impl<T> CacheValue<T> {
 
     pub fn into_parts(self) -> (CacheMeta, T) {
         (CacheMeta::new(self.expire, self.stale), self.data)
+    }
+
+    /// Calculate TTL (time-to-live) from the expire time.
+    ///
+    /// Returns `Some(Duration)` if there's a valid expire time in the future,
+    /// or `None` if there's no expire time or it's already expired.
+    pub fn ttl(&self) -> Option<Duration> {
+        self.expire.and_then(|expire| {
+            let duration = expire.signed_duration_since(current_time());
+            if duration.num_seconds() > 0 {
+                Some(Duration::from_secs(duration.num_seconds() as u64))
+            } else {
+                None
+            }
+        })
     }
 }
 
