@@ -15,6 +15,7 @@ pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxCo
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 pub type CacheStateFuture<T> = BoxFuture<'static, CacheState<T>>;
 pub type UpstreamFuture<T> = BoxFuture<'static, T>;
+pub type AwaitResponseFuture<T> = BoxFuture<'static, T>;
 
 #[allow(missing_docs)]
 #[pin_project(project = StateProj)]
@@ -41,6 +42,22 @@ where
     CheckCacheState {
         cache_state: CacheStateFuture<Res>,
         request: Option<Req>,
+        ctx: Option<BoxContext>,
+    },
+    /// Check concurrency policy
+    CheckConcurrency {
+        request: Option<Req>,
+        ctx: Option<BoxContext>,
+    },
+    /// Concurrent upstream polling with concurrency control
+    ConcurrentPollUpstream {
+        request: Option<Req>,
+        ctx: Option<BoxContext>,
+    },
+    /// Awaiting response from another concurrent request
+    AwaitResponse {
+        #[pin]
+        await_response_future: AwaitResponseFuture<Res>,
         ctx: Option<BoxContext>,
     },
     /// Polling upstream service
@@ -82,6 +99,9 @@ where
             State::CheckRequestCachePolicy { .. } => f.write_str("State::CheckRequestCachePolicy"),
             State::PollCache { .. } => f.write_str("State::PollCache"),
             State::CheckCacheState { .. } => f.write_str("State::CheckCacheState"),
+            State::CheckConcurrency { .. } => f.write_str("State::CheckConcurrency"),
+            State::ConcurrentPollUpstream { .. } => f.write_str("State::ConcurrentPollUpstream"),
+            State::AwaitResponse { .. } => f.write_str("State::AwaitResponse"),
             State::CheckResponseCachePolicy { .. } => {
                 f.write_str("State::CheckResponseCachePolicy")
             }

@@ -29,6 +29,8 @@ pub struct EnabledCacheConfig {
     /// Cache behavior policy.
     #[serde(default)]
     pub policy: CacheBehaviorPolicy,
+    /// Concurrency limit for dogpile prevention.
+    pub concurrency: Option<u8>,
 }
 
 impl Default for EnabledCacheConfig {
@@ -37,6 +39,7 @@ impl Default for EnabledCacheConfig {
             ttl: Some(5),
             stale: None,
             policy: CacheBehaviorPolicy::default(),
+            concurrency: None,
         }
     }
 }

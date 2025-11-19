@@ -2,7 +2,7 @@ use hitbox::config::CacheConfig;
 use hitbox::offload::OffloadManager;
 use std::{fmt::Debug, sync::Arc};
 
-use hitbox::{backend::CacheBackend, fsm::CacheFuture};
+use hitbox::{backend::CacheBackend, concurrency::NoopConcurrencyManager, fsm::CacheFuture};
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
 use http::{Request, Response};
 use hyper::body::Body as HttpBody;
@@ -76,6 +76,7 @@ where
             CacheableHttpRequest<ReqBody>,
             Result<CacheableHttpResponse<ResBody>, S::Error>,
             TowerUpstream<S, ReqBody, ResBody>,
+            NoopConcurrencyManager,
         >,
         ResBody,
         S::Error,
@@ -109,6 +110,7 @@ where
             Arc::new(configuration.extractors()),
             Arc::new(configuration.policy().clone()),
             self.offload_manager.clone(),
+            Arc::new(NoopConcurrencyManager),
         );
 
         // Wrap in CacheServiceFuture to add cache headers
