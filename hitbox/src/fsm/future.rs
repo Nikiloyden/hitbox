@@ -9,7 +9,7 @@ use std::{
 
 use crate::{CachePolicy, CacheState, CacheStatus, CacheableResponse, policy::PolicyConfig};
 use futures::ready;
-use hitbox_core::{CacheablePolicyData, EntityPolicyConfig};
+use hitbox_core::{CacheablePolicyData, EntityPolicyConfig, Upstream};
 use pin_project::pin_project;
 use serde::{Serialize, de::DeserializeOwned};
 use tracing::debug;
@@ -145,28 +145,15 @@ const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishin
 //     }
 // }
 
-pub trait Transform<Req, Res> {
-    type Future;
-    type Response;
-
-    fn upstream_transform(&self, req: Req) -> Self::Future;
-    fn response_transform(
-        &self,
-        res: Res,
-        cache_status: Option<crate::CacheStatus>,
-    ) -> Self::Response;
-}
-
 #[pin_project]
-pub struct CacheFuture<B, Req, Res, T>
+pub struct CacheFuture<B, Req, Res, U>
 where
-    T: Transform<Req, Res>,
-    T::Future: Future<Output = Res> + Send,
+    U: Upstream<Req, Response = Res>,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
 {
-    transformer: T,
+    upstream: U,
     backend: Arc<B>,
     request: Option<Req>,
     cache_key: Option<CacheKey>,
@@ -182,10 +169,9 @@ where
     policy: Arc<crate::policy::PolicyConfig>,
 }
 
-impl<B, Req, Res, T> CacheFuture<B, Req, Res, T>
+impl<B, Req, Res, U> CacheFuture<B, Req, Res, U>
 where
-    T: Transform<Req, Res>,
-    T::Future: Future<Output = Res> + Send,
+    U: Upstream<Req, Response = Res>,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
@@ -193,7 +179,7 @@ where
     pub fn new(
         backend: Arc<B>,
         request: Req,
-        transformer: T,
+        upstream: U,
         request_predicates: Arc<dyn Predicate<Subject = Req> + Send + Sync>,
         response_predicates: Arc<dyn Predicate<Subject = Res::Subject> + Send + Sync>,
         key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
@@ -201,7 +187,7 @@ where
     ) -> Self {
         let cache_enabled = matches!(policy.as_ref(), crate::policy::PolicyConfig::Enabled(_));
         CacheFuture {
-            transformer,
+            upstream,
             backend,
             cache_key: None,
             cache_status: crate::CacheStatus::Miss,
@@ -217,10 +203,10 @@ where
     }
 }
 
-impl<B, Req, Res, T> Future for CacheFuture<B, Req, Res, T>
+impl<B, Req, Res, U> Future for CacheFuture<B, Req, Res, U>
 where
-    T: Transform<Req, Res>,
-    T::Future: Future<Output = Res> + Send + 'static,
+    U: Upstream<Req, Response = Res>,
+    U::Future: Send + 'static,
     B: CacheBackend + Send + Sync + 'static,
     Res: CacheableResponse,
     Res::Cached: Serialize + DeserializeOwned + Send + Sync,
@@ -229,7 +215,7 @@ where
     Req: Debug,
     Res::Cached: Debug,
 {
-    type Output = T::Response;
+    type Output = (Res, crate::CacheContext);
 
     // #[instrument(skip(self, cx), fields(state = ?self.state, request = type_name::<T::Response>(), backend = type_name::<B>()))]
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -251,8 +237,7 @@ where
                             }
                         }
                         PolicyConfig::Disabled => {
-                            let upstream_future =
-                                Box::pin(this.transformer.upstream_transform(request));
+                            let upstream_future = Box::pin(this.upstream.call(request));
                             State::PollUpstream { upstream_future }
                         }
                     }
@@ -274,8 +259,7 @@ where
                             }
                         }
                         CachePolicy::NonCacheable(request) => {
-                            let upstream_future =
-                                Box::pin(this.transformer.upstream_transform(request));
+                            let upstream_future = Box::pin(this.upstream.call(request));
                             State::PollUpstream { upstream_future }
                         }
                     }
@@ -294,10 +278,10 @@ where
                             request: request.take(),
                         },
                         None => {
-                            let upstream_future =
-                                Box::pin(this.transformer.upstream_transform(
-                                    request.take().expect(POLL_AFTER_READY_ERROR),
-                                ));
+                            let upstream_future = Box::pin(
+                                this.upstream
+                                    .call(request.take().expect(POLL_AFTER_READY_ERROR)),
+                            );
                             State::PollUpstream { upstream_future }
                         }
                     }
@@ -318,10 +302,10 @@ where
                         // TODO: remove code duplication with PollCache (upstream_future creation)
                         CacheState::Expired(_response) => {
                             *this.cache_status = CacheStatus::Miss;
-                            let upstream_future =
-                                Box::pin(this.transformer.upstream_transform(
-                                    request.take().expect(POLL_AFTER_READY_ERROR),
-                                ));
+                            let upstream_future = Box::pin(
+                                this.upstream
+                                    .call(request.take().expect(POLL_AFTER_READY_ERROR)),
+                            );
                             State::PollUpstream { upstream_future }
                         }
                     }
@@ -390,15 +374,19 @@ where
                 }
                 StateProj::Response { response } => {
                     let upstream_response = response.take().expect(POLL_AFTER_READY_ERROR);
-                    let response = this.transformer.response_transform(
-                        upstream_response,
-                        if *this.cache_enabled {
-                            Some(*this.cache_status)
-                        } else {
-                            None
-                        },
-                    );
-                    return Poll::Ready(response);
+                    let cache_context = if *this.cache_enabled {
+                        let mut ctx = crate::CacheContext {
+                            status: *this.cache_status,
+                            ..Default::default()
+                        };
+                        if let Some(key) = this.cache_key.as_ref() {
+                            ctx.key = Some(key.clone());
+                        }
+                        ctx
+                    } else {
+                        crate::CacheContext::default()
+                    };
+                    return Poll::Ready((upstream_response, cache_context));
                 }
             };
             debug!("{:?}", &state);

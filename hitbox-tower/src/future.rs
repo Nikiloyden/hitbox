@@ -1,128 +1,68 @@
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::fmt::Debug;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use futures::{Future, future::BoxFuture};
-use hitbox::fsm::Transform;
-use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
-use http::{Request, Response};
+use futures::Future;
+use futures::ready;
+use hitbox::{CacheContext, CacheStatus};
+use hitbox_http::{BufferedBody, CacheableHttpResponse};
+use http::{HeaderValue, Response};
 use pin_project::pin_project;
-use tower::Service;
 
-pub struct Transformer<S, ReqBody> {
-    inner: S,
-    _req: PhantomData<ReqBody>,
-}
-
-impl<S, ReqBody> Transformer<S, ReqBody> {
-    pub fn new(inner: S) -> Self {
-        Transformer {
-            inner,
-            _req: PhantomData,
-        }
-    }
-}
-
-impl<S, ReqBody, ResBody>
-    Transform<CacheableHttpRequest<ReqBody>, Result<CacheableHttpResponse<ResBody>, S::Error>>
-    for Transformer<S, ReqBody>
-where
-    S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>>
-        + Clone
-        + Send
-        + 'static,
-    S::Future: Send,
-    ReqBody: hyper::body::Body + Send + 'static,
-    ReqBody::Error: Send,
-    ResBody: hyper::body::Body,
-    // debug bounds
-    S::Error: Debug,
-{
-    type Future = UpstreamFuture<ResBody, S::Error>;
-    type Response = Result<Response<BufferedBody<ResBody>>, S::Error>;
-
-    fn upstream_transform(&self, req: CacheableHttpRequest<ReqBody>) -> Self::Future {
-        UpstreamFuture::new(self.inner.clone(), req)
-    }
-
-    fn response_transform(
-        &self,
-        res: Result<CacheableHttpResponse<ResBody>, S::Error>,
-        cache_status: Option<hitbox::CacheStatus>,
-    ) -> Self::Response {
-        res.map(|cacheable_response| {
-            let mut response = cacheable_response.into_response();
-            if let Some(status) = cache_status {
-                let status_value = match status {
-                    hitbox::CacheStatus::Hit => "HIT",
-                    hitbox::CacheStatus::Miss => "MISS",
-                };
-                response
-                    .headers_mut()
-                    .insert("X-Cache-Status", status_value.parse().unwrap());
-            }
-            response
-        })
-    }
-}
-
+/// Wrapper future that adds cache status headers to the response.
+/// This future wraps `CacheFuture` and handles the final transformation
+/// from cacheable response to HTTP response with cache headers.
 #[pin_project]
-pub struct UpstreamFuture<ResBody, E>
+pub struct CacheServiceFuture<F, ResBody, E>
 where
+    F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
 {
-    inner_future: BoxFuture<'static, Result<CacheableHttpResponse<ResBody>, E>>,
+    #[pin]
+    inner: F,
 }
 
-impl<ResBody, E> UpstreamFuture<ResBody, E>
+impl<F, ResBody, E> CacheServiceFuture<F, ResBody, E>
 where
+    F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
 {
-    pub fn new<S, ReqBody>(mut inner_service: S, req: CacheableHttpRequest<ReqBody>) -> Self
-    where
-        S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>, Error = E>
-            + Send
-            + 'static,
-        S::Future: Send,
-        ReqBody: hyper::body::Body + Send + 'static,
-        ReqBody::Error: Send,
-        ResBody: hyper::body::Body,
-        // debug bounds
-        S::Error: Debug,
-    {
-        let inner_future = Box::pin(async move {
-            let res = inner_service.call(req.into_request()).await;
-            // CacheableHttpResponse::from_response(res.unwrap())
-            // match &res {
-            //     Ok(res) => {
-            //         dbg!(res.status());
-            //     }
-            //     Err(err) => {
-            //         dbg!(err);
-            //     }
-            // };
-            res.map(|response| {
-                // Wrap the response body in BufferedBody::Passthrough
-                let (parts, body) = response.into_parts();
-                let buffered_response =
-                    Response::from_parts(parts, BufferedBody::Passthrough(body));
-                CacheableHttpResponse::from_response(buffered_response)
-            })
-        });
-        UpstreamFuture { inner_future }
+    pub fn new(inner: F) -> Self {
+        Self { inner }
     }
 }
 
-impl<ResBody, E> Future for UpstreamFuture<ResBody, E>
+impl<F, ResBody, E> Future for CacheServiceFuture<F, ResBody, E>
 where
+    F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
+    E: Debug,
 {
-    type Output = Result<CacheableHttpResponse<ResBody>, E>;
+    type Output = Result<Response<BufferedBody<ResBody>>, E>;
+
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        this.inner_future.as_mut().poll(cx)
+
+        // Poll the inner CacheFuture
+        let (result, cache_context) = ready!(this.inner.poll(cx));
+
+        // Transform the response and add cache headers
+        let response = result.map(|cacheable_response| {
+            let mut response = cacheable_response.into_response();
+
+            // Add X-Cache-Status header based on cache context
+            let status_value = match cache_context.status {
+                CacheStatus::Hit => HeaderValue::from_static("HIT"),
+                CacheStatus::Miss => HeaderValue::from_static("MISS"),
+                CacheStatus::Stale => HeaderValue::from_static("STALE"),
+            };
+            response
+                .headers_mut()
+                .insert("X-Cache-Status", status_value);
+
+            response
+        });
+
+        Poll::Ready(response)
     }
 }

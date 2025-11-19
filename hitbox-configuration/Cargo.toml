@@ -22,6 +22,7 @@ indexmap = { version = "2.10", features = ["serde"] }
 thiserror = { workspace = true }
 regex = { workspace = true }
 bytes = { workspace = true }
+bytesize = { version = "2", features = ["serde"] }
 
 [features]
 default = []
