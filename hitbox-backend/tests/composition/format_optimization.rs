@@ -29,7 +29,7 @@ fn test_same_format_optimization() {
     );
 
     let data = TestData::large();
-    let serialized = composition.serialize(&data).unwrap();
+    let serialized = composition.serialize(&data, &()).unwrap();
 
     // Deserialize to verify it works
     let deserialized: TestData = composition.deserialize(&serialized).unwrap();
@@ -47,7 +47,7 @@ fn test_different_formats() {
     );
 
     let data = TestData::large();
-    let serialized = composition.serialize(&data).unwrap();
+    let serialized = composition.serialize(&data, &()).unwrap();
 
     // Deserialize to verify it works
     let deserialized: TestData = composition.deserialize(&serialized).unwrap();
@@ -62,21 +62,21 @@ fn test_serialization_size_comparison() {
 
     // Single JSON serialization
     let json_format = JsonFormat;
-    let json_size = json_format.serialize(&data).unwrap().len();
+    let json_size = json_format.serialize(&data, &()).unwrap().len();
 
     // CompositionFormat with same formats (should be ~2x JSON + small overhead)
     let composition_same = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(JsonFormat),
     );
-    let composition_same_size = composition_same.serialize(&data).unwrap().len();
+    let composition_same_size = composition_same.serialize(&data, &()).unwrap().len();
 
     // CompositionFormat with different formats
     let composition_diff = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(BincodeFormat),
     );
-    let composition_diff_size = composition_diff.serialize(&data).unwrap().len();
+    let composition_diff_size = composition_diff.serialize(&data, &()).unwrap().len();
 
     println!("JSON size: {} bytes", json_size);
     println!("Composition (same format) size: {} bytes", composition_same_size);

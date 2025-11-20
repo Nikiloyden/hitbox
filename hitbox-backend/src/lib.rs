@@ -5,11 +5,13 @@
 mod backend;
 pub mod composition;
 pub mod compressor;
+pub mod context;
 mod key;
 pub mod serializer;
 
-pub use backend::{Backend, BackendResult, CacheBackend};
+pub use backend::{Backend, BackendResult, BackendValue, CacheBackend};
 pub use composition::{Compose, CompositionBackend};
+pub use context::{BackendContext, BackendPolicy};
 #[cfg(feature = "gzip")]
 pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]

@@ -3,6 +3,8 @@ use hitbox_core::Raw;
 use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
+use crate::BackendContext;
+
 #[derive(Error, Debug)]
 pub enum FormatError {
     #[error(transparent)]
@@ -24,7 +26,11 @@ pub enum FormatTypeId {
 /// Object-safe format trait (uses erased-serde for type erasure)
 /// This trait can be used with `&dyn Format` for dynamic dispatch
 pub trait Format: std::fmt::Debug + Send + Sync {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError>;
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError>;
 
     /// Provides access to a deserializer via a callback to avoid lifetime issues
     fn with_deserializer(
@@ -44,11 +50,11 @@ pub trait Format: std::fmt::Debug + Send + Sync {
 /// Extension trait providing generic serialize/deserialize methods
 /// This is automatically implemented for all Format types
 pub trait FormatExt: Format {
-    fn serialize<T>(&self, value: &T) -> Result<Raw, FormatError>
+    fn serialize<T>(&self, value: &T, context: &dyn BackendContext) -> Result<Raw, FormatError>
     where
         T: Serialize,
     {
-        self.erased_serialize(value as _)
+        self.erased_serialize(value as _, context)
     }
 
     fn deserialize<T>(&self, data: &Raw) -> Result<T, FormatError>
@@ -83,8 +89,12 @@ impl Clone for Box<dyn Format> {
 
 // Implement Format for Box<dyn Format>
 impl Format for Box<dyn Format> {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
-        (**self).erased_serialize(value)
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError> {
+        (**self).erased_serialize(value, context)
     }
 
     fn with_deserializer(
@@ -106,8 +116,12 @@ impl Format for Box<dyn Format> {
 
 // Implement Format for Arc<dyn Format>
 impl Format for std::sync::Arc<dyn Format> {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
-        (**self).erased_serialize(value)
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError> {
+        (**self).erased_serialize(value, context)
     }
 
     fn with_deserializer(
@@ -133,7 +147,11 @@ impl Format for std::sync::Arc<dyn Format> {
 pub struct JsonFormat;
 
 impl Format for JsonFormat {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        _context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError> {
         let mut buf = Vec::new();
         let mut ser = serde_json::Serializer::new(&mut buf);
         value
@@ -166,7 +184,11 @@ impl Format for JsonFormat {
 pub struct BincodeFormat;
 
 impl Format for BincodeFormat {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        _context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError> {
         // Wrapper that implements serde::Serialize
         struct SerdeWrapper<'a>(&'a dyn erased_serde::Serialize);
 

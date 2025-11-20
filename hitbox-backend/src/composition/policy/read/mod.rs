@@ -8,6 +8,8 @@ use async_trait::async_trait;
 use hitbox_core::{CacheKey, CacheValue};
 use std::future::Future;
 
+use crate::composition::CompositionSource;
+
 pub mod parallel;
 pub mod race;
 pub mod sequential;
@@ -65,13 +67,13 @@ pub trait ReadPolicy: Send + Sync {
     /// * `read_l2` - Closure that reads from L2 (only called if L1 misses/fails)
     ///
     /// # Returns
-    /// The value from L1 or L2, or None if both miss, or an error if both fail.
+    /// A tuple of (value, source) where source indicates which layer provided the data.
     async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
         &self,
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<Option<CacheValue<T>>, E>
+    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,

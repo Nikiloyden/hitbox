@@ -25,7 +25,7 @@ impl FailingBackend {
 
 #[async_trait]
 impl Backend for FailingBackend {
-    async fn read(&self, _key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+    async fn read(&self, _key: &CacheKey) -> BackendResult<hitbox_backend::BackendValue> {
         Err(BackendError::InternalError(Box::new(
             std::io::Error::other(self.error_message.clone()),
         )))
@@ -107,7 +107,7 @@ async fn test_both_layers_fail_set() {
 
     // When both layers fail, should return CompositionError with both errors
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
         .await;
 
     assert!(result.is_err());
@@ -193,7 +193,7 @@ async fn test_both_layers_fail_backend_write() {
 
     // Test via CacheBackend::set (which uses Backend::write internally)
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
         .await;
 
     assert!(result.is_err());

@@ -8,6 +8,7 @@ use hitbox_core::{CacheKey, CacheValue};
 use std::future::Future;
 
 use super::ReadPolicy;
+use crate::composition::CompositionSource;
 
 /// Sequential read policy: Try L1 first, then L2 on miss.
 ///
@@ -47,7 +48,7 @@ impl ReadPolicy for SequentialReadPolicy {
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<Option<CacheValue<T>>, E>
+    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,
@@ -61,7 +62,7 @@ impl ReadPolicy for SequentialReadPolicy {
             Ok(Some(value)) => {
                 // L1 hit - return immediately
                 tracing::trace!("L1 hit");
-                return Ok(Some(value));
+                return Ok((Some(value), CompositionSource::L1));
             }
             Ok(None) => {
                 // L1 miss - continue to L2
@@ -78,12 +79,12 @@ impl ReadPolicy for SequentialReadPolicy {
             Ok(Some(value)) => {
                 // L2 hit
                 tracing::trace!("L2 hit");
-                Ok(Some(value))
+                Ok((Some(value), CompositionSource::L2))
             }
             Ok(None) => {
                 // L2 miss
                 tracing::trace!("L2 miss");
-                Ok(None)
+                Ok((None, CompositionSource::L2))
             }
             Err(e) => {
                 // L2 error

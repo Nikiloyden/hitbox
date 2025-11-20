@@ -8,6 +8,7 @@ use hitbox_core::{CacheKey, CacheValue};
 use std::future::Future;
 
 use super::ReadPolicy;
+use crate::composition::CompositionSource;
 
 /// Parallel read policy: Query both L1 and L2 in parallel, prefer freshest data (by TTL).
 ///
@@ -63,7 +64,7 @@ impl ReadPolicy for ParallelReadPolicy {
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<Option<CacheValue<T>>, E>
+    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,
@@ -83,33 +84,33 @@ impl ReadPolicy for ParallelReadPolicy {
                 match (l1_value.ttl(), l2_value.ttl()) {
                     (Some(l1_ttl), Some(l2_ttl)) if l2_ttl > l1_ttl => {
                         tracing::trace!("Both hit, preferring L2 (fresher TTL)");
-                        Ok(Some(l2_value))
+                        Ok((Some(l2_value), CompositionSource::L2))
                     }
                     (Some(_), None) => {
                         tracing::trace!("Both hit, preferring L2 (no expiry)");
-                        Ok(Some(l2_value))
+                        Ok((Some(l2_value), CompositionSource::L2))
                     }
                     _ => {
                         // L1 >= L2, or L1 has no expiry, or both no expiry - prefer L1
                         tracing::trace!("Both hit, preferring L1 (fresher or equal TTL)");
-                        Ok(Some(l1_value))
+                        Ok((Some(l1_value), CompositionSource::L1))
                     }
                 }
             }
             // L1 hit, L2 miss/error
             (Ok(Some(value)), _) => {
                 tracing::trace!("L1 hit, L2 miss/error");
-                Ok(Some(value))
+                Ok((Some(value), CompositionSource::L1))
             }
             // L2 hit, L1 miss/error
             (_, Ok(Some(value))) => {
                 tracing::trace!("L2 hit, L1 miss/error");
-                Ok(Some(value))
+                Ok((Some(value), CompositionSource::L2))
             }
             // Both miss
             (Ok(None), Ok(None)) => {
                 tracing::trace!("Both layers miss");
-                Ok(None)
+                Ok((None, CompositionSource::L2))
             }
             // Both error
             (Err(e1), Err(e2)) => {
@@ -119,7 +120,7 @@ impl ReadPolicy for ParallelReadPolicy {
             // One error, one miss
             (Ok(None), Err(e)) | (Err(e), Ok(None)) => {
                 tracing::warn!(error = ?e, "One layer failed, one missed");
-                Ok(None)
+                Ok((None, CompositionSource::L2))
             }
         }
     }

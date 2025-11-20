@@ -10,6 +10,7 @@ use hitbox_core::{CacheKey, CacheValue};
 use std::future::Future;
 
 use super::ReadPolicy;
+use crate::composition::CompositionSource;
 
 /// Race read policy: Query both L1 and L2 simultaneously, return first hit.
 ///
@@ -55,7 +56,7 @@ impl ReadPolicy for RaceReadPolicy {
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<Option<CacheValue<T>>, E>
+    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,
@@ -76,7 +77,7 @@ impl ReadPolicy for RaceReadPolicy {
                 // L1 completed first
                 if let Ok(Some(value)) = l1_result {
                     tracing::trace!("L1 hit (won race)");
-                    return Ok(Some(value));
+                    return Ok((Some(value), CompositionSource::L1));
                 }
 
                 // L1 miss/error, wait for L2
@@ -85,13 +86,17 @@ impl ReadPolicy for RaceReadPolicy {
 
                 // Aggregate results
                 match (l1_result, l2_result) {
-                    (Ok(Some(value)), _) | (_, Ok(Some(value))) => {
-                        tracing::trace!("Cache hit");
-                        Ok(Some(value))
+                    (Ok(Some(value)), _) => {
+                        tracing::trace!("L1 hit");
+                        Ok((Some(value), CompositionSource::L1))
+                    }
+                    (_, Ok(Some(value))) => {
+                        tracing::trace!("L2 hit");
+                        Ok((Some(value), CompositionSource::L2))
                     }
                     (Ok(None), Ok(None)) => {
                         tracing::trace!("Both layers miss");
-                        Ok(None)
+                        Ok((None, CompositionSource::L2))
                     }
                     (Err(e1), Err(e2)) => {
                         tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both layers failed");
@@ -99,7 +104,7 @@ impl ReadPolicy for RaceReadPolicy {
                     }
                     (Ok(None), Err(e)) | (Err(e), Ok(None)) => {
                         tracing::warn!(error = ?e, "One layer failed, one missed");
-                        Ok(None)
+                        Ok((None, CompositionSource::L2))
                     }
                 }
             }
@@ -107,7 +112,7 @@ impl ReadPolicy for RaceReadPolicy {
                 // L2 completed first
                 if let Ok(Some(value)) = l2_result {
                     tracing::trace!("L2 hit (won race)");
-                    return Ok(Some(value));
+                    return Ok((Some(value), CompositionSource::L2));
                 }
 
                 // L2 miss/error, wait for L1
@@ -116,13 +121,17 @@ impl ReadPolicy for RaceReadPolicy {
 
                 // Aggregate results
                 match (l1_result, l2_result) {
-                    (Ok(Some(value)), _) | (_, Ok(Some(value))) => {
-                        tracing::trace!("Cache hit");
-                        Ok(Some(value))
+                    (Ok(Some(value)), _) => {
+                        tracing::trace!("L1 hit");
+                        Ok((Some(value), CompositionSource::L1))
+                    }
+                    (_, Ok(Some(value))) => {
+                        tracing::trace!("L2 hit");
+                        Ok((Some(value), CompositionSource::L2))
                     }
                     (Ok(None), Ok(None)) => {
                         tracing::trace!("Both layers miss");
-                        Ok(None)
+                        Ok((None, CompositionSource::L2))
                     }
                     (Err(e1), Err(e2)) => {
                         tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both layers failed");
@@ -130,7 +139,7 @@ impl ReadPolicy for RaceReadPolicy {
                     }
                     (Ok(None), Err(e)) | (Err(e), Ok(None)) => {
                         tracing::warn!(error = ?e, "One layer failed, one missed");
-                        Ok(None)
+                        Ok((None, CompositionSource::L2))
                     }
                 }
             }

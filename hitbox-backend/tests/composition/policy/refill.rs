@@ -58,7 +58,7 @@ async fn test_always_refill_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 
@@ -82,7 +82,7 @@ async fn test_never_refill_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 
@@ -110,7 +110,7 @@ async fn test_manual_refill_with_always_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 
@@ -134,7 +134,7 @@ async fn test_manual_refill_with_never_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 
@@ -157,7 +157,7 @@ async fn test_default_always_refill() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 
@@ -180,7 +180,7 @@ async fn test_default_never_refill() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
         }
     ).await;
 

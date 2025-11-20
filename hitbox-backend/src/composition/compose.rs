@@ -123,7 +123,7 @@ impl<T: Backend> Compose for T {}
 mod tests {
     use super::*;
     use crate::serializer::{Format, JsonFormat};
-    use crate::{Backend, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor};
+    use crate::{Backend, BackendResult, BackendValue, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor};
     use async_trait::async_trait;
     use chrono::Utc;
     use hitbox_core::{CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
@@ -146,8 +146,8 @@ mod tests {
 
     #[async_trait]
     impl Backend for TestBackend {
-        async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-            Ok(self.store.lock().unwrap().get(key).cloned())
+        async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
+            Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
         }
 
         async fn write(
@@ -222,7 +222,7 @@ mod tests {
         );
 
         // Write and read
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
 
         let result = cache.get::<MockResponse>(&key).await.unwrap();
         assert_eq!(result.unwrap().data, "test_value");
@@ -254,7 +254,7 @@ mod tests {
         );
 
         // Populate only L2
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
 
         // Read through composition (should use RaceReadPolicy)
         let result = cache.get::<MockResponse>(&key).await.unwrap();
@@ -285,7 +285,7 @@ mod tests {
         );
 
         // Write through nested composition
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
 
         // All three levels should have the data
         assert!(l1.get::<MockResponse>(&key).await.unwrap().is_some());
@@ -312,7 +312,7 @@ mod tests {
             None,
         );
 
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
 
         let result = cache.get::<MockResponse>(&key).await.unwrap();
         assert_eq!(result.unwrap().data, "chain_value");

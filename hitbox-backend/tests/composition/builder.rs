@@ -34,8 +34,9 @@ impl TestBackend {
 
 #[async_trait]
 impl Backend for TestBackend {
-    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-        Ok(self.store.lock().unwrap().get(key).cloned())
+    async fn read(&self, key: &CacheKey) -> BackendResult<hitbox_backend::BackendValue> {
+        use hitbox_backend::BackendValue;
+        Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
     }
 
     async fn write(
@@ -192,7 +193,7 @@ async fn test_backend_with_policy_functional() {
 
     // Write via backend
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
         .await
         .unwrap();
 

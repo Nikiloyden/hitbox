@@ -3,9 +3,9 @@
 //! These tests demonstrate the fluent API for building CompositionBackend hierarchies.
 
 use chrono::Utc;
-use hitbox_backend::{CacheBackend, Compose};
 use hitbox_backend::composition::CompositionPolicy;
 use hitbox_backend::composition::policy::{NeverRefill, RaceReadPolicy};
+use hitbox_backend::{CacheBackend, Compose};
 use hitbox_core::{CacheKey, CacheValue};
 use std::time::Duration;
 
@@ -32,7 +32,10 @@ async fn test_compose_trait_basic_usage() {
     );
 
     // Write through composition
-    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    cache
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .await
+        .unwrap();
 
     // Read through composition
     let result = cache.get::<TestValue>(&key).await.unwrap();
@@ -56,8 +59,8 @@ async fn test_compose_with_custom_policy() {
     let l2 = TestBackend::new();
 
     let policy = CompositionPolicy::new()
-        .read(RaceReadPolicy::new())
-        .refill(NeverRefill::new());
+        .read(RaceReadPolicy)
+        .refill(NeverRefill);
 
     let cache = l1.clone().compose_with(l2.clone(), policy);
 
@@ -71,7 +74,9 @@ async fn test_compose_with_custom_policy() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .await
+        .unwrap();
 
     // Read through composition (uses RaceReadPolicy)
     let result = cache.get::<TestValue>(&key).await.unwrap();
@@ -107,7 +112,10 @@ async fn test_compose_nested_3_levels() {
     );
 
     // Write cascades to all 3 levels
-    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    cache
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .await
+        .unwrap();
 
     // All levels should have the data
     assert!(l1.has(&key), "L1 should have the value");
@@ -130,7 +138,8 @@ async fn test_compose_with_builder_chaining() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
 
-    let cache = l1.clone()
+    let cache = l1
+        .clone()
         .compose(l2.clone())
         .read(RaceReadPolicy::new())
         .refill(NeverRefill::new());
@@ -145,7 +154,9 @@ async fn test_compose_with_builder_chaining() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .await
+        .unwrap();
 
     // Read through composition
     let result = cache.get::<TestValue>(&key).await.unwrap();
@@ -168,11 +179,9 @@ async fn test_compose_4_levels_cascade() {
     let l3 = TestBackend::new();
     let l4 = TestBackend::new();
 
-    let cache = l1.clone().compose(
-        l2.clone().compose(
-            l3.clone().compose(l4.clone())
-        )
-    );
+    let cache = l1
+        .clone()
+        .compose(l2.clone().compose(l3.clone().compose(l4.clone())));
 
     let key = CacheKey::from_str("test", "deep");
     let value = CacheValue::new(
@@ -184,7 +193,9 @@ async fn test_compose_4_levels_cascade() {
     );
 
     // Populate only L4 (deepest level)
-    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .await
+        .unwrap();
 
     // Read cascades through all 4 levels
     let result = cache.get::<TestValue>(&key).await.unwrap();

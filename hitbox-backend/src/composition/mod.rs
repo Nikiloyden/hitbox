@@ -38,15 +38,17 @@
 //! ```
 
 pub mod compose;
+pub mod context;
 pub mod policy;
 
 pub use compose::Compose;
+pub use context::{CompositionContext, CompositionSource};
 pub use policy::CompositionPolicy;
 
 use crate::serializer::{Format, FormatError, FormatTypeId};
 use crate::{
-    Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
-    PassthroughCompressor,
+    Backend, BackendContext, BackendError, BackendResult, BackendValue, CacheBackend,
+    CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -187,15 +189,33 @@ impl CompositionFormat {
 }
 
 impl Format for CompositionFormat {
-    fn erased_serialize(&self, value: &dyn erased_serde::Serialize) -> Result<Raw, FormatError> {
-        // Serialize the value in L1 format
-        let l1_serialized = self.l1_format.erased_serialize(value)?;
+    fn erased_serialize(
+        &self,
+        value: &dyn erased_serde::Serialize,
+        context: &dyn BackendContext,
+    ) -> Result<Raw, FormatError> {
+        // Check if this is a refill operation (writing L2 data back to L1)
+        if let Some(comp_ctx) = context.as_any().downcast_ref::<CompositionContext>() {
+            if comp_ctx.policy.write_after_read {
+                // For refill operations, create an L1-only envelope
+                // This data came from L2, so serialize it in L1 format for L1 storage
+                let l1_serialized = self.l1_format.erased_serialize(value, context)?;
+                let composition = CompositionEnvelope::L1(CacheValueData::new(l1_serialized));
+
+                return bitcode::serialize(&composition)
+                    .map(Bytes::from)
+                    .map_err(|e| FormatError::Serialize(Box::new(e)));
+            }
+        }
+
+        // Normal write path: Create Both envelope with data for both layers
+        let l1_serialized = self.l1_format.erased_serialize(value, context)?;
 
         // If L1 and L2 use the same format, reuse the serialized data instead of serializing again
         let l2_serialized = if self.same_format() {
             l1_serialized.clone()
         } else {
-            self.l2_format.erased_serialize(value)?
+            self.l2_format.erased_serialize(value, context)?
         };
 
         // Pack both serialized values into CompositionEnvelope
@@ -505,33 +525,51 @@ where
     F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
-    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+    async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
         let l1 = &self.l1;
         let l2 = &self.l2;
+        let format = &self.format;
 
         let read_l1_with_envelope = |k| async move {
-            l1.read(k)
-                .await?
-                .map(|l1_value| {
+            let backend_value = l1.read(k).await?;
+            match backend_value.value {
+                Some(l1_value) => {
                     let (expire, stale) = (l1_value.expire, l1_value.stale);
-                    CompositionEnvelope::L1(l1_value.into()).serialize_to_cache_value(expire, stale)
-                })
-                .transpose()
+                    CompositionEnvelope::L1(l1_value.into())
+                        .serialize_to_cache_value(expire, stale)
+                        .map(Some)
+                }
+                None => Ok(None),
+            }
         };
 
         let read_l2_with_envelope = |k| async move {
-            l2.read(k)
-                .await?
-                .map(|l2_value| {
+            let backend_value = l2.read(k).await?;
+            match backend_value.value {
+                Some(l2_value) => {
                     let (expire, stale) = (l2_value.expire, l2_value.stale);
-                    CompositionEnvelope::L2(l2_value.into()).serialize_to_cache_value(expire, stale)
-                })
-                .transpose()
+                    CompositionEnvelope::L2(l2_value.into())
+                        .serialize_to_cache_value(expire, stale)
+                        .map(Some)
+                }
+                None => Ok(None),
+            }
         };
 
-        self.read_policy
+        let (value, source) = self
+            .read_policy
             .execute_with(key, read_l1_with_envelope, read_l2_with_envelope)
-            .await
+            .await?;
+
+        // Create context based on which layer provided the data
+        let backend_value = if value.is_some() {
+            let ctx = context::CompositionContext::new(source, format.clone());
+            BackendValue::with_context(value, ctx)
+        } else {
+            BackendValue::new(None)
+        };
+
+        Ok(backend_value)
     }
 
     #[tracing::instrument(skip(self, value), level = "trace")]
@@ -638,24 +676,28 @@ where
             // Refill L1 on hit using policy (best-effort)
             if let Some(ref v) = value {
                 refill_policy
-                    .execute(v, || async { l1.set::<T>(k, v, v.ttl()).await })
+                    .execute(v, || async { l1.set::<T>(k, v, v.ttl(), &()).await })
                     .await;
             }
 
             Ok(value)
         };
 
-        self.read_policy
+        let (value, _source) = self
+            .read_policy
             .execute_with(key, read_l1, read_l2_with_refill)
-            .await
+            .await?;
+
+        Ok(value)
     }
 
-    #[tracing::instrument(skip(self, value), level = "trace")]
+    #[tracing::instrument(skip(self, value, context), level = "trace")]
     async fn set<T>(
         &self,
         key: &CacheKey,
         value: &CacheValue<T::Cached>,
         ttl: Option<Duration>,
+        context: &dyn BackendContext,
     ) -> BackendResult<()>
     where
         T: CacheableResponse,
@@ -665,8 +707,8 @@ where
         let l1 = &self.l1;
         let l2 = &self.l2;
 
-        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl).await };
-        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl).await };
+        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl, context).await };
+        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl, context).await };
 
         self.write_policy
             .execute_with(key, write_l1, write_l2)
@@ -741,8 +783,8 @@ mod tests {
 
     #[async_trait]
     impl Backend for TestBackend {
-        async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-            Ok(self.store.lock().unwrap().get(key).cloned())
+        async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
+            Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
         }
 
         async fn write(
@@ -820,7 +862,7 @@ mod tests {
 
         // Write to populate both layers
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
             .await
             .unwrap();
 
@@ -842,7 +884,7 @@ mod tests {
         );
 
         // Write only to L2
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
             .await
             .unwrap();
 
@@ -885,7 +927,7 @@ mod tests {
         let backend = CompositionBackend::new(l1.clone(), l2.clone());
 
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
             .await
             .unwrap();
 
@@ -913,7 +955,7 @@ mod tests {
 
         // Write to both
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
             .await
             .unwrap();
 
@@ -946,7 +988,7 @@ mod tests {
 
         // Write via original
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
             .await
             .unwrap();
 
