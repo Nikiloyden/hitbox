@@ -9,7 +9,7 @@ mod key;
 pub mod serializer;
 
 pub use backend::{Backend, BackendResult, CacheBackend};
-pub use composition::CompositionBackend;
+pub use composition::{Compose, CompositionBackend};
 #[cfg(feature = "gzip")]
 pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]

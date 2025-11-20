@@ -42,6 +42,7 @@ zstd = ["dep:zstd"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 criterion = { workspace = true, features = ["html_reports"] }
+dashmap = "6.1"
 
 [[bench]]
 name = "key_size"

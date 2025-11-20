@@ -28,8 +28,22 @@
 //! let redis = RedisBackend::new(client);
 //! let backend = CompositionBackend::new(moka, redis);
 //! ```
+//!
+//! # Using the Compose Trait
+//! ```ignore
+//! use hitbox_backend::composition::Compose;
+//!
+//! // Fluent API for composition
+//! let cache = moka.compose(redis);
+//! ```
 
-use crate::serializer::{Format, FormatError};
+pub mod compose;
+pub mod policy;
+
+pub use compose::Compose;
+pub use policy::CompositionPolicy;
+
+use crate::serializer::{Format, FormatError, FormatTypeId};
 use crate::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
@@ -38,7 +52,12 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, Raw};
+use policy::{
+    AlwaysRefill, OptimisticParallelWritePolicy, ReadPolicy, RefillPolicy, SequentialReadPolicy,
+    WritePolicy,
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -47,11 +66,13 @@ use thiserror::Error;
 /// This error type preserves errors from both cache layers for debugging,
 /// while keeping the implementation details encapsulated.
 #[derive(Debug, Error)]
-enum CompositionError {
+pub enum CompositionError {
     /// Both L1 and L2 cache layers failed.
     #[error("Both cache layers failed - L1: {l1}, L2: {l2}")]
     BothLayersFailed {
+        /// Error from L1 layer
         l1: BackendError,
+        /// Error from L2 layer
         l2: BackendError,
     },
 }
@@ -90,17 +111,54 @@ impl From<CacheValueData> for CacheValue<Raw> {
 }
 
 /// Envelope for multi-layer cache data.
-/// - Read operations can return L1, L2, or Both variants
-/// - Write operations via CacheBackend::set always create Both variant
-/// - Defensive code handles all variants in write() for edge cases
+///
+/// This enum encapsulates data from one or both cache layers when using
+/// CompositionBackend as a trait object (`Box<dyn Backend>`).
+///
+/// # Variants Usage
+///
+/// - **`Both`**: Normal case created by `CacheBackend::set()`. Contains data
+///   serialized in both L1 and L2 formats for optimal performance.
+///
+/// - **`L1`**: Created by `Backend::read()` when data exists only in L1.
+///   This occurs during read operations through the trait object interface
+///   when L1 has data but L2 doesn't.
+///
+/// - **`L2`**: Created by `Backend::read()` when data exists only in L2.
+///   This occurs during read operations through the trait object interface
+///   when L2 has data but L1 doesn't (before refill).
+///
+/// # Performance Note
+///
+/// When using `CompositionBackend` directly via `CacheBackend::get/set`,
+/// the envelope wrapping is bypassed entirely for better performance.
+/// The envelope is only used when CompositionBackend is accessed through
+/// the `Backend` trait (e.g., `Box<dyn Backend>`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum CompositionEnvelope {
+    /// Data from L1 only (created during Backend::read from L1 hit)
     L1(CacheValueData),
+    /// Data from L2 only (created during Backend::read from L2 hit)
     L2(CacheValueData),
+    /// Data from both layers (created by CacheBackend::set - normal case)
     Both {
         l1: CacheValueData,
         l2: CacheValueData,
     },
+}
+
+impl CompositionEnvelope {
+    /// Serialize the envelope using bitcode and wrap in a CacheValue.
+    fn serialize_to_cache_value(
+        self,
+        expire: Option<DateTime<Utc>>,
+        stale: Option<DateTime<Utc>>,
+    ) -> BackendResult<CacheValue<Raw>> {
+        let packed = bitcode::serialize(&self)
+            .map(Bytes::from)
+            .map_err(|e| BackendError::InternalError(Box::new(e)))?;
+        Ok(CacheValue::new(packed, expire, stale))
+    }
 }
 
 /// Format implementation for CompositionBackend that handles multi-layer serialization.
@@ -109,12 +167,12 @@ pub(crate) enum CompositionEnvelope {
 /// On deserialization, it unpacks the CompositionEnvelope and deserializes from L1 if available, otherwise L2.
 #[derive(Debug, Clone)]
 pub struct CompositionFormat {
-    l1_format: Box<dyn Format>,
-    l2_format: Box<dyn Format>,
+    l1_format: Arc<dyn Format>,
+    l2_format: Arc<dyn Format>,
 }
 
 impl CompositionFormat {
-    pub fn new(l1_format: Box<dyn Format>, l2_format: Box<dyn Format>) -> Self {
+    pub fn new(l1_format: Arc<dyn Format>, l2_format: Arc<dyn Format>) -> Self {
         CompositionFormat {
             l1_format,
             l2_format,
@@ -158,8 +216,8 @@ impl Format for CompositionFormat {
         f: &mut dyn FnMut(&mut dyn erased_serde::Deserializer) -> Result<(), erased_serde::Error>,
     ) -> Result<(), FormatError> {
         // Deserialize the CompositionEnvelope using bitcode
-        let composition: CompositionEnvelope = bitcode::deserialize(data)
-            .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+        let composition: CompositionEnvelope =
+            bitcode::deserialize(data).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
         // Get data from L1 if available, otherwise L2, and use the corresponding format
         let (layer_data, format): (&Bytes, &dyn Format) = match &composition {
@@ -176,9 +234,9 @@ impl Format for CompositionFormat {
         Box::new(self.clone())
     }
 
-    fn format_type_id(&self) -> crate::serializer::FormatTypeId {
+    fn format_type_id(&self) -> FormatTypeId {
         // CompositionFormat is a custom format
-        crate::serializer::FormatTypeId::Custom("composition")
+        FormatTypeId::Custom("composition")
     }
 }
 
@@ -189,10 +247,21 @@ impl Format for CompositionFormat {
 ///
 /// Each layer can use its own serialization format and compression since
 /// `CacheBackend` operates on typed data, not raw bytes.
-pub struct CompositionBackend<L1, L2>
-where
+///
+/// Behavior can be customized via `ReadPolicy`, `WritePolicy`, and `RefillPolicy` to control
+/// how reads, writes, and L1 refills are executed across the layers.
+pub struct CompositionBackend<
+    L1,
+    L2,
+    R = SequentialReadPolicy,
+    W = OptimisticParallelWritePolicy,
+    F = AlwaysRefill,
+> where
     L1: Backend,
     L2: Backend,
+    R: ReadPolicy,
+    W: WritePolicy,
+    F: RefillPolicy,
 {
     /// First-layer cache (typically fast, local)
     l1: L1,
@@ -200,49 +269,220 @@ where
     l2: L2,
     /// Composition format
     format: CompositionFormat,
+    /// Read policy
+    read_policy: R,
+    /// Write policy
+    write_policy: W,
+    /// Refill policy
+    refill_policy: F,
 }
 
-impl<L1, L2> CompositionBackend<L1, L2>
+impl<L1, L2>
+    CompositionBackend<L1, L2, SequentialReadPolicy, OptimisticParallelWritePolicy, AlwaysRefill>
 where
     L1: Backend,
     L2: Backend,
 {
-    /// Creates a new composition backend with two layers.
+    /// Creates a new composition backend with two layers using default policies.
+    ///
+    /// Default policies:
+    /// - Read: `SequentialReadPolicy` (try L1 first, then L2)
+    /// - Write: `OptimisticParallelWritePolicy` (write to both, succeed if ≥1 succeeds)
+    /// - Refill: `AlwaysRefill` (always populate L1 after L2 hit)
     ///
     /// # Arguments
     /// * `l1` - First-layer backend (checked first on reads)
     /// * `l2` - Second-layer backend (checked if L1 misses)
     pub fn new(l1: L1, l2: L2) -> Self {
-        let format =
-            CompositionFormat::new(l1.value_format().clone_box(), l2.value_format().clone_box());
-        Self { l1, l2, format }
+        let format = CompositionFormat::new(
+            Arc::new(l1.value_format().clone_box()),
+            Arc::new(l2.value_format().clone_box()),
+        );
+        Self {
+            l1,
+            l2,
+            format,
+            read_policy: SequentialReadPolicy::new(),
+            write_policy: OptimisticParallelWritePolicy::new(),
+            refill_policy: AlwaysRefill::new(),
+        }
     }
 }
 
-impl<L1, L2> Clone for CompositionBackend<L1, L2>
+impl<L1, L2, R, W, F> CompositionBackend<L1, L2, R, W, F>
+where
+    L1: Backend,
+    L2: Backend,
+    R: ReadPolicy,
+    W: WritePolicy,
+    F: RefillPolicy,
+{
+    /// Returns a reference to the read policy.
+    pub fn read_policy(&self) -> &R {
+        &self.read_policy
+    }
+
+    /// Returns a reference to the write policy.
+    pub fn write_policy(&self) -> &W {
+        &self.write_policy
+    }
+
+    /// Returns a reference to the refill policy.
+    pub fn refill_policy(&self) -> &F {
+        &self.refill_policy
+    }
+
+    /// Set all policies at once using CompositionPolicy builder.
+    ///
+    /// This is the preferred way to configure multiple policies.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use hitbox_backend::{CompositionBackend, composition::CompositionPolicy};
+    /// use hitbox_backend::composition::policy::{RaceReadPolicy, SequentialWritePolicy, NeverRefill};
+    ///
+    /// let policy = CompositionPolicy::new()
+    ///     .read(RaceReadPolicy::new())
+    ///     .write(SequentialWritePolicy::new())
+    ///     .refill(NeverRefill::new());
+    ///
+    /// let backend = CompositionBackend::new(l1, l2)
+    ///     .with_policy(policy);
+    /// ```
+    pub fn with_policy<NewR, NewW, NewF>(
+        self,
+        policy: CompositionPolicy<NewR, NewW, NewF>,
+    ) -> CompositionBackend<L1, L2, NewR, NewW, NewF>
+    where
+        NewR: ReadPolicy,
+        NewW: WritePolicy,
+        NewF: RefillPolicy,
+    {
+        CompositionBackend {
+            l1: self.l1,
+            l2: self.l2,
+            format: self.format,
+            read_policy: policy.read,
+            write_policy: policy.write,
+            refill_policy: policy.refill,
+        }
+    }
+
+    /// Set the read policy (builder pattern).
+    ///
+    /// This consumes the backend and returns a new one with the updated read policy.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use hitbox_backend::CompositionBackend;
+    /// use hitbox_backend::composition::policy::RaceReadPolicy;
+    ///
+    /// let backend = CompositionBackend::new(l1, l2)
+    ///     .read(RaceReadPolicy::new());
+    /// ```
+    pub fn read<NewR: ReadPolicy>(
+        self,
+        read_policy: NewR,
+    ) -> CompositionBackend<L1, L2, NewR, W, F> {
+        CompositionBackend {
+            l1: self.l1,
+            l2: self.l2,
+            format: self.format,
+            read_policy,
+            write_policy: self.write_policy,
+            refill_policy: self.refill_policy,
+        }
+    }
+
+    /// Set the write policy (builder pattern).
+    ///
+    /// This consumes the backend and returns a new one with the updated write policy.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use hitbox_backend::CompositionBackend;
+    /// use hitbox_backend::composition::policy::SequentialWritePolicy;
+    ///
+    /// let backend = CompositionBackend::new(l1, l2)
+    ///     .write(SequentialWritePolicy::new());
+    /// ```
+    pub fn write<NewW: WritePolicy>(
+        self,
+        write_policy: NewW,
+    ) -> CompositionBackend<L1, L2, R, NewW, F> {
+        CompositionBackend {
+            l1: self.l1,
+            l2: self.l2,
+            format: self.format,
+            read_policy: self.read_policy,
+            write_policy,
+            refill_policy: self.refill_policy,
+        }
+    }
+
+    /// Set the refill policy (builder pattern).
+    ///
+    /// This consumes the backend and returns a new one with the updated refill policy.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use hitbox_backend::CompositionBackend;
+    /// use hitbox_backend::composition::policy::NeverRefill;
+    ///
+    /// let backend = CompositionBackend::new(l1, l2)
+    ///     .refill(NeverRefill::new());
+    /// ```
+    pub fn refill<NewF: RefillPolicy>(
+        self,
+        refill_policy: NewF,
+    ) -> CompositionBackend<L1, L2, R, W, NewF> {
+        CompositionBackend {
+            l1: self.l1,
+            l2: self.l2,
+            format: self.format,
+            read_policy: self.read_policy,
+            write_policy: self.write_policy,
+            refill_policy,
+        }
+    }
+}
+
+impl<L1, L2, R, W, F> Clone for CompositionBackend<L1, L2, R, W, F>
 where
     L1: Clone + Backend,
     L2: Clone + Backend,
+    R: Clone + ReadPolicy,
+    W: Clone + WritePolicy,
+    F: Clone + RefillPolicy,
 {
     fn clone(&self) -> Self {
         Self {
             l1: self.l1.clone(),
             l2: self.l2.clone(),
             format: self.format.clone(),
+            read_policy: self.read_policy.clone(),
+            write_policy: self.write_policy.clone(),
+            refill_policy: self.refill_policy.clone(),
         }
     }
 }
 
-impl<L1, L2> std::fmt::Debug for CompositionBackend<L1, L2>
+impl<L1, L2, R, W, F> std::fmt::Debug for CompositionBackend<L1, L2, R, W, F>
 where
     L1: std::fmt::Debug + Backend,
     L2: std::fmt::Debug + Backend,
+    R: std::fmt::Debug + ReadPolicy,
+    W: std::fmt::Debug + WritePolicy,
+    F: std::fmt::Debug + RefillPolicy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompositionBackend")
             .field("l1", &self.l1)
             .field("l2", &self.l2)
             .field("format", &self.format)
+            .field("read_policy", &self.read_policy)
+            .field("write_policy", &self.write_policy)
+            .field("refill_policy", &self.refill_policy)
             .finish()
     }
 }
@@ -256,39 +496,42 @@ where
 // copied into the buffer as-is without re-serialization. When using CompositionBackend
 // directly via CacheBackend::get/set, even this minimal envelope overhead is avoided.
 #[async_trait]
-impl<L1, L2> Backend for CompositionBackend<L1, L2>
+impl<L1, L2, R, W, F> Backend for CompositionBackend<L1, L2, R, W, F>
 where
     L1: Backend + Send + Sync,
     L2: Backend + Send + Sync,
+    R: ReadPolicy,
+    W: WritePolicy,
+    F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-        // Try L1 first
-        if let Some(l1_value) = self.l1.read(key).await? {
-            let expire = l1_value.expire;
-            let stale = l1_value.stale;
-            let envelope = CompositionEnvelope::L1(l1_value.into());
-            // Use bitcode for faster serialization (matches CacheKey format)
-            let packed = bitcode::serialize(&envelope)
-                .map(Bytes::from)
-                .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-            return Ok(Some(CacheValue::new(packed, expire, stale)));
-        }
+        let l1 = &self.l1;
+        let l2 = &self.l2;
 
-        // Try L2 if L1 miss
-        if let Some(l2_value) = self.l2.read(key).await? {
-            let expire = l2_value.expire;
-            let stale = l2_value.stale;
-            let envelope = CompositionEnvelope::L2(l2_value.into());
-            // Use bitcode for faster serialization (matches CacheKey format)
-            let packed = bitcode::serialize(&envelope)
-                .map(Bytes::from)
-                .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-            return Ok(Some(CacheValue::new(packed, expire, stale)));
-        }
+        let read_l1_with_envelope = |k| async move {
+            l1.read(k)
+                .await?
+                .map(|l1_value| {
+                    let (expire, stale) = (l1_value.expire, l1_value.stale);
+                    CompositionEnvelope::L1(l1_value.into()).serialize_to_cache_value(expire, stale)
+                })
+                .transpose()
+        };
 
-        // Both miss
-        Ok(None)
+        let read_l2_with_envelope = |k| async move {
+            l2.read(k)
+                .await?
+                .map(|l2_value| {
+                    let (expire, stale) = (l2_value.expire, l2_value.stale);
+                    CompositionEnvelope::L2(l2_value.into()).serialize_to_cache_value(expire, stale)
+                })
+                .transpose()
+        };
+
+        self.read_policy
+            .execute_with(key, read_l1_with_envelope, read_l2_with_envelope)
+            .await
     }
 
     #[tracing::instrument(skip(self, value), level = "trace")]
@@ -307,30 +550,18 @@ where
         // The L1/L2 branches are defensive code for edge cases
         match composition {
             CompositionEnvelope::Both { l1, l2 } => {
-                // Write to both layers in parallel for better performance
-                let (l1_result, l2_result) = futures::join!(
-                    self.l1.write(key, l1.into(), ttl),
-                    self.l2.write(key, l2.into(), ttl)
-                );
+                // Use write policy to determine how to write to both layers
+                let l1_ref = &self.l1;
+                let l2_ref = &self.l2;
+                let l1_value = l1.into();
+                let l2_value = l2.into();
 
-                // Return error if both fail
-                match (l1_result, l2_result) {
-                    (Err(e1), Err(e2)) => {
-                        tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both L1 and L2 write failed");
-                        Err(BackendError::InternalError(Box::new(
-                            CompositionError::BothLayersFailed { l1: e1, l2: e2 }
-                        )))
-                    }
-                    (Err(e), Ok(())) => {
-                        tracing::warn!(error = ?e, "L1 write failed");
-                        Ok(())
-                    }
-                    (Ok(()), Err(e)) => {
-                        tracing::warn!(error = ?e, "L2 write failed");
-                        Ok(())
-                    }
-                    (Ok(()), Ok(())) => Ok(()),
-                }
+                let write_l1 = |k| async move { l1_ref.write(k, l1_value, ttl).await };
+                let write_l2 = |k| async move { l2_ref.write(k, l2_value, ttl).await };
+
+                self.write_policy
+                    .execute_with(key, write_l1, write_l2)
+                    .await
             }
             CompositionEnvelope::L1(l1) => self.l1.write(key, l1.into(), ttl).await,
             CompositionEnvelope::L2(l2) => self.l2.write(key, l2.into(), ttl).await,
@@ -340,16 +571,13 @@ where
     #[tracing::instrument(skip(self), level = "trace")]
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         // Delete from both layers in parallel for better performance
-        let (l1_result, l2_result) = futures::join!(
-            self.l1.remove(key),
-            self.l2.remove(key)
-        );
+        let (l1_result, l2_result) = futures::join!(self.l1.remove(key), self.l2.remove(key));
 
         match (l1_result, l2_result) {
             (Err(e1), Err(e2)) => {
                 tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both L1 and L2 delete failed");
                 Err(BackendError::InternalError(Box::new(
-                    CompositionError::BothLayersFailed { l1: e1, l2: e2 }
+                    CompositionError::BothLayersFailed { l1: e1, l2: e2 },
                 )))
             }
             (Err(e), Ok(status)) => {
@@ -384,10 +612,13 @@ where
     }
 }
 
-impl<L1, L2> CacheBackend for CompositionBackend<L1, L2>
+impl<L1, L2, R, W, F> CacheBackend for CompositionBackend<L1, L2, R, W, F>
 where
     L1: CacheBackend + Send + Sync,
     L2: CacheBackend + Send + Sync,
+    R: ReadPolicy,
+    W: WritePolicy,
+    F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
     async fn get<T>(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<T::Cached>>>
@@ -395,50 +626,28 @@ where
         T: CacheableResponse,
         T::Cached: Serialize + DeserializeOwned + Send + Sync,
     {
-        // Try L1 first
-        match self.l1.get::<T>(key).await {
-            Ok(Some(value)) => {
-                // L1 hit - return immediately
-                tracing::trace!("L1 hit");
-                return Ok(Some(value));
-            }
-            Ok(None) => {
-                // L1 miss - continue to L2
-                tracing::trace!("L1 miss");
-            }
-            Err(e) => {
-                // L1 error - log and continue to L2
-                tracing::warn!(error = ?e, "L1 get failed");
-            }
-        }
+        let l1 = &self.l1;
+        let l2 = &self.l2;
+        let refill_policy = &self.refill_policy;
 
-        // Try L2
-        match self.l2.get::<T>(key).await {
-            Ok(Some(value)) => {
-                // L2 hit - populate L1 for future fast access
-                tracing::trace!("L2 hit, populating L1");
+        let read_l1 = |k| async move { l1.get::<T>(k).await };
 
-                // Use the value's ttl() method to get remaining time
-                let ttl = value.ttl();
+        let read_l2_with_refill = |k| async move {
+            let value = l2.get::<T>(k).await?;
 
-                // Populate L1 (best-effort, don't fail the read if this fails)
-                if let Err(e) = self.l1.set::<T>(key, &value, ttl).await {
-                    tracing::warn!(error = ?e, "Failed to populate L1 from L2");
-                }
+            // Refill L1 on hit using policy (best-effort)
+            if let Some(ref v) = value {
+                refill_policy
+                    .execute(v, || async { l1.set::<T>(k, v, v.ttl()).await })
+                    .await;
+            }
 
-                Ok(Some(value))
-            }
-            Ok(None) => {
-                // L2 miss
-                tracing::trace!("L2 miss");
-                Ok(None)
-            }
-            Err(e) => {
-                // L2 error
-                tracing::error!(error = ?e, "L2 get failed");
-                Err(e)
-            }
-        }
+            Ok(value)
+        };
+
+        self.read_policy
+            .execute_with(key, read_l1, read_l2_with_refill)
+            .await
     }
 
     #[tracing::instrument(skip(self, value), level = "trace")]
@@ -452,49 +661,29 @@ where
         T: CacheableResponse,
         T::Cached: Serialize + Send + Sync,
     {
-        // Write to both layers in parallel for better performance
-        let (l1_result, l2_result) = futures::join!(
-            self.l1.set::<T>(key, value, ttl),
-            self.l2.set::<T>(key, value, ttl)
-        );
+        // Use write policy to determine how to write to both layers
+        let l1 = &self.l1;
+        let l2 = &self.l2;
 
-        // Success if at least one succeeds
-        match (l1_result, l2_result) {
-            (Err(e1), Err(e2)) => {
-                tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both L1 and L2 set failed");
-                Err(BackendError::InternalError(Box::new(
-                    CompositionError::BothLayersFailed { l1: e1, l2: e2 }
-                )))
-            }
-            (Err(e), Ok(())) => {
-                tracing::warn!(error = ?e, "L1 set failed");
-                Ok(()) // L2 succeeded
-            }
-            (Ok(()), Err(e)) => {
-                tracing::warn!(error = ?e, "L2 set failed");
-                Ok(()) // L1 succeeded
-            }
-            (Ok(()), Ok(())) => {
-                tracing::trace!("Successfully set in both L1 and L2");
-                Ok(())
-            }
-        }
+        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl).await };
+        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl).await };
+
+        self.write_policy
+            .execute_with(key, write_l1, write_l2)
+            .await
     }
 
     #[tracing::instrument(skip(self), level = "trace")]
     async fn delete(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         // Delete from both layers in parallel for better performance
-        let (l1_result, l2_result) = futures::join!(
-            self.l1.delete(key),
-            self.l2.delete(key)
-        );
+        let (l1_result, l2_result) = futures::join!(self.l1.delete(key), self.l2.delete(key));
 
         // Aggregate results
         match (l1_result, l2_result) {
             (Err(e1), Err(e2)) => {
                 tracing::error!(l1_error = ?e1, l2_error = ?e2, "Both L1 and L2 delete failed");
                 Err(BackendError::InternalError(Box::new(
-                    CompositionError::BothLayersFailed { l1: e1, l2: e2 }
+                    CompositionError::BothLayersFailed { l1: e1, l2: e2 },
                 )))
             }
             (Err(e), Ok(status)) => {
@@ -529,7 +718,9 @@ mod tests {
     use crate::{Backend, CacheKeyFormat, Compressor, PassthroughCompressor};
     use async_trait::async_trait;
     use chrono::Utc;
-    use hitbox_core::{CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+    use hitbox_core::{
+        CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw,
+    };
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
