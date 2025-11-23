@@ -1,9 +1,17 @@
-use hitbox_backend::serializer::{FormatExt, JsonFormat, BincodeFormat};
+use hitbox_backend::format::{FormatExt, JsonFormat, BincodeFormat};
 use hitbox_backend::composition::CompositionFormat;
+use hitbox_backend::PassthroughCompressor;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestData {
     id: u32,
     name: String,
@@ -26,6 +34,8 @@ fn test_same_format_optimization() {
     let composition = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(JsonFormat),
+        Arc::new(PassthroughCompressor),
+        Arc::new(PassthroughCompressor),
     );
 
     let data = TestData::large();
@@ -44,6 +54,8 @@ fn test_different_formats() {
     let composition = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(BincodeFormat),
+        Arc::new(PassthroughCompressor),
+        Arc::new(PassthroughCompressor),
     );
 
     let data = TestData::large();
@@ -68,6 +80,8 @@ fn test_serialization_size_comparison() {
     let composition_same = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(JsonFormat),
+        Arc::new(PassthroughCompressor),
+        Arc::new(PassthroughCompressor),
     );
     let composition_same_size = composition_same.serialize(&data, &()).unwrap().len();
 
@@ -75,6 +89,8 @@ fn test_serialization_size_comparison() {
     let composition_diff = CompositionFormat::new(
         Arc::new(JsonFormat),
         Arc::new(BincodeFormat),
+        Arc::new(PassthroughCompressor),
+        Arc::new(PassthroughCompressor),
     );
     let composition_diff_size = composition_diff.serialize(&data, &()).unwrap().len();
 

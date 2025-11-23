@@ -7,7 +7,7 @@ use hitbox::{CacheKey, CacheValue, Raw};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
-    serializer::{Format, JsonFormat},
+    format::{Format, JsonFormat},
 };
 use redis::{Client, aio::ConnectionManager};
 use tokio::sync::OnceCell;

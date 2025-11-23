@@ -28,14 +28,14 @@ impl Backend for StrettoBackend {
     async fn read(
         &self,
         key: &CacheKey,
-    ) -> BackendResult<Option<CacheValue<hitbox_backend::serializer::Raw>>> {
+    ) -> BackendResult<Option<CacheValue<hitbox_backend::format::Raw>>> {
         todo!()
     }
 
     async fn write(
         &self,
         key: &CacheKey,
-        value: CacheValue<hitbox_backend::serializer::Raw>,
+        value: CacheValue<hitbox_backend::format::Raw>,
         ttl: Option<Duration>,
     ) -> BackendResult<()> {
         todo!()

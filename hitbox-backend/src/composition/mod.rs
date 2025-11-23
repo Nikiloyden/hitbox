@@ -39,15 +39,16 @@
 
 pub mod compose;
 pub mod context;
+pub mod envelope;
 pub mod policy;
 
 pub use compose::Compose;
 pub use context::{CompositionContext, CompositionSource};
 pub use policy::CompositionPolicy;
 
-use crate::serializer::{Format, FormatError, FormatTypeId};
+use crate::format::{Format, FormatError, FormatTypeId, FormatSerializer, FormatDeserializer};
 use crate::{
-    Backend, BackendContext, BackendError, BackendResult, BackendValue, CacheBackend,
+    Backend, BackendContext, BackendError, BackendResult, CacheBackend,
     CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
 use async_trait::async_trait;
@@ -112,72 +113,35 @@ impl From<CacheValueData> for CacheValue<Raw> {
     }
 }
 
-/// Envelope for multi-layer cache data.
-///
-/// This enum encapsulates data from one or both cache layers when using
-/// CompositionBackend as a trait object (`Box<dyn Backend>`).
-///
-/// # Variants Usage
-///
-/// - **`Both`**: Normal case created by `CacheBackend::set()`. Contains data
-///   serialized in both L1 and L2 formats for optimal performance.
-///
-/// - **`L1`**: Created by `Backend::read()` when data exists only in L1.
-///   This occurs during read operations through the trait object interface
-///   when L1 has data but L2 doesn't.
-///
-/// - **`L2`**: Created by `Backend::read()` when data exists only in L2.
-///   This occurs during read operations through the trait object interface
-///   when L2 has data but L1 doesn't (before refill).
-///
-/// # Performance Note
-///
-/// When using `CompositionBackend` directly via `CacheBackend::get/set`,
-/// the envelope wrapping is bypassed entirely for better performance.
-/// The envelope is only used when CompositionBackend is accessed through
-/// the `Backend` trait (e.g., `Box<dyn Backend>`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum CompositionEnvelope {
-    /// Data from L1 only (created during Backend::read from L1 hit)
-    L1(CacheValueData),
-    /// Data from L2 only (created during Backend::read from L2 hit)
-    L2(CacheValueData),
-    /// Data from both layers (created by CacheBackend::set - normal case)
-    Both {
-        l1: CacheValueData,
-        l2: CacheValueData,
-    },
-}
-
-impl CompositionEnvelope {
-    /// Serialize the envelope using bitcode and wrap in a CacheValue.
-    fn serialize_to_cache_value(
-        self,
-        expire: Option<DateTime<Utc>>,
-        stale: Option<DateTime<Utc>>,
-    ) -> BackendResult<CacheValue<Raw>> {
-        let packed = bitcode::serialize(&self)
-            .map(Bytes::from)
-            .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-        Ok(CacheValue::new(packed, expire, stale))
-    }
-}
+use envelope::CompositionEnvelope;
 
 /// Format implementation for CompositionBackend that handles multi-layer serialization.
 ///
 /// This format serializes data in both formats and packs them together into a CompositionEnvelope.
 /// On deserialization, it unpacks the CompositionEnvelope and deserializes from L1 if available, otherwise L2.
+///
+/// Each layer can have its own compression: L1 typically uses PassthroughCompressor (fast memory access),
+/// while L2 can use GzipCompressor or ZstdCompressor (reduce network bandwidth).
 #[derive(Debug, Clone)]
 pub struct CompositionFormat {
     l1_format: Arc<dyn Format>,
     l2_format: Arc<dyn Format>,
+    l1_compressor: Arc<dyn Compressor>,
+    l2_compressor: Arc<dyn Compressor>,
 }
 
 impl CompositionFormat {
-    pub fn new(l1_format: Arc<dyn Format>, l2_format: Arc<dyn Format>) -> Self {
+    pub fn new(
+        l1_format: Arc<dyn Format>,
+        l2_format: Arc<dyn Format>,
+        l1_compressor: Arc<dyn Compressor>,
+        l2_compressor: Arc<dyn Compressor>,
+    ) -> Self {
         CompositionFormat {
             l1_format,
             l2_format,
+            l1_compressor,
+            l2_compressor,
         }
     }
 
@@ -189,65 +153,82 @@ impl CompositionFormat {
 }
 
 impl Format for CompositionFormat {
-    fn erased_serialize(
+    fn with_serializer(
         &self,
-        value: &dyn erased_serde::Serialize,
+        f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
         context: &dyn BackendContext,
     ) -> Result<Raw, FormatError> {
         // Check if this is a refill operation (writing L2 data back to L1)
         if let Some(comp_ctx) = context.as_any().downcast_ref::<CompositionContext>() {
             if comp_ctx.policy.write_after_read {
                 // For refill operations, create an L1-only envelope
-                // This data came from L2, so serialize it in L1 format for L1 storage
-                let l1_serialized = self.l1_format.erased_serialize(value, context)?;
-                let composition = CompositionEnvelope::L1(CacheValueData::new(l1_serialized));
+                // This data came from L2, so serialize and compress it for L1 storage
+                let l1_serialized = self.l1_format.with_serializer(f, context)?;
+                let l1_compressed = self.l1_compressor.compress(&l1_serialized)
+                    .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+                let composition = CompositionEnvelope::L1(CacheValueData::new(Bytes::from(l1_compressed)));
 
-                return bitcode::serialize(&composition)
-                    .map(Bytes::from)
+                return composition
+                    .serialize()
                     .map_err(|e| FormatError::Serialize(Box::new(e)));
             }
         }
 
         // Normal write path: Create Both envelope with data for both layers
-        let l1_serialized = self.l1_format.erased_serialize(value, context)?;
+        // Serialize and compress for L1
+        let l1_serialized = self.l1_format.with_serializer(f, context)?;
+        let l1_compressed = self.l1_compressor.compress(&l1_serialized)
+            .map_err(|e| FormatError::Serialize(Box::new(e)))?;
 
+        // Serialize and compress for L2
         // If L1 and L2 use the same format, reuse the serialized data instead of serializing again
         let l2_serialized = if self.same_format() {
             l1_serialized.clone()
         } else {
-            self.l2_format.erased_serialize(value, context)?
+            self.l2_format.with_serializer(f, context)?
         };
+        let l2_compressed = self.l2_compressor.compress(&l2_serialized)
+            .map_err(|e| FormatError::Serialize(Box::new(e)))?;
 
-        // Pack both serialized values into CompositionEnvelope
+        // Pack both compressed values into CompositionEnvelope
         let composition = CompositionEnvelope::Both {
-            l1: CacheValueData::new(l1_serialized),
-            l2: CacheValueData::new(l2_serialized),
+            l1: CacheValueData::new(Bytes::from(l1_compressed)),
+            l2: CacheValueData::new(Bytes::from(l2_compressed)),
         };
 
-        // Serialize the CompositionEnvelope itself using bitcode for better performance
-        bitcode::serialize(&composition)
-            .map(Bytes::from)
+        // Serialize the CompositionEnvelope using zero-copy repr(C) format
+        composition
+            .serialize()
             .map_err(|e| FormatError::Serialize(Box::new(e)))
     }
 
     fn with_deserializer(
         &self,
         data: &[u8],
-        f: &mut dyn FnMut(&mut dyn erased_serde::Deserializer) -> Result<(), erased_serde::Error>,
-    ) -> Result<(), FormatError> {
-        // Deserialize the CompositionEnvelope using bitcode
-        let composition: CompositionEnvelope =
-            bitcode::deserialize(data).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+        f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
+    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError> {
+        // Deserialize the CompositionEnvelope using zero-copy repr(C) format
+        let composition = CompositionEnvelope::deserialize(data)
+            .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
-        // Get data from L1 if available, otherwise L2, and use the corresponding format
-        let (layer_data, format): (&Bytes, &dyn Format) = match &composition {
-            CompositionEnvelope::L1(v) => (&v.data, &self.l1_format),
-            CompositionEnvelope::L2(v) => (&v.data, &self.l2_format),
-            CompositionEnvelope::Both { l1, .. } => (&l1.data, &self.l1_format),
+        // Extract source, compressed data, format, and compressor from envelope type
+        let (compressed_data, format, compressor, source): (&Bytes, &dyn Format, &dyn Compressor, CompositionSource) = match &composition {
+            CompositionEnvelope::L1(v) => (&v.data, &*self.l1_format, &*self.l1_compressor, CompositionSource::L1),
+            CompositionEnvelope::L2(v) => (&v.data, &*self.l2_format, &*self.l2_compressor, CompositionSource::L2),
+            CompositionEnvelope::Both { l1, .. } => (&l1.data, &*self.l1_format, &*self.l1_compressor, CompositionSource::L1),
         };
 
-        // Use the appropriate format to deserialize
-        format.with_deserializer(layer_data.as_ref(), f)
+        // Decompress the data
+        let decompressed = compressor.decompress(compressed_data.as_ref())
+            .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+
+        // Use the appropriate format to deserialize the decompressed data
+        let (result, _inner_context) = format.with_deserializer(&decompressed, f)?;
+
+        // Create CompositionContext from the envelope source
+        let context = CompositionContext::new(source, self.clone());
+
+        Ok((result, std::sync::Arc::new(context) as std::sync::Arc<dyn BackendContext>))
     }
 
     fn clone_box(&self) -> Box<dyn Format> {
@@ -317,6 +298,8 @@ where
         let format = CompositionFormat::new(
             Arc::new(l1.value_format().clone_box()),
             Arc::new(l2.value_format().clone_box()),
+            Arc::new(l1.compressor().clone_box()),
+            Arc::new(l2.compressor().clone_box()),
         );
         Self {
             l1,
@@ -525,51 +508,43 @@ where
     F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
-    async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         let l1 = &self.l1;
         let l2 = &self.l2;
-        let format = &self.format;
 
         let read_l1_with_envelope = |k| async move {
-            let backend_value = l1.read(k).await?;
-            match backend_value.value {
+            let value_opt = l1.read(k).await?;
+            match value_opt {
                 Some(l1_value) => {
                     let (expire, stale) = (l1_value.expire, l1_value.stale);
-                    CompositionEnvelope::L1(l1_value.into())
-                        .serialize_to_cache_value(expire, stale)
-                        .map(Some)
+                    let envelope = CompositionEnvelope::L1(l1_value.into());
+                    let packed = envelope.serialize()?;
+                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(packed, expire, stale)))
                 }
                 None => Ok(None),
             }
         };
 
         let read_l2_with_envelope = |k| async move {
-            let backend_value = l2.read(k).await?;
-            match backend_value.value {
+            let value_opt = l2.read(k).await?;
+            match value_opt {
                 Some(l2_value) => {
                     let (expire, stale) = (l2_value.expire, l2_value.stale);
-                    CompositionEnvelope::L2(l2_value.into())
-                        .serialize_to_cache_value(expire, stale)
-                        .map(Some)
+                    let envelope = CompositionEnvelope::L2(l2_value.into());
+                    let packed = envelope.serialize()?;
+                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(packed, expire, stale)))
                 }
                 None => Ok(None),
             }
         };
 
-        let (value, source) = self
+        let (value, _source) = self
             .read_policy
             .execute_with(key, read_l1_with_envelope, read_l2_with_envelope)
             .await?;
 
-        // Create context based on which layer provided the data
-        let backend_value = if value.is_some() {
-            let ctx = context::CompositionContext::new(source, format.clone());
-            BackendValue::with_context(value, ctx)
-        } else {
-            BackendValue::new(None)
-        };
-
-        Ok(backend_value)
+        // No context creation - Format will extract context from envelope during deserialization
+        Ok(value)
     }
 
     #[tracing::instrument(skip(self, value), level = "trace")]
@@ -579,9 +554,8 @@ where
         value: CacheValue<Raw>,
         ttl: Option<Duration>,
     ) -> BackendResult<()> {
-        // Unpack CompositionEnvelope using bitcode
-        let composition: CompositionEnvelope = bitcode::deserialize(&value.data)
-            .map_err(|e| BackendError::InternalError(Box::new(e)))?;
+        // Unpack CompositionEnvelope using zero-copy format
+        let composition = CompositionEnvelope::deserialize(&value.data)?;
 
         // Write to appropriate layers
         // In normal usage via CacheBackend::set, this is always Both variant
@@ -659,6 +633,7 @@ where
     F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
+    #[cfg(not(feature = "rkyv_format"))]
     async fn get<T>(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<T::Cached>>>
     where
         T: CacheableResponse,
@@ -676,7 +651,7 @@ where
             // Refill L1 on hit using policy (best-effort)
             if let Some(ref v) = value {
                 refill_policy
-                    .execute(v, || async { l1.set::<T>(k, v, v.ttl(), &()).await })
+                    .execute(v, || async { l1.set::<T>(k, v, v.ttl()).await })
                     .await;
             }
 
@@ -691,13 +666,48 @@ where
         Ok(value)
     }
 
-    #[tracing::instrument(skip(self, value, context), level = "trace")]
+    #[tracing::instrument(skip(self), level = "trace")]
+    #[cfg(feature = "rkyv_format")]
+    async fn get<T>(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<T::Cached>>>
+    where
+        T: CacheableResponse,
+        T::Cached: Serialize + DeserializeOwned + Send + Sync + rkyv_dyn::SerializeDyn + rkyv::Archive,
+        <T::Cached as rkyv::Archive>::Archived: rkyv::Deserialize<T::Cached, rkyv::Infallible>,
+    {
+        let l1 = &self.l1;
+        let l2 = &self.l2;
+        let refill_policy = &self.refill_policy;
+
+        let read_l1 = |k| async move { l1.get::<T>(k).await };
+
+        let read_l2_with_refill = |k| async move {
+            let value = l2.get::<T>(k).await?;
+
+            // Refill L1 on hit using policy (best-effort)
+            if let Some(ref v) = value {
+                refill_policy
+                    .execute(v, || async { l1.set::<T>(k, v, v.ttl()).await })
+                    .await;
+            }
+
+            Ok(value)
+        };
+
+        let (value, _source) = self
+            .read_policy
+            .execute_with(key, read_l1, read_l2_with_refill)
+            .await?;
+
+        Ok(value)
+    }
+
+    #[tracing::instrument(skip(self, value), level = "trace")]
+    #[cfg(not(feature = "rkyv_format"))]
     async fn set<T>(
         &self,
         key: &CacheKey,
         value: &CacheValue<T::Cached>,
         ttl: Option<Duration>,
-        context: &dyn BackendContext,
     ) -> BackendResult<()>
     where
         T: CacheableResponse,
@@ -707,8 +717,32 @@ where
         let l1 = &self.l1;
         let l2 = &self.l2;
 
-        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl, context).await };
-        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl, context).await };
+        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl).await };
+        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl).await };
+
+        self.write_policy
+            .execute_with(key, write_l1, write_l2)
+            .await
+    }
+
+    #[tracing::instrument(skip(self, value), level = "trace")]
+    #[cfg(feature = "rkyv_format")]
+    async fn set<T>(
+        &self,
+        key: &CacheKey,
+        value: &CacheValue<T::Cached>,
+        ttl: Option<Duration>,
+    ) -> BackendResult<()>
+    where
+        T: CacheableResponse,
+        T::Cached: Serialize + Send + Sync + rkyv_dyn::SerializeDyn,
+    {
+        // Use write policy to determine how to write to both layers
+        let l1 = &self.l1;
+        let l2 = &self.l2;
+
+        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl).await };
+        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl).await };
 
         self.write_policy
             .execute_with(key, write_l1, write_l2)
@@ -756,16 +790,22 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::serializer::{Format, JsonFormat};
+    use crate::format::{Format, JsonFormat};
     use crate::{Backend, CacheKeyFormat, Compressor, PassthroughCompressor};
     use async_trait::async_trait;
     use chrono::Utc;
     use hitbox_core::{
         CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw,
     };
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+
+    #[cfg(feature = "rkyv_format")]
+    use rkyv::{Archive, Serialize as RkyvSerialize};
+    #[cfg(feature = "rkyv_format")]
+    use rkyv_typename::TypeName;
 
     // Simple in-memory backend for testing
     #[derive(Clone, Debug)]
@@ -783,8 +823,8 @@ mod tests {
 
     #[async_trait]
     impl Backend for TestBackend {
-        async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
-            Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
+        async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+            Ok(self.store.lock().unwrap().get(key).cloned())
         }
 
         async fn write(
@@ -819,6 +859,13 @@ mod tests {
 
     impl CacheBackend for TestBackend {}
 
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+    #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
+    struct CachedData {
+        value: String,
+    }
+
     // Mock CacheableResponse for testing
     // We only need the associated type, the actual methods are not used in these tests
     struct MockResponse;
@@ -827,7 +874,7 @@ mod tests {
     // The methods are not actually called in these tests.
     #[async_trait]
     impl CacheableResponse for MockResponse {
-        type Cached = String;
+        type Cached = CachedData;
         type Subject = MockResponse;
 
         async fn cache_policy<P: Predicate<Subject = Self::Subject> + Send + Sync>(
@@ -855,20 +902,20 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            "value1".to_string(),
+            CachedData { value: "value1".to_string() },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Write to populate both layers
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
 
         // Read should hit L1
         let result = backend.get::<MockResponse>(&key).await.unwrap();
-        assert_eq!(result.unwrap().data, "value1");
+        assert_eq!(result.unwrap().data.value, "value1");
     }
 
     #[tokio::test]
@@ -878,13 +925,13 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            "value1".to_string(),
+            CachedData { value: "value1".to_string() },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Write only to L2
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
+        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
 
@@ -892,12 +939,12 @@ mod tests {
 
         // First read should hit L2 and populate L1
         let result = backend.get::<MockResponse>(&key).await.unwrap();
-        assert_eq!(result.unwrap().data, "value1");
+        assert_eq!(result.unwrap().data.value, "value1");
 
         // Verify L1 was populated from L2 (cache warming)
         let l1_result = l1.get::<MockResponse>(&key).await.unwrap();
         assert!(l1_result.is_some(), "L1 should be populated from L2 hit");
-        assert_eq!(l1_result.unwrap().data, "value1");
+        assert_eq!(l1_result.unwrap().data.value, "value1");
     }
 
     #[tokio::test]
@@ -919,7 +966,7 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            "value1".to_string(),
+            CachedData { value: "value1".to_string() },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -927,16 +974,16 @@ mod tests {
         let backend = CompositionBackend::new(l1.clone(), l2.clone());
 
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
 
         // Verify both layers have the value
         let l1_result = l1.get::<MockResponse>(&key).await.unwrap();
-        assert_eq!(l1_result.unwrap().data, "value1");
+        assert_eq!(l1_result.unwrap().data.value, "value1");
 
         let l2_result = l2.get::<MockResponse>(&key).await.unwrap();
-        assert_eq!(l2_result.unwrap().data, "value1");
+        assert_eq!(l2_result.unwrap().data.value, "value1");
     }
 
     #[tokio::test]
@@ -946,7 +993,7 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            "value1".to_string(),
+            CachedData { value: "value1".to_string() },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -955,7 +1002,7 @@ mod tests {
 
         // Write to both
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
 
@@ -981,19 +1028,19 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            "value1".to_string(),
+            CachedData { value: "value1".to_string() },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Write via original
         backend
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &())
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
 
         // Read via clone should work (shared backends)
         let result = cloned.get::<MockResponse>(&key).await.unwrap();
-        assert_eq!(result.unwrap().data, "value1");
+        assert_eq!(result.unwrap().data.value, "value1");
     }
 }

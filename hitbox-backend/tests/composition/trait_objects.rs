@@ -3,15 +3,20 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::{
-    Backend, BackendResult, BackendValue, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
+    Backend, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor, CompositionBackend,
 };
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
+
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
 
 // Simple in-memory backend for testing
 #[derive(Clone, Debug)]
@@ -29,8 +34,8 @@ impl TestBackend {
 
 #[async_trait]
 impl Backend for TestBackend {
-    async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
-        Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+        Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
     async fn write(
@@ -66,6 +71,8 @@ impl Backend for TestBackend {
 impl CacheBackend for TestBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }
@@ -111,7 +118,7 @@ async fn test_boxed_composition_backend() {
     );
 
     // Should work through Box
-    boxed.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    boxed.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -139,7 +146,7 @@ async fn test_arc_composition_backend() {
     );
 
     // Should work through Arc
-    arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -169,7 +176,7 @@ async fn test_ref_composition_backend() {
     );
 
     // Should work through reference
-    (&composition).set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    (&composition).set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -197,7 +204,7 @@ async fn test_composition_as_dyn_backend() {
     );
 
     // Should work through trait object
-    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -225,7 +232,7 @@ async fn test_boxed_composition_as_dyn_backend() {
     );
 
     // Should work through boxed trait object
-    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -253,7 +260,7 @@ async fn test_arc_composition_as_dyn_backend() {
     );
 
     // Should work through Arc'd trait object
-    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 

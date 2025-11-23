@@ -61,13 +61,71 @@ where
     }
 }
 
+#[cfg(feature = "rkyv_format")]
+mod rkyv_header_map {
+    use http::HeaderMap;
+    use rkyv::{with::{ArchiveWith, DeserializeWith, SerializeWith}, Fallible};
+
+    pub struct AsHeaderVec;
+
+    impl ArchiveWith<HeaderMap> for AsHeaderVec {
+        type Archived = rkyv::Archived<Vec<(String, Vec<u8>)>>;
+        type Resolver = rkyv::Resolver<Vec<(String, Vec<u8>)>>;
+
+        unsafe fn resolve_with(
+            field: &HeaderMap,
+            pos: usize,
+            resolver: Self::Resolver,
+            out: *mut Self::Archived,
+        ) {
+            let vec: Vec<(String, Vec<u8>)> = field
+                .iter()
+                .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
+                .collect();
+            rkyv::Archive::resolve(&vec, pos, resolver, out);
+        }
+    }
+
+    impl<S: Fallible + ?Sized> SerializeWith<HeaderMap, S> for AsHeaderVec {
+        fn serialize_with(field: &HeaderMap, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+            let vec: Vec<(String, Vec<u8>)> = field
+                .iter()
+                .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
+                .collect();
+            rkyv::Serialize::serialize(&vec, serializer)
+        }
+    }
+
+    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<Vec<(String, Vec<u8>)>>, HeaderMap, D> for AsHeaderVec {
+        fn deserialize_with(
+            field: &rkyv::Archived<Vec<(String, Vec<u8>)>>,
+            deserializer: &mut D,
+        ) -> Result<HeaderMap, D::Error> {
+            let vec: Vec<(String, Vec<u8>)> = rkyv::Deserialize::deserialize(field, deserializer)?;
+            let mut map = HeaderMap::new();
+            for (name, value) in vec {
+                if let (Ok(header_name), Ok(header_value)) = (
+                    http::header::HeaderName::from_bytes(name.as_bytes()),
+                    http::header::HeaderValue::from_bytes(&value),
+                ) {
+                    map.append(header_name, header_value);
+                }
+            }
+            Ok(map)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct SerializableHttpResponse {
     status: u16,
     version: String,
-    #[serde(with = "serde_bytes")]
-    body: Vec<u8>,
+    body: Bytes,
     #[serde(with = "http_serde::header_map")]
+    #[cfg_attr(feature = "rkyv_format", with(rkyv_header_map::AsHeaderVec))]
     headers: HeaderMap,
 }
 
@@ -120,13 +178,13 @@ where
         CachePolicy::Cacheable(SerializableHttpResponse {
             status: self.parts.status.as_u16(),
             version: format!("{:?}", self.parts.version),
-            body: body_bytes.to_vec(),
+            body: body_bytes,
             headers: self.parts.headers,
         })
     }
 
     async fn from_cached(cached: Self::Cached) -> Self {
-        let body = BufferedBody::Complete(Some(Bytes::from(cached.body)));
+        let body = BufferedBody::Complete(Some(cached.body));
         let mut response = Response::builder()
             .status(cached.status)
             .body(body)

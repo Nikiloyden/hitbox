@@ -2,9 +2,9 @@
 
 use async_trait::async_trait;
 use dashmap::DashMap;
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
-    Backend, BackendError, BackendResult, BackendValue, CacheBackend, CacheKeyFormat, Compressor,
+    Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor,
     DeleteStatus, PassthroughCompressor,
 };
 use hitbox_core::{CacheKey, CacheValue, Raw};
@@ -61,8 +61,8 @@ impl Default for TestBackend {
 
 #[async_trait]
 impl Backend for TestBackend {
-    async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
-        Ok(BackendValue::new(self.store.get(key).map(|v| v.clone())))
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+        Ok(self.store.get(key).map(|v| v.clone()))
     }
 
     async fn write(
@@ -105,7 +105,7 @@ pub struct ErrorBackend;
 
 #[async_trait]
 impl Backend for ErrorBackend {
-    async fn read(&self, _key: &CacheKey) -> BackendResult<BackendValue> {
+    async fn read(&self, _key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         Err(BackendError::InternalError(Box::new(std::io::Error::other(
             "simulated error",
         ))))

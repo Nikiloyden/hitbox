@@ -1,6 +1,6 @@
 use crate::backend::{Expiration, MokaBackend};
 use hitbox::{CacheKey, CacheValue, Raw};
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{CacheKeyFormat, Compressor, PassthroughCompressor};
 use moka::future::{Cache, CacheBuilder};
 

@@ -4,10 +4,15 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor,
     CompositionBackend, DeleteStatus, PassthroughCompressor,
 };
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
 
 // Failing backend for testing error propagation
 #[derive(Clone, Debug)]
@@ -25,7 +30,7 @@ impl FailingBackend {
 
 #[async_trait]
 impl Backend for FailingBackend {
-    async fn read(&self, _key: &CacheKey) -> BackendResult<hitbox_backend::BackendValue> {
+    async fn read(&self, _key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         Err(BackendError::InternalError(Box::new(
             std::io::Error::other(self.error_message.clone()),
         )))
@@ -64,6 +69,8 @@ impl Backend for FailingBackend {
 impl CacheBackend for FailingBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }
@@ -107,7 +114,7 @@ async fn test_both_layers_fail_set() {
 
     // When both layers fail, should return CompositionError with both errors
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await;
 
     assert!(result.is_err());
@@ -193,7 +200,7 @@ async fn test_both_layers_fail_backend_write() {
 
     // Test via CacheBackend::set (which uses Backend::write internally)
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await;
 
     assert!(result.is_err());

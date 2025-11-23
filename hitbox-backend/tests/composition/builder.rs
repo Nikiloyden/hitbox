@@ -7,7 +7,7 @@ use hitbox_backend::composition::policy::{
     SequentialWritePolicy, OptimisticParallelWritePolicy,
 };
 use hitbox_backend::composition::CompositionPolicy;
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend, Compressor,
     DeleteStatus, PassthroughCompressor,
@@ -17,6 +17,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
 
 /// Simple in-memory backend for testing
 #[derive(Clone)]
@@ -34,9 +39,8 @@ impl TestBackend {
 
 #[async_trait]
 impl Backend for TestBackend {
-    async fn read(&self, key: &CacheKey) -> BackendResult<hitbox_backend::BackendValue> {
-        use hitbox_backend::BackendValue;
-        Ok(BackendValue::new(self.store.lock().unwrap().get(key).cloned()))
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+        Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
     async fn write(
@@ -74,6 +78,8 @@ impl Backend for TestBackend {
 impl CacheBackend for TestBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }
@@ -193,7 +199,7 @@ async fn test_backend_with_policy_functional() {
 
     // Write via backend
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 

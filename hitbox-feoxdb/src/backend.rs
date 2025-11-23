@@ -8,7 +8,7 @@ use bincode::{
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use feoxdb::{FeoxError, FeoxStore};
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,

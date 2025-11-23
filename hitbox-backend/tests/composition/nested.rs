@@ -10,9 +10,16 @@ use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, P
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
+
 use crate::common::TestBackend;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 pub(super) struct TestValue {
     pub data: String,
 }
@@ -72,7 +79,7 @@ async fn test_nested_composition_static_dispatch() {
     );
 
     // Write through nested composition - should populate all 3 levels
-    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     // Verify all 3 levels have the data
     assert!(l1.has(&key), "L1 should have the value");
@@ -108,7 +115,7 @@ async fn test_nested_composition_static_l1_miss() {
     );
 
     // Populate only L3
-    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     // Create nested composition
     let l2_l3 = CompositionBackend::new(l2.clone(), l3.clone());
@@ -149,7 +156,7 @@ async fn test_nested_composition_static_4_levels() {
     );
 
     // Populate only L4 (deepest level)
-    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     // Build nested hierarchy
     let l3_l4 = CompositionBackend::new(l3.clone(), l4.clone());
@@ -201,7 +208,7 @@ async fn test_nested_composition_dynamic_dispatch() {
     );
 
     // Write and read through dynamic dispatch
-    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    cache.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     let result = cache.get::<TestValue>(&key).await.unwrap();
     assert!(result.is_some());
@@ -238,7 +245,7 @@ async fn test_nested_composition_dynamic_as_trait_object() {
     let backend: Box<dyn Backend> = Box::new(nested);
 
     // Operations through trait object
-    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    backend.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     let result = backend.get::<TestValue>(&key).await.unwrap();
     assert!(result.is_some());
@@ -268,9 +275,9 @@ async fn test_nested_composition_delete_cascades() {
     );
 
     // Populate all levels
-    l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
-    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await.unwrap();
+    l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
 
     // Verify all have the data
     assert!(l1.has(&key));

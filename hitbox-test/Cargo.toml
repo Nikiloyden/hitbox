@@ -65,8 +65,28 @@ testcontainers-modules = { version = "0.13", features = ["redis"] }
 default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
+rkyv_format = ["hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
 
 [[test]]
 name = "integration"
 path = "tests/integration/bdd.rs"
 harness = false
+
+[[bench]]
+name = "backend_format"
+harness = false
+
+[[bench]]
+name = "backend_comparison"
+harness = false
+
+[[bench]]
+name = "backend_concurrency"
+harness = false
+
+[[bench]]
+name = "composition_overhead"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true, features = ["async_tokio"] }

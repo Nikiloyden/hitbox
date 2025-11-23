@@ -29,21 +29,41 @@ tracing = { workspace = true, features = ["attributes"] }
 serde_urlencoded = { version = "0.7.1", default-features = false }
 erased-serde = "0.4"
 bytes = { version = "1", features = ["serde"] }
+bytemuck = { version = "1.19", features = ["derive"] }
 
 # Compression support (optional)
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.13", optional = true }
+ron = "0.12.0"
+
+# Additional serialization formats (optional)
+rkyv = { version = "0.7", optional = true, features = ["validation"] }
+rkyv_dyn = { version = "0.7", optional = true }
+rkyv_typename = { version = "0.7", optional = true }
 
 [features]
 default = []
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
+rkyv_format = ["dep:rkyv", "dep:rkyv_dyn", "dep:rkyv_typename"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 criterion = { workspace = true, features = ["html_reports"] }
 dashmap = "6.1"
+bytemuck = { version = "1.19", features = ["derive"] }
+http = { workspace = true }
+http-serde = "2.1.1"
+flexbuffers = "25.2"
 
 [[bench]]
 name = "key_size"
+harness = false
+
+[[bench]]
+name = "envelope_serialization"
+harness = false
+
+[[bench]]
+name = "format_comparison"
 harness = false

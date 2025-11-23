@@ -33,7 +33,7 @@ async fn test_compose_trait_basic_usage() {
 
     // Write through composition
     cache
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -74,7 +74,7 @@ async fn test_compose_with_custom_policy() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -113,7 +113,7 @@ async fn test_compose_nested_3_levels() {
 
     // Write cascades to all 3 levels
     cache
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -154,7 +154,7 @@ async fn test_compose_with_builder_chaining() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -193,7 +193,7 @@ async fn test_compose_4_levels_cascade() {
     );
 
     // Populate only L4 (deepest level)
-    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 

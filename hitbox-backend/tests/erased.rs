@@ -2,10 +2,15 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::{Backend, BackendResult, BackendValue, CacheBackend, CacheKeyFormat, CompositionBackend};
+use hitbox_backend::{Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend};
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
 
 #[derive(Debug)]
 struct MemBackend {
@@ -28,11 +33,11 @@ impl MemBackend {
 
 #[async_trait]
 impl Backend for MemBackend {
-    async fn read(&self, key: &CacheKey) -> BackendResult<BackendValue> {
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         let lock = self.storage.read().await;
         let key_str = String::from_utf8(CacheKeyFormat::UrlEncoded.serialize(key)?).unwrap();
         let value = lock.get(&key_str).cloned();
-        Ok(BackendValue::new(value.map(|value| CacheValue::new(value, Some(Utc::now()), Some(Utc::now())))))
+        Ok(value.map(|value| CacheValue::new(value, Some(Utc::now()), Some(Utc::now()))))
     }
 
     async fn write(
@@ -55,6 +60,8 @@ impl Backend for MemBackend {
 impl CacheBackend for MemBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct Value {
     name: String,
     index: u8,
@@ -107,7 +114,7 @@ where
             Some(Utc::now()),
         );
         self.backend
-            .set::<Value>(&CacheKey::from_str("key3", ""), &value, None, &())
+            .set::<Value>(&CacheKey::from_str("key3", ""), &value, None)
             .await
             .unwrap();
         dbg!(
@@ -139,7 +146,7 @@ async fn dyn_backend() {
         Some(Utc::now()),
         Some(Utc::now()),
     );
-    backend.set::<Value>(&key2, &value, None, &()).await.unwrap();
+    backend.set::<Value>(&key2, &value, None).await.unwrap();
     let value = backend.get::<Value>(&key2).await.unwrap();
     dbg!(value);
 
@@ -169,7 +176,7 @@ async fn test_composition_with_boxed_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    composition.set::<Value>(&key_both, &value_both, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    composition.set::<Value>(&key_both, &value_both, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Read should return the value
     let result = composition.get::<Value>(&key_both).await.unwrap();
@@ -203,7 +210,7 @@ async fn test_composition_with_arc_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    composition.set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    composition.set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Read it back
     let result = composition.get::<Value>(&key).await.unwrap();
@@ -227,7 +234,7 @@ async fn test_composition_l1_l2_different_keys() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    l1_mem.set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    l1_mem.set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Populate L2 with key2
     let key2 = CacheKey::from_str("key2", "");
@@ -239,7 +246,7 @@ async fn test_composition_l1_l2_different_keys() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    l2_mem.set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    l2_mem.set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Create composition with trait objects
     let l1: Box<dyn Backend> = Box::new(l1_mem);
@@ -278,7 +285,7 @@ async fn test_composition_backend_as_trait_object() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    l1_mem.set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    l1_mem.set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Populate L2 with another key
     let key_l2 = CacheKey::from_str("l2_key", "");
@@ -290,7 +297,7 @@ async fn test_composition_backend_as_trait_object() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    l2_mem.set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    l2_mem.set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Create composition with trait objects
     let l1: Box<dyn Backend> = Box::new(l1_mem);
@@ -320,7 +327,7 @@ async fn test_composition_backend_as_trait_object() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    backend.set::<Value>(&key_new, &value_new, Some(std::time::Duration::from_secs(60)), &()).await.unwrap();
+    backend.set::<Value>(&key_new, &value_new, Some(std::time::Duration::from_secs(60))).await.unwrap();
 
     // Read back the new key
     let result = backend.get::<Value>(&key_new).await.unwrap();

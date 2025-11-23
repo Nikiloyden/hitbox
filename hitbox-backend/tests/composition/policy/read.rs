@@ -24,8 +24,8 @@ async fn test_sequential_l1_hit() {
 
     l1.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -44,8 +44,8 @@ async fn test_sequential_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -61,8 +61,8 @@ async fn test_sequential_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -80,8 +80,8 @@ async fn test_sequential_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -104,8 +104,8 @@ async fn test_race_l1_hit() {
 
     l1.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -124,8 +124,8 @@ async fn test_race_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -141,8 +141,8 @@ async fn test_race_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -160,8 +160,8 @@ async fn test_race_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -188,8 +188,8 @@ async fn test_parallel_both_hit_prefer_l1() {
         .await
         .unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -209,8 +209,8 @@ async fn test_parallel_l1_miss_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -226,8 +226,8 @@ async fn test_parallel_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -245,8 +245,8 @@ async fn test_parallel_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -286,8 +286,8 @@ async fn test_parallel_both_hit_l2_fresher_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -324,8 +324,8 @@ async fn test_parallel_both_hit_l1_fresher_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -362,8 +362,8 @@ async fn test_parallel_both_hit_equal_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -400,8 +400,8 @@ async fn test_parallel_both_hit_l2_no_expiry() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
@@ -438,8 +438,8 @@ async fn test_parallel_both_hit_l1_no_expiry() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await.map(|bv| bv.value) };
-    let read_l2 = |k| async move { l2.read(k).await.map(|bv| bv.value) };
+    let read_l1 = |k| async move { l1.read(k).await };
+    let read_l2 = |k| async move { l2.read(k).await };
 
     let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 

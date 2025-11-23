@@ -11,9 +11,16 @@ use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, P
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
+
 use crate::common::TestBackend;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }
@@ -56,7 +63,7 @@ async fn test_refill_with_boxed_composition_backend() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -93,7 +100,7 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
     );
 
     // Populate only L2
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -143,7 +150,7 @@ async fn test_direct_write_through_trait_object() {
 
     // Direct write through trait object
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -174,7 +181,7 @@ async fn test_nested_composition_with_trait_objects() {
     );
 
     // Populate only L3
-    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -237,7 +244,7 @@ async fn test_arc_wrapped_composition_refill() {
 
     // Populate only L2 directly before wrapping
     l2_arc
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
         .await
         .unwrap();
 
@@ -278,7 +285,7 @@ async fn test_multiple_refills_through_trait_object() {
         );
 
         l2_ref
-            .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &())
+            .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
             .await
             .unwrap();
     }

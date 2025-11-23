@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::serializer::FormatExt;
+use hitbox_backend::format::FormatExt;
 use hitbox_backend::{Backend, CacheBackend, CacheKeyFormat, DeleteStatus};
 use hitbox_core::{
     CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, ResponseCachePolicy,
@@ -464,7 +464,7 @@ where
     // Serialize the value to get the raw uncompressed serialized bytes
     let serialized = backend
         .value_format()
-        .serialize(&response)
+        .serialize(&response, &())
         .expect("failed to serialize");
 
     // Write to backend (should apply compression via compressor)

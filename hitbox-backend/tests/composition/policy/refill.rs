@@ -8,9 +8,15 @@ use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, P
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+use rkyv_typename::TypeName;
+
 use crate::common::TestBackend;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }
@@ -58,7 +64,7 @@ async fn test_always_refill_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
@@ -82,7 +88,7 @@ async fn test_never_refill_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
@@ -110,7 +116,7 @@ async fn test_manual_refill_with_always_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
@@ -134,7 +140,7 @@ async fn test_manual_refill_with_never_policy() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
@@ -157,7 +163,7 @@ async fn test_default_always_refill() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
@@ -180,7 +186,7 @@ async fn test_default_never_refill() {
     policy.execute(
         &value,
         || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &()).await
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
         }
     ).await;
 
