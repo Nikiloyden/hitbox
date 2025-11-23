@@ -138,6 +138,7 @@ where
             request: None,
             state: State::PollUpstream {
                 upstream_future,
+                permit: None,
                 ctx: Some(CacheContext::default().boxed()),
             },
             poll_cache: None,
@@ -162,7 +163,7 @@ where
     Res: CacheableResponse + Send,
     Res::Cached: Cacheable + Send,
     Req: CacheableRequest + Send + 'static,
-    C: ConcurrencyManager<Res>,
+    C: ConcurrencyManager<Res> + 'static,
     // Debug bounds
     Req: Debug,
     Res::Cached: Debug,
@@ -194,6 +195,7 @@ where
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
                                 upstream_future,
+                                permit: None,
                                 ctx: Some(ctx),
                             }
                         }
@@ -229,6 +231,7 @@ where
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
                                 upstream_future,
+                                permit: None,
                                 ctx: Some(ctx),
                             }
                         }
@@ -259,9 +262,13 @@ where
                     let request = request.take().expect(POLL_AFTER_READY_ERROR);
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.policy.as_ref() {
-                        PolicyConfig::Enabled(config) if config.concurrency.is_some() => {
+                        PolicyConfig::Enabled(crate::policy::EnabledCacheConfig {
+                            concurrency: Some(concurrency),
+                            ..
+                        }) => {
                             State::ConcurrentPollUpstream {
                                 request: Some(request),
+                                concurrency: *concurrency as usize,
                                 ctx: Some(ctx),
                             }
                         }
@@ -270,24 +277,40 @@ where
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
                                 upstream_future,
+                                permit: None,
                                 ctx: Some(ctx),
                             }
                         }
                     }
                 }
-                StateProj::ConcurrentPollUpstream { request, ctx } => {
+                StateProj::ConcurrentPollUpstream {
+                    request,
+                    concurrency,
+                    ctx,
+                } => {
                     let request = request.take().expect(POLL_AFTER_READY_ERROR);
+                    let concurrency = *concurrency;
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     let cache_key = this
                         .cache_key
                         .as_ref()
                         .expect("CacheKey not found for concurrency check");
-                    match this.concurrency_manager.check(cache_key) {
-                        ConcurrencyDecision::Proceed => {
+                    match this.concurrency_manager.check(cache_key, concurrency) {
+                        ConcurrencyDecision::Proceed(permit) => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
                                 upstream_future,
+                                permit: Some(permit),
+                                ctx: Some(ctx),
+                            }
+                        }
+                        ConcurrencyDecision::ProceedWithoutPermit => {
+                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
+                            let upstream_future = Box::pin(upstream.call(request));
+                            State::PollUpstream {
+                                upstream_future,
+                                permit: None,
                                 ctx: Some(ctx),
                             }
                         }
@@ -353,6 +376,7 @@ where
                                     );
                                     State::PollUpstream {
                                         upstream_future,
+                                        permit: None,
                                         ctx: Some(ctx),
                                     }
                                 }
@@ -427,29 +451,27 @@ where
                 }
                 StateProj::PollUpstream {
                     upstream_future,
+                    permit,
                     ctx,
                 } => {
                     let res = ready!(upstream_future.as_mut().poll(cx));
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     State::UpstreamPolled {
                         upstream_result: Some(res),
-                        ctx: Some(ctx),
+                        permit: permit.take(),
+                        ctx: ctx.take(),
                     }
                 }
                 StateProj::UpstreamPolled {
                     upstream_result,
+                    permit,
                     ctx,
                 } => {
                     let upstream_result = upstream_result.take().expect(POLL_AFTER_READY_ERROR);
+                    let permit = permit.take();
                     let predicates = this.response_predicates.clone();
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.cache_key {
-                        Some(cache_key) => {
-                            // Notify waiting requests that response is ready
-                            let upstream_result = this
-                                .concurrency_manager
-                                .complete(cache_key, upstream_result);
-
+                        Some(_cache_key) => {
                             let entity_config = match this.policy.as_ref() {
                                 PolicyConfig::Enabled(config) => EntityPolicyConfig {
                                     ttl: config.ttl.map(|s| Duration::from_secs(s as u64)),
@@ -463,6 +485,7 @@ where
                                         .cache_policy(predicates, &entity_config)
                                         .await
                                 }),
+                                permit,
                                 ctx: Some(ctx),
                             }
                         }
@@ -472,13 +495,22 @@ where
                         },
                     }
                 }
-                StateProj::CheckResponseCachePolicy { cache_policy, ctx } => {
+                StateProj::CheckResponseCachePolicy {
+                    cache_policy,
+                    permit,
+                    ctx,
+                } => {
                     let policy = ready!(cache_policy.poll(cx));
                     let backend = this.backend.clone();
                     let cache_key = this.cache_key.take().expect("CacheKey not found");
+                    let permit = permit.take();
                     let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(cache_value) => {
+                            // Only resolve if we have a permit (we're the winner of the race)
+                            if permit.is_some() {
+                                this.concurrency_manager.resolve(&cache_key, &cache_value);
+                            }
                             let update_cache_future = Box::pin(async move {
                                 let update_cache_result = backend
                                     .set::<Res>(&cache_key, &cache_value, None, &mut ctx)

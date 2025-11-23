@@ -4,6 +4,7 @@ use futures::future::BoxFuture;
 use hitbox_backend::BackendError;
 use hitbox_core::{BoxContext, RequestCachePolicy, ResponseCachePolicy};
 use pin_project::pin_project;
+use tokio::sync::OwnedSemaphorePermit;
 
 use crate::{CacheState, CacheValue, CacheableResponse};
 
@@ -52,6 +53,7 @@ where
     /// Concurrent upstream polling with concurrency control
     ConcurrentPollUpstream {
         request: Option<Req>,
+        concurrency: usize,
         ctx: Option<BoxContext>,
     },
     /// Awaiting response from another concurrent request
@@ -63,17 +65,20 @@ where
     /// Polling upstream service
     PollUpstream {
         upstream_future: UpstreamFuture<Res>,
+        permit: Option<OwnedSemaphorePermit>,
         ctx: Option<BoxContext>,
     },
     /// Upstream response received
     UpstreamPolled {
         upstream_result: Option<Res>,
+        permit: Option<OwnedSemaphorePermit>,
         ctx: Option<BoxContext>,
     },
     /// Checking if response should be cached
     CheckResponseCachePolicy {
         #[pin]
         cache_policy: BoxFuture<'static, ResponseCachePolicy<Res>>,
+        permit: Option<OwnedSemaphorePermit>,
         ctx: Option<BoxContext>,
     },
     /// Updating cache with response - context is captured in the future
