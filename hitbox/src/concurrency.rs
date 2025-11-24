@@ -11,6 +11,15 @@ use hitbox_core::{CacheValue, CacheableResponse};
 
 use crate::CacheKey;
 
+/// Errors that can occur when waiting for a concurrent request
+#[derive(Debug, Clone)]
+pub enum ConcurrencyError {
+    /// Receiver lagged behind and missed messages
+    Lagged(u64),
+    /// Broadcast channel closed before receiving value
+    Closed,
+}
+
 /// Result of concurrency check - whether to proceed with upstream call or await existing response
 pub enum ConcurrencyDecision<Res> {
     /// Proceed with the upstream call, holding a semaphore permit
@@ -18,7 +27,7 @@ pub enum ConcurrencyDecision<Res> {
     /// Proceed without a permit (no concurrency control)
     ProceedWithoutPermit,
     /// Await response from another in-flight request
-    Await(Pin<Box<dyn Future<Output = Res> + Send>>),
+    Await(Pin<Box<dyn Future<Output = Result<Res, ConcurrencyError>> + Send>>),
 }
 
 /// Trait for managing concurrent requests to prevent dogpile effect
@@ -31,6 +40,9 @@ where
 
     /// Notify waiting requests that the response is ready and return it back
     fn resolve(&self, cache_key: &CacheKey, cache_value: &CacheValue<Res::Cached>);
+
+    /// Cleanup stale entry from in-flight map (e.g., after channel closed error)
+    fn cleanup(&self, cache_key: &CacheKey);
 }
 
 /// No-op implementation that always allows requests to proceed without concurrency control
@@ -114,18 +126,17 @@ where
                             Ok(cache_value) => {
                                 // Successfully received the cached value from the in-flight request
                                 // Convert Res::Cached back to Res using the trait method
-                                Res::from_cached(cache_value.data.clone()).await
+                                Ok(Res::from_cached(cache_value.data.clone()).await)
                             }
-                            Err(broadcast::error::RecvError::Lagged(_)) => {
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
                                 // We lagged behind and missed the message
-                                // This shouldn't happen with reasonable channel capacity
-                                // Fall back to making our own request
-                                panic!("Lagged behind broadcast - consider increasing channel capacity")
+                                // Return error so FSM can handle (e.g., retry or fetch from upstream)
+                                Err(ConcurrencyError::Lagged(n))
                             }
                             Err(broadcast::error::RecvError::Closed) => {
                                 // Channel closed without sending - the request probably failed
-                                // This is a problem - we can't proceed and we can't get the result
-                                panic!("Broadcast channel closed - original request failed")
+                                // Return error so FSM can handle (e.g., retry or fetch from upstream)
+                                Err(ConcurrencyError::Closed)
                             }
                         }
                     });
@@ -163,5 +174,11 @@ where
             // Ignore send errors - it just means no one is waiting
             // Semaphore drops here, releasing any remaining permits
         }
+    }
+
+    fn cleanup(&self, cache_key: &CacheKey) {
+        // Remove stale entry from in-flight map
+        // Called when a waiter encounters an error and needs to ensure cleanup
+        self.in_flight.remove(cache_key);
     }
 }

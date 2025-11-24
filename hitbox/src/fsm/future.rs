@@ -265,13 +265,11 @@ where
                         PolicyConfig::Enabled(crate::policy::EnabledCacheConfig {
                             concurrency: Some(concurrency),
                             ..
-                        }) => {
-                            State::ConcurrentPollUpstream {
-                                request: Some(request),
-                                concurrency: *concurrency as usize,
-                                ctx: Some(ctx),
-                            }
-                        }
+                        }) => State::ConcurrentPollUpstream {
+                            request: Some(request),
+                            concurrency: *concurrency as usize,
+                            ctx: Some(ctx),
+                        },
                         _ => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
@@ -316,18 +314,55 @@ where
                         }
                         ConcurrencyDecision::Await(await_future) => State::AwaitResponse {
                             await_response_future: await_future,
+                            request: Some(request),
                             ctx: Some(ctx),
                         },
                     }
                 }
                 StateProj::AwaitResponse {
                     await_response_future,
+                    request,
                     ctx,
                 } => {
-                    let response = ready!(await_response_future.poll(cx));
-                    State::Response {
-                        response: Some(response),
-                        ctx: ctx.take(),
+                    let result = ready!(await_response_future.poll(cx));
+                    match result {
+                        Ok(response) => {
+                            // Successfully received response from concurrent request
+                            State::Response {
+                                response: Some(response),
+                                ctx: ctx.take(),
+                            }
+                        }
+                        Err(concurrency_error) => {
+                            // Concurrency error (Lagged or Closed)
+                            // Fallback to direct upstream call and cache the result normally
+                            let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                            match &concurrency_error {
+                                crate::concurrency::ConcurrencyError::Lagged(n) => {
+                                    debug!(
+                                        "Concurrency channel lagged by {} messages, falling back to upstream",
+                                        n
+                                    );
+                                }
+                                crate::concurrency::ConcurrencyError::Closed => {
+                                    debug!(
+                                        "Concurrency channel closed, cleaning up stale entry and falling back to upstream"
+                                    );
+                                    // Cleanup stale entry from in-flight map (permit holder likely crashed)
+                                    if let Some(cache_key) = this.cache_key.as_ref() {
+                                        this.concurrency_manager.cleanup(cache_key);
+                                    }
+                                }
+                            }
+
+                            let request = request.take().expect(POLL_AFTER_READY_ERROR);
+                            let upstream_future = Box::pin(this.upstream.call(request));
+                            State::PollUpstream {
+                                upstream_future,
+                                permit: None,
+                                ctx: Some(ctx),
+                            }
+                        }
                     }
                 }
                 StateProj::CheckCacheState {

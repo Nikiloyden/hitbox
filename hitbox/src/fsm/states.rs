@@ -16,7 +16,8 @@ pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxCo
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 pub type CacheStateFuture<T> = BoxFuture<'static, CacheState<T>>;
 pub type UpstreamFuture<T> = BoxFuture<'static, T>;
-pub type AwaitResponseFuture<T> = BoxFuture<'static, T>;
+pub type AwaitResponseFuture<T> =
+    BoxFuture<'static, Result<T, crate::concurrency::ConcurrencyError>>;
 
 #[allow(missing_docs)]
 #[pin_project(project = StateProj)]
@@ -60,6 +61,7 @@ where
     AwaitResponse {
         #[pin]
         await_response_future: AwaitResponseFuture<Res>,
+        request: Option<Req>,
         ctx: Option<BoxContext>,
     },
     /// Polling upstream service
