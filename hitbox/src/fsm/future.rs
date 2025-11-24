@@ -535,6 +535,7 @@ where
                     permit,
                     ctx,
                 } => {
+                    // Permit drops here naturally
                     let policy = ready!(cache_policy.poll(cx));
                     let backend = this.backend.clone();
                     let cache_key = this.cache_key.take().expect("CacheKey not found");
@@ -558,10 +559,17 @@ where
                                 update_cache_future,
                             }
                         }
-                        CachePolicy::NonCacheable(response) => State::Response {
-                            response: Some(response),
-                            ctx: Some(ctx),
-                        },
+                        CachePolicy::NonCacheable(response) => {
+                            // Close the channel if we have a permit (permit holder cleans up)
+                            // This allows waiters to fall back to independent upstream calls
+                            if permit.is_some() {
+                                this.concurrency_manager.cleanup(&cache_key);
+                            }
+                            State::Response {
+                                response: Some(response),
+                                ctx: Some(ctx),
+                            }
+                        }
                     }
                 }
                 StateProj::UpdateCache {
