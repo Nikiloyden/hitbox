@@ -1,12 +1,13 @@
 //! Redis backend actor implementation.
 use crate::error::Error;
 use async_trait::async_trait;
+use bytes::Bytes;
 use chrono::Utc;
-use hitbox::{CacheKey, CacheValue};
+use hitbox::{CacheKey, CacheValue, Raw};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
-    serializer::{Format, JsonFormat, Raw},
+    format::{Format, JsonFormat},
 };
 use redis::{Client, aio::ConnectionManager};
 use tokio::sync::OnceCell;
@@ -167,7 +168,8 @@ where
             .query_async(&mut con)
             .await
             .map_err(Error::from)?;
-        Ok(result.map(|value| CacheValue::new(value, Some(Utc::now()), Some(Utc::now()))))
+        Ok(result
+            .map(|value| CacheValue::new(Bytes::from(value), Some(Utc::now()), Some(Utc::now()))))
     }
 
     async fn write(
@@ -180,7 +182,7 @@ where
         let cache_key = self.key_format.serialize(key)?;
 
         let mut request = redis::cmd("SET");
-        request.arg(cache_key).arg(value.data);
+        request.arg(cache_key).arg(value.data.to_vec());
 
         ttl.map(|ttl_duration| request.arg("EX").arg(ttl_duration.as_secs()));
 
@@ -289,4 +291,12 @@ where
     //     self.connection().await?;
     //     Ok(())
     // }
+}
+
+// Explicit CacheBackend implementation using default trait methods
+impl<S, C> hitbox_backend::CacheBackend for RedisBackend<S, C>
+where
+    S: Format + Send + Sync,
+    C: Compressor + Send + Sync,
+{
 }

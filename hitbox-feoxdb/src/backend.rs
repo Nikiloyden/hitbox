@@ -5,19 +5,18 @@ use bincode::{
     config::standard as bincode_config,
     serde::{decode_from_slice, encode_to_vec},
 };
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use feoxdb::{FeoxError, FeoxStore};
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue};
+use hitbox_core::{CacheKey, CacheValue, Raw};
 use serde::{Deserialize, Serialize};
 
 use crate::FeOxDbError;
-
-type Raw = Vec<u8>;
 
 #[derive(Serialize, Deserialize)]
 struct SerializableCacheValue {
@@ -30,7 +29,7 @@ struct SerializableCacheValue {
 impl From<CacheValue<Raw>> for SerializableCacheValue {
     fn from(value: CacheValue<Raw>) -> Self {
         Self {
-            data: value.data,
+            data: value.data.to_vec(),
             stale: value.stale,
             expire: value.expire,
         }
@@ -39,7 +38,7 @@ impl From<CacheValue<Raw>> for SerializableCacheValue {
 
 impl From<SerializableCacheValue> for CacheValue<Raw> {
     fn from(value: SerializableCacheValue) -> Self {
-        CacheValue::new(value.data, value.expire, value.stale)
+        CacheValue::new(Bytes::from(value.data), value.expire, value.stale)
     }
 }
 
@@ -283,6 +282,14 @@ where
     }
 }
 
+// Explicit CacheBackend implementation using default trait methods
+impl<S, C> hitbox_backend::CacheBackend for FeOxDbBackend<S, C>
+where
+    S: Format + Send + Sync,
+    C: Compressor + Send + Sync,
+{
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,7 +303,7 @@ mod tests {
 
         let key = CacheKey::from_str("test-key", "1");
         let value = CacheValue::new(
-            b"test-value".to_vec(),
+            Bytes::from(&b"test-value"[..]),
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
@@ -310,7 +317,7 @@ mod tests {
         // Read
         let result = backend.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data, b"test-value");
+        assert_eq!(result.unwrap().data.as_ref(), b"test-value");
     }
 
     #[tokio::test]
@@ -320,7 +327,7 @@ mod tests {
 
         let key = CacheKey::from_str("delete-key", "1");
         let value = CacheValue::new(
-            b"test-value".to_vec(),
+            Bytes::from(&b"test-value"[..]),
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
@@ -366,7 +373,7 @@ mod tests {
 
         let key = CacheKey::from_str("memory-key", "1");
         let value = CacheValue::new(
-            b"memory-value".to_vec(),
+            Bytes::from(&b"memory-value"[..]),
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
@@ -380,7 +387,7 @@ mod tests {
         // Read
         let result = backend.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data, b"memory-value");
+        assert_eq!(result.unwrap().data.as_ref(), b"memory-value");
     }
 
     #[tokio::test]
@@ -391,7 +398,7 @@ mod tests {
 
         let key = CacheKey::from_str("shared-key", "1");
         let value = CacheValue::new(
-            b"shared-value".to_vec(),
+            Bytes::from(&b"shared-value"[..]),
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
@@ -405,7 +412,7 @@ mod tests {
         // Read with backend2
         let result = backend2.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data, b"shared-value");
+        assert_eq!(result.unwrap().data.as_ref(), b"shared-value");
     }
 
     #[tokio::test]
@@ -416,7 +423,7 @@ mod tests {
         // Key 1 with 1 hour TTL
         let key1 = CacheKey::from_str("key1", "1");
         let value1 = CacheValue::new(
-            b"value1".to_vec(),
+            Bytes::from(&b"value1"[..]),
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
@@ -428,7 +435,7 @@ mod tests {
         // Key 2 with 24 hour TTL
         let key2 = CacheKey::from_str("key2", "1");
         let value2 = CacheValue::new(
-            b"value2".to_vec(),
+            Bytes::from(&b"value2"[..]),
             Some(Utc::now() + chrono::Duration::hours(24)),
             None,
         );

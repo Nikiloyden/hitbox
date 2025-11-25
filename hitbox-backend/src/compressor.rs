@@ -15,6 +15,24 @@ pub trait Compressor: Send + Sync + std::fmt::Debug {
 
     /// Decompress the input data
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError>;
+
+    /// Clone this compressor into a box (for object safety)
+    fn clone_box(&self) -> Box<dyn Compressor>;
+}
+
+// Blanket implementation for Box<dyn Compressor>
+impl Compressor for Box<dyn Compressor> {
+    fn compress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError> {
+        (**self).compress(data)
+    }
+
+    fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError> {
+        (**self).decompress(data)
+    }
+
+    fn clone_box(&self) -> Box<dyn Compressor> {
+        (**self).clone_box()
+    }
 }
 
 // Blanket implementation for Arc<dyn Compressor>
@@ -25,6 +43,10 @@ impl Compressor for std::sync::Arc<dyn Compressor> {
 
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError> {
         (**self).decompress(data)
+    }
+
+    fn clone_box(&self) -> Box<dyn Compressor> {
+        (**self).clone_box()
     }
 }
 
@@ -39,6 +61,10 @@ impl Compressor for PassthroughCompressor {
 
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError> {
         Ok(data.to_vec())
+    }
+
+    fn clone_box(&self) -> Box<dyn Compressor> {
+        Box::new(*self)
     }
 }
 
@@ -98,6 +124,10 @@ impl Compressor for GzipCompressor {
             .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
         Ok(decompressed)
     }
+
+    fn clone_box(&self) -> Box<dyn Compressor> {
+        Box::new(*self)
+    }
 }
 
 /// Zstd compression with configurable level
@@ -140,6 +170,10 @@ impl Compressor for ZstdCompressor {
 
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError> {
         zstd::decode_all(data).map_err(|e| CompressionError::DecompressionFailed(e.to_string()))
+    }
+
+    fn clone_box(&self) -> Box<dyn Compressor> {
+        Box::new(*self)
     }
 }
 

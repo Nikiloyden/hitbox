@@ -1,5 +1,5 @@
 use crate::error::ConfigError;
-use hitbox_backend::serializer::{BincodeFormat, Format, JsonFormat};
+use hitbox_backend::format::{BincodeFormat, Format, JsonFormat};
 use hitbox_backend::{Backend as BackendTrait, CacheKeyFormat};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
