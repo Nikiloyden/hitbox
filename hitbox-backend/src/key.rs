@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use hitbox_core::CacheKey;
 
-use crate::serializer::FormatError;
+use crate::format::FormatError;
 
 pub trait KeySerializer {
     type Output;

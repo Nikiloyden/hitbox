@@ -1,4 +1,4 @@
-use hitbox_backend::serializer::FormatError;
+use hitbox_backend::format::FormatError;
 use hitbox_core::CacheKey;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};

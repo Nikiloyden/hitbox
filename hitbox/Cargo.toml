@@ -31,6 +31,11 @@ futures = { workspace = true, features = ["alloc"] }
 default = []
 
 metrics = ["dep:metrics", "lazy_static"]
+rkyv_format = ["hitbox-core/rkyv_format", "hitbox-backend/rkyv_format"]
+
+[dev-dependencies]
+lazy_static = "1"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [package.metadata.docs.rs]
 all-features = true

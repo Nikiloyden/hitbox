@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::serializer::FormatExt;
+use hitbox_backend::format::FormatExt;
 use hitbox_backend::{Backend, CacheBackend, CacheKeyFormat, DeleteStatus};
 use hitbox_core::{
     CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, ResponseCachePolicy,
@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 
 /// Test response type for backend testing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(
+        rkyv::Archive,
+        rkyv::Serialize,
+        rkyv::Deserialize,
+        rkyv_typename::TypeName
+    )
+)]
+#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct TestResponse {
     pub id: u64,
     pub name: String,
@@ -464,7 +475,7 @@ where
     // Serialize the value to get the raw uncompressed serialized bytes
     let serialized = backend
         .value_format()
-        .serialize(&response)
+        .serialize(&response, &())
         .expect("failed to serialize");
 
     // Write to backend (should apply compression via compressor)

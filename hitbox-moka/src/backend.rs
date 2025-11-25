@@ -1,15 +1,13 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox::{CacheKey, CacheValue};
+use hitbox::{CacheKey, CacheValue, Raw};
 use hitbox_backend::Backend;
-use hitbox_backend::serializer::{Format, JsonFormat};
+use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     BackendResult, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
 use moka::{Expiry, future::Cache};
 use std::time::{Duration, Instant};
-
-type Raw = Vec<u8>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Expiration;
@@ -103,4 +101,12 @@ where
     fn compressor(&self) -> &dyn Compressor {
         &self.compressor
     }
+}
+
+// Explicit CacheBackend implementation using default trait methods
+impl<S, C> hitbox_backend::CacheBackend for MokaBackend<S, C>
+where
+    S: Format + Send + Sync,
+    C: Compressor + Send + Sync,
+{
 }

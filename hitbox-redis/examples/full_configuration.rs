@@ -1,4 +1,4 @@
-use hitbox_backend::serializer::{BincodeFormat, JsonFormat};
+use hitbox_backend::format::{BincodeFormat, JsonFormat};
 /// Complete example showing how to configure both key and value serialization formats
 /// for optimal Redis backend performance.
 use hitbox_backend::{Backend, CacheKeyFormat};

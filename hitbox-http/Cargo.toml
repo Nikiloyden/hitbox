@@ -25,7 +25,7 @@ http = { workspace = true }
 http-body = { workspace = true }
 http-body-util = { workspace = true }
 hitbox = { path = "../hitbox", version = "0.1" }
-hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1", default-features = false }
 bytes = { workspace = true }
 chrono = { workspace = true }
 hyper = { workspace = true }
@@ -47,7 +47,17 @@ regex = { workspace = true }
 axum = { workspace = true }
 http-serde = "2.1.1"
 
+# Optional rkyv support
+rkyv = { workspace = true, optional = true }
+rkyv_dyn = { workspace = true, optional = true }
+rkyv_typename = { workspace = true, optional = true }
+
+[features]
+default = []
+rkyv_format = ["dep:rkyv", "dep:rkyv_dyn", "dep:rkyv_typename", "hitbox-backend/rkyv_format"]
+
 [dev-dependencies]
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 bincode = { version = "2", features = ["serde"] }
 tokio = { workspace = true, features = [
     "test-util",
@@ -55,6 +65,8 @@ tokio = { workspace = true, features = [
     "rt-multi-thread",
 ] }
 criterion = { workspace = true, features = ["html_reports", "async_tokio"] }
+ron = "0.12.0"
+rkyv = { workspace = true }
 
 [[bench]]
 name = "predicate_performance"

@@ -3,18 +3,24 @@
 //!
 //! If you want implement your own backend, you in the right place.
 mod backend;
+pub mod composition;
 pub mod compressor;
+pub mod context;
+pub mod format;
 mod key;
-pub mod serializer;
 
 pub use backend::{Backend, BackendResult, CacheBackend};
+pub use composition::{Compose, CompositionBackend};
 #[cfg(feature = "gzip")]
 pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]
 pub use compressor::ZstdCompressor;
 pub use compressor::{CompressionError, Compressor, PassthroughCompressor};
+pub use context::{BackendContext, BackendPolicy};
+use format::FormatError;
+#[cfg(feature = "rkyv_format")]
+pub use format::RkyvFormat;
 pub use key::{CacheKeyFormat, KeySerializer, UrlEncodedKeySerializer};
-use serializer::FormatError;
 use thiserror::Error;
 
 /// Proxy Error describes general groups of errors in backend interaction process.
@@ -34,10 +40,6 @@ pub enum BackendError {
     /// Compressing\Decompressing data error.
     #[error(transparent)]
     CompressionError(#[from] CompressionError),
-
-    /// DEBUG @TODO: remove
-    #[error("test")]
-    Test(u8),
 }
 
 /// Status of deleting result.

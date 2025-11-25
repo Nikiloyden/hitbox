@@ -17,6 +17,7 @@ keywords = ["cache", "actix", "async", "cache-backend", "hitbox"]
 [dependencies]
 hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
 async-trait = { workspace = true }
+futures = { workspace = true, features = ["async-await"] }
 chrono = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -24,22 +25,50 @@ serde-saphyr = { workspace = true }
 bincode = { workspace = true }
 bitcode = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
 serde_urlencoded = { version = "0.7.1", default-features = false }
 erased-serde = "0.4"
+bytes = { version = "1", features = ["serde"] }
+bytemuck = { version = "1.19", features = ["derive"] }
 
 # Compression support (optional)
 flate2 = { version = "1", optional = true }
 zstd = { version = "0.13", optional = true }
+ron = "0.12.0"
+
+# Additional serialization formats (optional)
+rkyv = { workspace = true, optional = true, features = ["bytecheck", "bytes"] }
+rkyv_dyn = { workspace = true, optional = true }
+rkyv_typename = { workspace = true, optional = true }
 
 [features]
 default = []
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
+rkyv_format = [
+    "dep:rkyv",
+    "dep:rkyv_dyn",
+    "dep:rkyv_typename",
+    "hitbox-core/rkyv_format",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 criterion = { workspace = true, features = ["html_reports"] }
+dashmap = "6.1"
+bytemuck = { version = "1.19", features = ["derive"] }
+http = { workspace = true }
+http-serde = "2.1.1"
+flexbuffers = "25.2"
 
-[[bench]]
-name = "key_size"
-harness = false
+# [[bench]]
+# name = "key_size"
+# harness = false
+#
+# [[bench]]
+# name = "envelope_serialization"
+# harness = false
+#
+# [[bench]]
+# name = "format_comparison"
+# harness = false
