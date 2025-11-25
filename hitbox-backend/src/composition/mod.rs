@@ -51,6 +51,7 @@ use crate::{
     Backend, BackendContext, BackendError, BackendResult, CacheBackend,
     CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
+use hitbox_core::Cacheable;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -59,7 +60,7 @@ use policy::{
     AlwaysRefill, OptimisticParallelWritePolicy, ReadPolicy, RefillPolicy, SequentialReadPolicy,
     WritePolicy,
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -159,6 +160,7 @@ impl Format for CompositionFormat {
         context: &dyn BackendContext,
     ) -> Result<Raw, FormatError> {
         // Check if this is a refill operation (writing L2 data back to L1)
+        // CompositionFormat is low-level code that knows about CompositionContext
         if let Some(comp_ctx) = context.as_any().downcast_ref::<CompositionContext>() {
             if comp_ctx.policy.write_after_read {
                 // For refill operations, create an L1-only envelope
@@ -633,46 +635,10 @@ where
     F: RefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
-    #[cfg(not(feature = "rkyv_format"))]
     async fn get<T>(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<T::Cached>>>
     where
         T: CacheableResponse,
-        T::Cached: Serialize + DeserializeOwned + Send + Sync,
-    {
-        let l1 = &self.l1;
-        let l2 = &self.l2;
-        let refill_policy = &self.refill_policy;
-
-        let read_l1 = |k| async move { l1.get::<T>(k).await };
-
-        let read_l2_with_refill = |k| async move {
-            let value = l2.get::<T>(k).await?;
-
-            // Refill L1 on hit using policy (best-effort)
-            if let Some(ref v) = value {
-                refill_policy
-                    .execute(v, || async { l1.set::<T>(k, v, v.ttl()).await })
-                    .await;
-            }
-
-            Ok(value)
-        };
-
-        let (value, _source) = self
-            .read_policy
-            .execute_with(key, read_l1, read_l2_with_refill)
-            .await?;
-
-        Ok(value)
-    }
-
-    #[tracing::instrument(skip(self), level = "trace")]
-    #[cfg(feature = "rkyv_format")]
-    async fn get<T>(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<T::Cached>>>
-    where
-        T: CacheableResponse,
-        T::Cached: Serialize + DeserializeOwned + Send + Sync + rkyv_dyn::SerializeDyn + rkyv::Archive,
-        <T::Cached as rkyv::Archive>::Archived: rkyv::Deserialize<T::Cached, rkyv::Infallible>,
+        T::Cached: Cacheable,
     {
         let l1 = &self.l1;
         let l2 = &self.l2;
@@ -702,7 +668,6 @@ where
     }
 
     #[tracing::instrument(skip(self, value), level = "trace")]
-    #[cfg(not(feature = "rkyv_format"))]
     async fn set<T>(
         &self,
         key: &CacheKey,
@@ -711,31 +676,7 @@ where
     ) -> BackendResult<()>
     where
         T: CacheableResponse,
-        T::Cached: Serialize + Send + Sync,
-    {
-        // Use write policy to determine how to write to both layers
-        let l1 = &self.l1;
-        let l2 = &self.l2;
-
-        let write_l1 = |k| async move { l1.set::<T>(k, value, ttl).await };
-        let write_l2 = |k| async move { l2.set::<T>(k, value, ttl).await };
-
-        self.write_policy
-            .execute_with(key, write_l1, write_l2)
-            .await
-    }
-
-    #[tracing::instrument(skip(self, value), level = "trace")]
-    #[cfg(feature = "rkyv_format")]
-    async fn set<T>(
-        &self,
-        key: &CacheKey,
-        value: &CacheValue<T::Cached>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()>
-    where
-        T: CacheableResponse,
-        T::Cached: Serialize + Send + Sync + rkyv_dyn::SerializeDyn,
+        T::Cached: Cacheable,
     {
         // Use write policy to determine how to write to both layers
         let l1 = &self.l1;
@@ -861,6 +802,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+    #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
     #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
     struct CachedData {
         value: String,

@@ -1,6 +1,5 @@
 use bytes::Bytes;
-use hitbox_core::Raw;
-use serde::{Serialize, de::DeserializeOwned};
+use hitbox_core::{Cacheable, Raw};
 use thiserror::Error;
 
 use crate::BackendContext;
@@ -17,7 +16,7 @@ use ::bincode::serde::Compat;
 use self::bincode::BincodeVecWriter;
 
 #[cfg(feature = "rkyv_format")]
-use ::rkyv::{Archive, Deserialize as RkyvDeserialize, archived_root, Infallible};
+use ::rkyv::Infallible;
 
 mod json;
 mod bincode;
@@ -40,6 +39,43 @@ pub enum FormatError {
     Deserialize(Box<dyn std::error::Error + Send>),
 }
 
+/// Error type for rkyv serialization that preserves error information
+/// when the actual error type cannot be directly boxed due to trait object constraints
+#[cfg(feature = "rkyv_format")]
+#[derive(Error, Debug)]
+#[error("rkyv serialization failed: {message}")]
+struct RkyvSerializeError {
+    message: String,
+}
+
+#[cfg(feature = "rkyv_format")]
+impl RkyvSerializeError {
+    fn new(error: impl std::fmt::Debug) -> Self {
+        Self {
+            message: format!("{:?}", error),
+        }
+    }
+}
+
+/// Error type for rkyv validation that preserves error information
+/// The underlying CheckArchiveError contains non-Send trait objects, so we
+/// capture the error message as a Send-safe string
+#[cfg(feature = "rkyv_format")]
+#[derive(Error, Debug)]
+#[error("rkyv validation failed: {message}")]
+struct RkyvValidationError {
+    message: String,
+}
+
+#[cfg(feature = "rkyv_format")]
+impl RkyvValidationError {
+    fn new(error: impl std::fmt::Display) -> Self {
+        Self {
+            message: error.to_string(),
+        }
+    }
+}
+
 /// Unique identifier for format types, used to compare format equality
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatTypeId {
@@ -60,32 +96,10 @@ pub enum FormatSerializer<'a> {
 }
 
 impl<'a> FormatSerializer<'a> {
-    /// Serialize a value - handles serde and bincode
-    #[cfg(not(feature = "rkyv_format"))]
-    pub fn serialize<T>(&mut self, value: &T) -> Result<(), FormatError>
-    where
-        T: Serialize,
-    {
-        match self {
-            FormatSerializer::Serde(ser) => {
-                let erased_value = value as &dyn erased_serde::Serialize;
-                erased_value.erased_serialize(*ser)
-                    .map_err(|e| FormatError::Serialize(Box::new(e)))
-            }
-            FormatSerializer::Bincode(enc) => {
-                // Use Compat wrapper to bridge serde and bincode
-                let compat = Compat(value);
-                Encode::encode(&compat, enc)
-                    .map_err(|e| FormatError::Serialize(Box::new(e)))
-            }
-        }
-    }
-
     /// Serialize a value - handles serde, rkyv, and bincode based on serializer type
-    #[cfg(feature = "rkyv_format")]
     pub fn serialize<T>(&mut self, value: &T) -> Result<(), FormatError>
     where
-        T: Serialize + rkyv_dyn::SerializeDyn,
+        T: Cacheable,
     {
         match self {
             FormatSerializer::Serde(ser) => {
@@ -93,11 +107,15 @@ impl<'a> FormatSerializer<'a> {
                 erased_value.erased_serialize(*ser)
                     .map_err(|e| FormatError::Serialize(Box::new(e)))
             }
+            #[cfg(feature = "rkyv_format")]
             FormatSerializer::Rkyv(ser) => {
                 let rkyv_value = value as &dyn rkyv_dyn::SerializeDyn;
                 rkyv_value.serialize_dyn(*ser)
                     .map(|_| ())  // Discard the position, return ()
-                    .map_err(|_e| FormatError::Serialize(Box::new(std::io::Error::other("rkyv serialization error"))))
+                    .map_err(|e| {
+                        // Use dedicated error type to preserve error information
+                        FormatError::Serialize(Box::new(RkyvSerializeError::new(e)))
+                    })
             }
             FormatSerializer::Bincode(enc) => {
                 // Use Compat wrapper to bridge serde and bincode
@@ -118,33 +136,12 @@ pub enum FormatDeserializer<'a> {
 }
 
 impl<'a> FormatDeserializer<'a> {
-    /// Deserialize a value - handles serde and bincode
-    #[cfg(not(feature = "rkyv_format"))]
-    pub fn deserialize<T>(&mut self) -> Result<T, FormatError>
-    where
-        T: DeserializeOwned,
-    {
-        match self {
-            FormatDeserializer::Serde(deser) => {
-                erased_serde::deserialize(*deser)
-                    .map_err(|e| FormatError::Deserialize(Box::new(e)))
-            }
-            FormatDeserializer::Bincode(dec) => {
-                // Use Compat wrapper to decode from bincode
-                let compat: Compat<T> = Decode::decode(dec)
-                    .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
-                Ok(compat.0)
-            }
-        }
-    }
-
     /// Deserialize a value - handles serde, rkyv, and bincode based on deserializer type
-    #[cfg(feature = "rkyv_format")]
     pub fn deserialize<T>(&mut self) -> Result<T, FormatError>
     where
-        T: DeserializeOwned + Archive,
-        T::Archived: RkyvDeserialize<T, Infallible>,
+        T: Cacheable,
     {
+        #[cfg(feature = "rkyv_format")]
         use ::rkyv::Deserialize as _;
 
         match self {
@@ -152,13 +149,18 @@ impl<'a> FormatDeserializer<'a> {
                 erased_serde::deserialize(*deser)
                     .map_err(|e| FormatError::Deserialize(Box::new(e)))
             }
+            #[cfg(feature = "rkyv_format")]
             FormatDeserializer::Rkyv(data) => {
-                // Access the archived data
-                let archived = unsafe { archived_root::<T>(data) };
+                // Safely validate and access the archived data
+                // The CheckBytes bound on Cacheable ensures this is safe
+                let archived = ::rkyv::check_archived_root::<T>(data)
+                    .map_err(|e| FormatError::Deserialize(Box::new(RkyvValidationError::new(e))))?;
 
-                // Deserialize from the archive
+                // Deserialize from the validated archive
+                // Note: With Infallible as the error type, this can never actually fail
+                // The empty match on Infallible is exhaustive since it has no constructors
                 let value: T = archived.deserialize(&mut Infallible)
-                    .map_err(|_e| FormatError::Deserialize(Box::new(std::io::Error::other("rkyv deserialization error"))))?;
+                    .map_err(|inf| match inf {})?;
 
                 Ok(value)
             }
@@ -208,10 +210,9 @@ pub trait Format: std::fmt::Debug + Send + Sync {
 /// Extension trait providing generic serialize/deserialize methods
 /// This is automatically implemented for all Format types
 pub trait FormatExt: Format {
-    #[cfg(not(feature = "rkyv_format"))]
     fn serialize<T>(&self, value: &T, context: &dyn BackendContext) -> Result<Raw, FormatError>
     where
-        T: Serialize,
+        T: Cacheable,
     {
         self.with_serializer(
             &mut |serializer| serializer.serialize(value),
@@ -219,41 +220,9 @@ pub trait FormatExt: Format {
         )
     }
 
-    #[cfg(feature = "rkyv_format")]
-    fn serialize<T>(&self, value: &T, context: &dyn BackendContext) -> Result<Raw, FormatError>
-    where
-        T: Serialize + rkyv_dyn::SerializeDyn,
-    {
-        self.with_serializer(
-            &mut |serializer| serializer.serialize(value),
-            context,
-        )
-    }
-
-    #[cfg(not(feature = "rkyv_format"))]
     fn deserialize<T>(&self, data: &Raw) -> Result<T, FormatError>
     where
-        T: DeserializeOwned,
-    {
-        let mut result: Option<T> = None;
-        let (_, _context) = self.with_deserializer(data, &mut |deserializer| {
-            let value: T = deserializer.deserialize()?;
-            result = Some(value);
-            Ok(())
-        })?;
-
-        result.ok_or_else(|| {
-            FormatError::Deserialize(Box::new(std::io::Error::other(
-                "deserialization produced no result",
-            )))
-        })
-    }
-
-    #[cfg(feature = "rkyv_format")]
-    fn deserialize<T>(&self, data: &Raw) -> Result<T, FormatError>
-    where
-        T: DeserializeOwned + Archive,
-        T::Archived: RkyvDeserialize<T, Infallible>,
+        T: Cacheable,
     {
         let mut result: Option<T> = None;
         let (_, _context) = self.with_deserializer(data, &mut |deserializer| {

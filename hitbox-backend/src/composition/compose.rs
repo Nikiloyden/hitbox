@@ -190,6 +190,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+    #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
     #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
     struct CachedData {
         value: String,

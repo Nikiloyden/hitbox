@@ -9,9 +9,8 @@ use std::{
 
 use crate::{CachePolicy, CacheState, CacheStatus, CacheableResponse, policy::PolicyConfig};
 use futures::ready;
-use hitbox_core::{CacheablePolicyData, EntityPolicyConfig, Upstream};
+use hitbox_core::{Cacheable, CacheablePolicyData, EntityPolicyConfig, Upstream};
 use pin_project::pin_project;
-use serde::{Serialize, de::DeserializeOwned};
 use tracing::debug;
 
 use crate::{
@@ -209,7 +208,7 @@ where
     U::Future: Send + 'static,
     B: CacheBackend + Send + Sync + 'static,
     Res: CacheableResponse,
-    Res::Cached: Serialize + DeserializeOwned + Send + Sync,
+    Res::Cached: Cacheable,
     Req: CacheableRequest + Send + 'static,
     // Debug bounds
     Req: Debug,

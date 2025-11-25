@@ -61,11 +61,19 @@ tempfile = "3"
 testcontainers = "0.25"
 testcontainers-modules = { version = "0.13", features = ["redis"] }
 
+[dependencies.rkyv]
+workspace = true
+optional = true
+
+[dependencies.rkyv_typename]
+workspace = true
+optional = true
+
 [features]
 default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
-rkyv_format = ["hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
+rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
 
 [[test]]
 name = "integration"

@@ -82,11 +82,16 @@ mod rkyv_header_map {
                 .iter()
                 .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
                 .collect();
-            rkyv::Archive::resolve(&vec, pos, resolver, out);
+            unsafe {
+                rkyv::Archive::resolve(&vec, pos, resolver, out);
+            }
         }
     }
 
-    impl<S: Fallible + ?Sized> SerializeWith<HeaderMap, S> for AsHeaderVec {
+    impl<S: Fallible + ?Sized> SerializeWith<HeaderMap, S> for AsHeaderVec
+    where
+        S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
+    {
         fn serialize_with(field: &HeaderMap, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
             let vec: Vec<(String, Vec<u8>)> = field
                 .iter()
@@ -117,7 +122,7 @@ mod rkyv_header_map {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "rkyv_format", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
+#[cfg_attr(feature = "rkyv_format", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, rkyv_typename::TypeName))]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct SerializableHttpResponse {

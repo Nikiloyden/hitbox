@@ -1,3 +1,4 @@
+mod cacheable;
 mod extractor;
 mod key;
 mod policy;
@@ -8,6 +9,7 @@ mod time_provider;
 mod upstream;
 mod value;
 
+pub use cacheable::Cacheable;
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};
 pub use policy::{CachePolicy, EntityPolicyConfig};
