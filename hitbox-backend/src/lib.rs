@@ -6,21 +6,21 @@ mod backend;
 pub mod composition;
 pub mod compressor;
 pub mod context;
-mod key;
 pub mod format;
+mod key;
 
 pub use backend::{Backend, BackendResult, CacheBackend};
 pub use composition::{Compose, CompositionBackend};
-pub use context::{BackendContext, BackendPolicy};
 #[cfg(feature = "gzip")]
 pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]
 pub use compressor::ZstdCompressor;
 pub use compressor::{CompressionError, Compressor, PassthroughCompressor};
-pub use key::{CacheKeyFormat, KeySerializer, UrlEncodedKeySerializer};
+pub use context::{BackendContext, BackendPolicy};
+use format::FormatError;
 #[cfg(feature = "rkyv_format")]
 pub use format::RkyvFormat;
-use format::FormatError;
+pub use key::{CacheKeyFormat, KeySerializer, UrlEncodedKeySerializer};
 use thiserror::Error;
 
 /// Proxy Error describes general groups of errors in backend interaction process.

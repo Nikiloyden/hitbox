@@ -1,9 +1,9 @@
 use bytes::Bytes;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hitbox::{CacheKey, CacheableResponse};
+use hitbox_backend::composition::policy::{CompositionPolicy, NeverRefill};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, CompositionBackend, PassthroughCompressor};
-use hitbox_backend::composition::policy::{CompositionPolicy, NeverRefill};
 use hitbox_core::CacheValue;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
@@ -38,11 +38,7 @@ fn bench_direct_moka(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("direct");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -95,11 +91,7 @@ fn bench_composition_concrete(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("composition_concrete");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -161,11 +153,7 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("composition_outer_dyn");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -232,11 +220,7 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("composition_inner_dyn");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -307,11 +291,7 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("composition_both_dyn");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -332,7 +312,7 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1, l2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -384,11 +364,7 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("nested_2_concrete");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -459,11 +435,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("nested_2_dyn");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -485,7 +457,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         let l1: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_inner1, l1_inner2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
         );
 
         // Create L2 (simple Moka) as dyn
@@ -499,7 +471,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
         // Compose L1 composition with L2 as dyn
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1, l2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -551,11 +523,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("nested_3_concrete");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -632,11 +600,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut group = c.benchmark_group("nested_3_dyn");
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
@@ -656,11 +620,10 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
                 .build(),
         );
 
-        let l1_middle: Arc<dyn Backend + Send> =
-            Arc::new(
-                CompositionBackend::new(l1_deep1, l1_deep2)
-                    .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
-            );
+        let l1_middle: Arc<dyn Backend + Send> = Arc::new(
+            CompositionBackend::new(l1_deep1, l1_deep2)
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+        );
 
         // Create middle level
         let l2_middle: Arc<dyn Backend + Send> = Arc::new(
@@ -672,7 +635,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         let l1_top: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_middle, l2_middle)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
         );
 
         // Create top level
@@ -685,7 +648,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_top, l2_top)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new()))
+                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));

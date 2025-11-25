@@ -29,8 +29,7 @@ pub struct CompositionPolicy<
     R = SequentialReadPolicy,
     W = OptimisticParallelWritePolicy,
     F = AlwaysRefill,
->
-where
+> where
     R: ReadPolicy,
     W: WritePolicy,
     F: RefillPolicy,
@@ -59,7 +58,9 @@ impl CompositionPolicy<SequentialReadPolicy, OptimisticParallelWritePolicy, Alwa
     }
 }
 
-impl Default for CompositionPolicy<SequentialReadPolicy, OptimisticParallelWritePolicy, AlwaysRefill> {
+impl Default
+    for CompositionPolicy<SequentialReadPolicy, OptimisticParallelWritePolicy, AlwaysRefill>
+{
     fn default() -> Self {
         Self::new()
     }

@@ -1,12 +1,12 @@
 use bytes::Bytes;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hitbox::{CacheKey, CacheableResponse};
-use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
 use hitbox_backend::format::BincodeFormat;
+use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
 use hitbox_core::CacheValue;
+use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
-use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_redis::RedisBackend;
 use http::Response;
 use std::time::Duration;
@@ -56,10 +56,8 @@ async fn bench_write_single<B>(
 }
 
 /// Benchmark read throughput (get operations)
-async fn bench_read_single<B>(
-    backend: &B,
-    key_num: u64,
-) where
+async fn bench_read_single<B>(backend: &B, key_num: u64)
+where
     B: Backend + CacheBackend,
 {
     let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
@@ -92,11 +90,7 @@ async fn bench_mixed_single<B>(
 fn moka_backend_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("backend_write/moka");
 
-    let sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
@@ -115,7 +109,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_write_single(&backend, &response, key_num)
                 });
@@ -183,7 +177,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_mixed_single(&backend, &response, key_num)
                 });
@@ -197,11 +191,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
 fn feoxdb_backend_benchmarks(c: &mut Criterion) {
     let mut group = c.benchmark_group("backend_write/feoxdb");
 
-    let sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
@@ -226,7 +216,7 @@ fn feoxdb_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_write_single(&backend, &response, key_num)
                 });
@@ -304,7 +294,7 @@ fn feoxdb_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_mixed_single(&backend, &response, key_num)
                 });
@@ -316,16 +306,12 @@ fn feoxdb_backend_benchmarks(c: &mut Criterion) {
 }
 
 fn redis_backend_benchmarks(c: &mut Criterion) {
-    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers::{ImageExt, runners::AsyncRunner};
     use testcontainers_modules::redis::Redis;
 
     let mut group = c.benchmark_group("backend_write/redis");
 
-    let sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
 
@@ -366,7 +352,7 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_write_single(&backend, &response, key_num)
                 });
@@ -438,7 +424,7 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
             |b, _| {
                 let mut counter = 0u64;
                 b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 1000;  // Reuse 1000 keys to avoid memory exhaustion
+                    let key_num = counter % 1000; // Reuse 1000 keys to avoid memory exhaustion
                     counter = counter.wrapping_add(1);
                     bench_mixed_single(&backend, &response, key_num)
                 });

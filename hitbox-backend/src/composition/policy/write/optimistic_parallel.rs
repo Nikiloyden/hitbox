@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use hitbox_core::CacheKey;
 use std::future::Future;
 
-use crate::{BackendError, composition::CompositionError};
 use super::WritePolicy;
+use crate::{BackendError, composition::CompositionError};
 
 /// Optimistic parallel write policy: Write to both simultaneously, succeed if ≥1 succeeds.
 ///
@@ -100,7 +100,7 @@ impl WritePolicy for OptimisticParallelWritePolicy {
                     "Both L1 and L2 writes failed"
                 );
                 Err(BackendError::InternalError(Box::new(
-                    CompositionError::BothLayersFailed { l1: e1, l2: e2 }
+                    CompositionError::BothLayersFailed { l1: e1, l2: e2 },
                 )))
             }
         }

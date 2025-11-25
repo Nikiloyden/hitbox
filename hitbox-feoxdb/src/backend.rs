@@ -287,7 +287,8 @@ impl<S, C> hitbox_backend::CacheBackend for FeOxDbBackend<S, C>
 where
     S: Format + Send + Sync,
     C: Compressor + Send + Sync,
-{}
+{
+}
 
 #[cfg(test)]
 mod tests {

@@ -45,7 +45,12 @@ rkyv_typename = { workspace = true, optional = true }
 default = []
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
-rkyv_format = ["dep:rkyv", "dep:rkyv_dyn", "dep:rkyv_typename", "hitbox-core/rkyv_format"]
+rkyv_format = [
+    "dep:rkyv",
+    "dep:rkyv_dyn",
+    "dep:rkyv_typename",
+    "hitbox-core/rkyv_format",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
@@ -56,14 +61,14 @@ http = { workspace = true }
 http-serde = "2.1.1"
 flexbuffers = "25.2"
 
-[[bench]]
-name = "key_size"
-harness = false
-
-[[bench]]
-name = "envelope_serialization"
-harness = false
-
-[[bench]]
-name = "format_comparison"
-harness = false
+# [[bench]]
+# name = "key_size"
+# harness = false
+#
+# [[bench]]
+# name = "envelope_serialization"
+# harness = false
+#
+# [[bench]]
+# name = "format_comparison"
+# harness = false

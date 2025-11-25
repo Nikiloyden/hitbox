@@ -4,10 +4,10 @@
 use bytes::Bytes;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hitbox::{CacheKey, CacheableResponse};
-use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
-use hitbox_backend::format::{BincodeFormat, JsonFormat, RonFormat};
 #[cfg(feature = "rkyv_format")]
 use hitbox_backend::format::RkyvFormat;
+use hitbox_backend::format::{BincodeFormat, JsonFormat, RonFormat};
+use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
 use hitbox_core::CacheValue;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
@@ -84,18 +84,14 @@ fn format_write_benchmark(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        group.bench_with_input(
-            BenchmarkId::new("json", size_name),
-            &size_bytes,
-            |b, _| {
-                let mut counter = 0u64;
-                b.to_async(&runtime).iter(|| {
-                    let key_num = counter;
-                    counter = counter.wrapping_add(1);
-                    bench_write_single(&backend, &response, key_num)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("json", size_name), &size_bytes, |b, _| {
+            let mut counter = 0u64;
+            b.to_async(&runtime).iter(|| {
+                let key_num = counter;
+                counter = counter.wrapping_add(1);
+                bench_write_single(&backend, &response, key_num)
+            });
+        });
 
         // Bincode
         let backend = MokaBackend::builder(10000)
@@ -122,18 +118,14 @@ fn format_write_benchmark(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        group.bench_with_input(
-            BenchmarkId::new("ron", size_name),
-            &size_bytes,
-            |b, _| {
-                let mut counter = 0u64;
-                b.to_async(&runtime).iter(|| {
-                    let key_num = counter;
-                    counter = counter.wrapping_add(1);
-                    bench_write_single(&backend, &response, key_num)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("ron", size_name), &size_bytes, |b, _| {
+            let mut counter = 0u64;
+            b.to_async(&runtime).iter(|| {
+                let key_num = counter;
+                counter = counter.wrapping_add(1);
+                bench_write_single(&backend, &response, key_num)
+            });
+        });
 
         // Rkyv (if feature enabled) with 128KB buffer hint for better performance
         #[cfg(feature = "rkyv_format")]
@@ -143,18 +135,14 @@ fn format_write_benchmark(c: &mut Criterion) {
                 .compressor(PassthroughCompressor)
                 .build();
 
-            group.bench_with_input(
-                BenchmarkId::new("rkyv", size_name),
-                &size_bytes,
-                |b, _| {
-                    let mut counter = 0u64;
-                    b.to_async(&runtime).iter(|| {
-                        let key_num = counter;
-                        counter = counter.wrapping_add(1);
-                        bench_write_single(&backend, &response, key_num)
-                    });
-                },
-            );
+            group.bench_with_input(BenchmarkId::new("rkyv", size_name), &size_bytes, |b, _| {
+                let mut counter = 0u64;
+                b.to_async(&runtime).iter(|| {
+                    let key_num = counter;
+                    counter = counter.wrapping_add(1);
+                    bench_write_single(&backend, &response, key_num)
+                });
+            });
         }
     }
 
@@ -187,22 +175,21 @@ fn format_read_benchmark(c: &mut Criterion) {
             for i in 0..100 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
-                backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await.unwrap();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .await
+                    .unwrap();
             }
         });
 
-        group.bench_with_input(
-            BenchmarkId::new("json", size_name),
-            &size_bytes,
-            |b, _| {
-                let mut counter = 0u64;
-                b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 100;
-                    counter = counter.wrapping_add(1);
-                    bench_read_single(&backend, key_num)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("json", size_name), &size_bytes, |b, _| {
+            let mut counter = 0u64;
+            b.to_async(&runtime).iter(|| {
+                let key_num = counter % 100;
+                counter = counter.wrapping_add(1);
+                bench_read_single(&backend, key_num)
+            });
+        });
 
         // Bincode - populate cache first
         let backend = MokaBackend::builder(10000)
@@ -214,7 +201,10 @@ fn format_read_benchmark(c: &mut Criterion) {
             for i in 0..100 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
-                backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await.unwrap();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .await
+                    .unwrap();
             }
         });
 
@@ -241,22 +231,21 @@ fn format_read_benchmark(c: &mut Criterion) {
             for i in 0..100 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
-                backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await.unwrap();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .await
+                    .unwrap();
             }
         });
 
-        group.bench_with_input(
-            BenchmarkId::new("ron", size_name),
-            &size_bytes,
-            |b, _| {
-                let mut counter = 0u64;
-                b.to_async(&runtime).iter(|| {
-                    let key_num = counter % 100;
-                    counter = counter.wrapping_add(1);
-                    bench_read_single(&backend, key_num)
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("ron", size_name), &size_bytes, |b, _| {
+            let mut counter = 0u64;
+            b.to_async(&runtime).iter(|| {
+                let key_num = counter % 100;
+                counter = counter.wrapping_add(1);
+                bench_read_single(&backend, key_num)
+            });
+        });
 
         // Rkyv - populate cache first (if feature enabled) with 128KB buffer hint for better performance
         #[cfg(feature = "rkyv_format")]
@@ -270,31 +259,26 @@ fn format_read_benchmark(c: &mut Criterion) {
                 for i in 0..100 {
                     let key = CacheKey::from_str("bench", &format!("key-{}", i));
                     let value = CacheValue::new(response.clone(), None, None);
-                    backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await.unwrap();
+                    backend
+                        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                        .await
+                        .unwrap();
                 }
             });
 
-            group.bench_with_input(
-                BenchmarkId::new("rkyv", size_name),
-                &size_bytes,
-                |b, _| {
-                    let mut counter = 0u64;
-                    b.to_async(&runtime).iter(|| {
-                        let key_num = counter % 100;
-                        counter = counter.wrapping_add(1);
-                        bench_read_single(&backend, key_num)
-                    });
-                },
-            );
+            group.bench_with_input(BenchmarkId::new("rkyv", size_name), &size_bytes, |b, _| {
+                let mut counter = 0u64;
+                b.to_async(&runtime).iter(|| {
+                    let key_num = counter % 100;
+                    counter = counter.wrapping_add(1);
+                    bench_read_single(&backend, key_num)
+                });
+            });
         }
     }
 
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    format_write_benchmark,
-    format_read_benchmark
-);
+criterion_group!(benches, format_write_benchmark, format_read_benchmark);
 criterion_main!(benches);

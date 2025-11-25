@@ -19,7 +19,10 @@ use rkyv_typename::TypeName;
 use crate::common::TestBackend;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
@@ -118,7 +121,10 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
     assert_eq!(result.unwrap().data.data, "test_value");
 
     // Verify L1 was refilled
-    assert!(l1_inspect.has(&key), "L1 should be refilled after L2 hit through trait object");
+    assert!(
+        l1_inspect.has(&key),
+        "L1 should be refilled after L2 hit through trait object"
+    );
 
     // Verify the data is correct
     let l1_value = l1_inspect.get::<TestValue>(&key).await.unwrap();
@@ -156,8 +162,14 @@ async fn test_direct_write_through_trait_object() {
         .unwrap();
 
     // Verify both L1 and L2 have the data
-    assert!(l1_inspect.has(&key), "L1 should have data after direct write");
-    assert!(l2_inspect.has(&key), "L2 should have data after direct write");
+    assert!(
+        l1_inspect.has(&key),
+        "L1 should have data after direct write"
+    );
+    assert!(
+        l2_inspect.has(&key),
+        "L2 should have data after direct write"
+    );
 }
 
 #[tokio::test]
@@ -198,7 +210,10 @@ async fn test_nested_composition_with_trait_objects() {
     assert!(inner_result.is_some());
 
     // Now L2 should be refilled by the inner composition
-    assert!(l2_inspect.has(&key), "L2 should be refilled after read through inner composition");
+    assert!(
+        l2_inspect.has(&key),
+        "L2 should be refilled after read through inner composition"
+    );
 
     // Wrap inner composition as trait object
     let l2_l3_boxed: Box<dyn Backend> = Box::new(l2_l3_composition);
@@ -216,7 +231,10 @@ async fn test_nested_composition_with_trait_objects() {
     assert_eq!(result.unwrap().data.data, "from_l3");
 
     // L1 should now be refilled by the outer composition
-    assert!(l1_inspect.has(&key), "L1 should be refilled after read through nested trait object");
+    assert!(
+        l1_inspect.has(&key),
+        "L1 should be refilled after read through nested trait object"
+    );
 }
 
 #[tokio::test]
@@ -261,7 +279,10 @@ async fn test_arc_wrapped_composition_refill() {
     assert_eq!(result.unwrap().data.data, "from_l2_arc");
 
     // Verify L1 was refilled
-    assert!(l1_inspect.has(&key), "L1 should be refilled after L2 hit through Arc");
+    assert!(
+        l1_inspect.has(&key),
+        "L1 should be refilled after L2 hit through Arc"
+    );
 }
 
 #[tokio::test]
@@ -304,10 +325,6 @@ async fn test_multiple_refills_through_trait_object() {
         assert_eq!(result.unwrap().data.data, format!("value_{}", i));
 
         // Verify L1 was refilled
-        assert!(
-            l1_inspect.has(&key),
-            "L1 should be refilled for key{}",
-            i
-        );
+        assert!(l1_inspect.has(&key), "L1 should be refilled for key{}", i);
     }
 }

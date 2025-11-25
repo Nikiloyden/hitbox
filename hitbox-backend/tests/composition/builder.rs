@@ -2,11 +2,11 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::composition::policy::{
-    AlwaysRefill, NeverRefill, ParallelReadPolicy, RaceReadPolicy, SequentialReadPolicy,
-    SequentialWritePolicy, OptimisticParallelWritePolicy,
-};
 use hitbox_backend::composition::CompositionPolicy;
+use hitbox_backend::composition::policy::{
+    AlwaysRefill, NeverRefill, OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy,
+    SequentialReadPolicy, SequentialWritePolicy,
+};
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend, Compressor,
@@ -78,7 +78,10 @@ impl Backend for TestBackend {
 impl CacheBackend for TestBackend {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
@@ -119,8 +122,7 @@ async fn test_composition_policy_default() {
 
 #[tokio::test]
 async fn test_composition_policy_with_read() {
-    let policy = CompositionPolicy::new()
-        .read(RaceReadPolicy::new());
+    let policy = CompositionPolicy::new().read(RaceReadPolicy::new());
 
     // Should have RaceReadPolicy
     let _ = policy.read_policy();
@@ -128,8 +130,7 @@ async fn test_composition_policy_with_read() {
 
 #[tokio::test]
 async fn test_composition_policy_with_write() {
-    let policy = CompositionPolicy::new()
-        .write(SequentialWritePolicy::new());
+    let policy = CompositionPolicy::new().write(SequentialWritePolicy::new());
 
     // Should have SequentialWritePolicy
     let _ = policy.write_policy();
@@ -137,8 +138,7 @@ async fn test_composition_policy_with_write() {
 
 #[tokio::test]
 async fn test_composition_policy_with_refill() {
-    let policy = CompositionPolicy::new()
-        .refill(NeverRefill::new());
+    let policy = CompositionPolicy::new().refill(NeverRefill::new());
 
     // Should have NeverRefill
     let _ = policy.refill_policy();
@@ -167,8 +167,7 @@ async fn test_backend_with_composition_policy() {
         .write(SequentialWritePolicy::new())
         .refill(NeverRefill::new());
 
-    let backend = CompositionBackend::new(l1, l2)
-        .with_policy(policy);
+    let backend = CompositionBackend::new(l1, l2).with_policy(policy);
 
     // All custom policies should be set
     let _ = backend.read_policy();
@@ -186,8 +185,7 @@ async fn test_backend_with_policy_functional() {
         .write(OptimisticParallelWritePolicy::new())
         .refill(AlwaysRefill::new());
 
-    let backend = CompositionBackend::new(l1.clone(), l2.clone())
-        .with_policy(policy);
+    let backend = CompositionBackend::new(l1.clone(), l2.clone()).with_policy(policy);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(

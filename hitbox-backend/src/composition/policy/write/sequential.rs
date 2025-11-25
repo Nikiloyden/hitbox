@@ -7,8 +7,8 @@ use async_trait::async_trait;
 use hitbox_core::CacheKey;
 use std::future::Future;
 
-use crate::BackendError;
 use super::WritePolicy;
+use crate::BackendError;
 
 /// Sequential write policy: Write to L1, then L2 (write-through).
 ///

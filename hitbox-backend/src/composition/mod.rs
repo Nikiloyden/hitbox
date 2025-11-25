@@ -46,15 +46,15 @@ pub use compose::Compose;
 pub use context::{CompositionContext, CompositionSource};
 pub use policy::CompositionPolicy;
 
-use crate::format::{Format, FormatError, FormatTypeId, FormatSerializer, FormatDeserializer};
+use crate::format::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
 use crate::{
-    Backend, BackendContext, BackendError, BackendResult, CacheBackend,
-    CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
+    Backend, BackendContext, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor,
+    DeleteStatus, PassthroughCompressor,
 };
-use hitbox_core::Cacheable;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use hitbox_core::Cacheable;
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, Raw};
 use policy::{
     AlwaysRefill, OptimisticParallelWritePolicy, ReadPolicy, RefillPolicy, SequentialReadPolicy,
@@ -161,25 +161,30 @@ impl Format for CompositionFormat {
     ) -> Result<Raw, FormatError> {
         // Check if this is a refill operation (writing L2 data back to L1)
         // CompositionFormat is low-level code that knows about CompositionContext
-        if let Some(comp_ctx) = context.as_any().downcast_ref::<CompositionContext>() {
-            if comp_ctx.policy.write_after_read {
-                // For refill operations, create an L1-only envelope
-                // This data came from L2, so serialize and compress it for L1 storage
-                let l1_serialized = self.l1_format.with_serializer(f, context)?;
-                let l1_compressed = self.l1_compressor.compress(&l1_serialized)
-                    .map_err(|e| FormatError::Serialize(Box::new(e)))?;
-                let composition = CompositionEnvelope::L1(CacheValueData::new(Bytes::from(l1_compressed)));
+        if let Some(comp_ctx) = context.as_any().downcast_ref::<CompositionContext>()
+            && comp_ctx.policy.write_after_read
+        {
+            // For refill operations, create an L1-only envelope
+            // This data came from L2, so serialize and compress it for L1 storage
+            let l1_serialized = self.l1_format.with_serializer(f, context)?;
+            let l1_compressed = self
+                .l1_compressor
+                .compress(&l1_serialized)
+                .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+            let composition =
+                CompositionEnvelope::L1(CacheValueData::new(Bytes::from(l1_compressed)));
 
-                return composition
-                    .serialize()
-                    .map_err(|e| FormatError::Serialize(Box::new(e)));
-            }
+            return composition
+                .serialize()
+                .map_err(|e| FormatError::Serialize(Box::new(e)));
         }
 
         // Normal write path: Create Both envelope with data for both layers
         // Serialize and compress for L1
         let l1_serialized = self.l1_format.with_serializer(f, context)?;
-        let l1_compressed = self.l1_compressor.compress(&l1_serialized)
+        let l1_compressed = self
+            .l1_compressor
+            .compress(&l1_serialized)
             .map_err(|e| FormatError::Serialize(Box::new(e)))?;
 
         // Serialize and compress for L2
@@ -189,7 +194,9 @@ impl Format for CompositionFormat {
         } else {
             self.l2_format.with_serializer(f, context)?
         };
-        let l2_compressed = self.l2_compressor.compress(&l2_serialized)
+        let l2_compressed = self
+            .l2_compressor
+            .compress(&l2_serialized)
             .map_err(|e| FormatError::Serialize(Box::new(e)))?;
 
         // Pack both compressed values into CompositionEnvelope
@@ -214,14 +221,35 @@ impl Format for CompositionFormat {
             .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
         // Extract source, compressed data, format, and compressor from envelope type
-        let (compressed_data, format, compressor, source): (&Bytes, &dyn Format, &dyn Compressor, CompositionSource) = match &composition {
-            CompositionEnvelope::L1(v) => (&v.data, &*self.l1_format, &*self.l1_compressor, CompositionSource::L1),
-            CompositionEnvelope::L2(v) => (&v.data, &*self.l2_format, &*self.l2_compressor, CompositionSource::L2),
-            CompositionEnvelope::Both { l1, .. } => (&l1.data, &*self.l1_format, &*self.l1_compressor, CompositionSource::L1),
+        let (compressed_data, format, compressor, source): (
+            &Bytes,
+            &dyn Format,
+            &dyn Compressor,
+            CompositionSource,
+        ) = match &composition {
+            CompositionEnvelope::L1(v) => (
+                &v.data,
+                &*self.l1_format,
+                &*self.l1_compressor,
+                CompositionSource::L1,
+            ),
+            CompositionEnvelope::L2(v) => (
+                &v.data,
+                &*self.l2_format,
+                &*self.l2_compressor,
+                CompositionSource::L2,
+            ),
+            CompositionEnvelope::Both { l1, .. } => (
+                &l1.data,
+                &*self.l1_format,
+                &*self.l1_compressor,
+                CompositionSource::L1,
+            ),
         };
 
         // Decompress the data
-        let decompressed = compressor.decompress(compressed_data.as_ref())
+        let decompressed = compressor
+            .decompress(compressed_data.as_ref())
             .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
         // Use the appropriate format to deserialize the decompressed data
@@ -230,7 +258,10 @@ impl Format for CompositionFormat {
         // Create CompositionContext from the envelope source
         let context = CompositionContext::new(source, self.clone());
 
-        Ok((result, std::sync::Arc::new(context) as std::sync::Arc<dyn BackendContext>))
+        Ok((
+            result,
+            std::sync::Arc::new(context) as std::sync::Arc<dyn BackendContext>,
+        ))
     }
 
     fn clone_box(&self) -> Box<dyn Format> {
@@ -521,7 +552,9 @@ where
                     let (expire, stale) = (l1_value.expire, l1_value.stale);
                     let envelope = CompositionEnvelope::L1(l1_value.into());
                     let packed = envelope.serialize()?;
-                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(packed, expire, stale)))
+                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(
+                        packed, expire, stale,
+                    )))
                 }
                 None => Ok(None),
             }
@@ -534,7 +567,9 @@ where
                     let (expire, stale) = (l2_value.expire, l2_value.stale);
                     let envelope = CompositionEnvelope::L2(l2_value.into());
                     let packed = envelope.serialize()?;
-                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(packed, expire, stale)))
+                    Ok::<Option<CacheValue<Raw>>, BackendError>(Some(CacheValue::new(
+                        packed, expire, stale,
+                    )))
                 }
                 None => Ok(None),
             }
@@ -801,7 +836,10 @@ mod tests {
     impl CacheBackend for TestBackend {}
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    #[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+    #[cfg_attr(
+        feature = "rkyv_format",
+        derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    )]
     #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
     #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
     struct CachedData {
@@ -844,7 +882,9 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "value1".to_string() },
+            CachedData {
+                value: "value1".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -867,7 +907,9 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "value1".to_string() },
+            CachedData {
+                value: "value1".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -908,7 +950,9 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "value1".to_string() },
+            CachedData {
+                value: "value1".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -935,7 +979,9 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "value1".to_string() },
+            CachedData {
+                value: "value1".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
@@ -970,7 +1016,9 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "value1".to_string() },
+            CachedData {
+                value: "value1".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );

@@ -4,7 +4,7 @@
 //! successful hit, minimizing tail latency at the cost of increased backend load.
 
 use async_trait::async_trait;
-use futures::future::{select, Either};
+use futures::future::{Either, select};
 use futures::pin_mut;
 use hitbox_core::{CacheKey, CacheValue};
 use std::future::Future;

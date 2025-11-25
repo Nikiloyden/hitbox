@@ -1,7 +1,7 @@
-use hitbox_backend::format::{FormatExt, JsonFormat, BincodeFormat};
-use hitbox_backend::composition::CompositionFormat;
 use hitbox_backend::PassthroughCompressor;
-use serde::{Serialize, Deserialize};
+use hitbox_backend::composition::CompositionFormat;
+use hitbox_backend::format::{BincodeFormat, FormatExt, JsonFormat};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[cfg(feature = "rkyv_format")]
@@ -10,7 +10,10 @@ use rkyv::{Archive, Serialize as RkyvSerialize};
 use rkyv_typename::TypeName;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestData {
@@ -96,14 +99,24 @@ fn test_serialization_size_comparison() {
     let composition_diff_size = composition_diff.serialize(&data, &()).unwrap().len();
 
     println!("JSON size: {} bytes", json_size);
-    println!("Composition (same format) size: {} bytes", composition_same_size);
-    println!("Composition (different formats) size: {} bytes", composition_diff_size);
+    println!(
+        "Composition (same format) size: {} bytes",
+        composition_same_size
+    );
+    println!(
+        "Composition (different formats) size: {} bytes",
+        composition_diff_size
+    );
 
     // Composition should be roughly 2x the single format size (plus small bincode overhead)
     // Allow some margin for bincode envelope
-    assert!(composition_same_size < json_size * 2 + 100,
-        "Same format composition size should be ~2x single format");
+    assert!(
+        composition_same_size < json_size * 2 + 100,
+        "Same format composition size should be ~2x single format"
+    );
 
-    assert!(composition_diff_size > json_size,
-        "Different formats should be larger than single JSON");
+    assert!(
+        composition_diff_size > json_size,
+        "Different formats should be larger than single JSON"
+    );
 }

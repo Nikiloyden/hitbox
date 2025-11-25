@@ -15,18 +15,23 @@ pub trait Cacheable: Serialize + DeserializeOwned + Send + Sync {}
 impl<T> Cacheable for T where T: Serialize + DeserializeOwned + Send + Sync {}
 
 #[cfg(feature = "rkyv_format")]
-pub trait Cacheable:
-    Serialize
+pub trait Cacheable: Serialize
     + DeserializeOwned
     + Send
     + Sync
     + rkyv_dyn::SerializeDyn
-    + rkyv::Archive<Archived: rkyv::Deserialize<Self, rkyv::Infallible> + for<'a> rkyv::CheckBytes<rkyv::validation::validators::DefaultValidator<'a>>>
-{}
+    + rkyv::Archive<
+        Archived: rkyv::Deserialize<Self, rkyv::Infallible>
+                      + for<'a> rkyv::CheckBytes<rkyv::validation::validators::DefaultValidator<'a>>,
+    >
+{
+}
 
 #[cfg(feature = "rkyv_format")]
 impl<T> Cacheable for T
 where
     T: Serialize + DeserializeOwned + Send + Sync + rkyv_dyn::SerializeDyn + rkyv::Archive,
-    T::Archived: rkyv::Deserialize<T, rkyv::Infallible> + for<'a> rkyv::CheckBytes<rkyv::validation::validators::DefaultValidator<'a>>,
-{}
+    T::Archived: rkyv::Deserialize<T, rkyv::Infallible>
+        + for<'a> rkyv::CheckBytes<rkyv::validation::validators::DefaultValidator<'a>>,
+{
+}

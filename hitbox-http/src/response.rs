@@ -64,7 +64,10 @@ where
 #[cfg(feature = "rkyv_format")]
 mod rkyv_header_map {
     use http::HeaderMap;
-    use rkyv::{with::{ArchiveWith, DeserializeWith, SerializeWith}, Fallible};
+    use rkyv::{
+        Fallible,
+        with::{ArchiveWith, DeserializeWith, SerializeWith},
+    };
 
     pub struct AsHeaderVec;
 
@@ -92,7 +95,10 @@ mod rkyv_header_map {
     where
         S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
     {
-        fn serialize_with(field: &HeaderMap, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        fn serialize_with(
+            field: &HeaderMap,
+            serializer: &mut S,
+        ) -> Result<Self::Resolver, S::Error> {
             let vec: Vec<(String, Vec<u8>)> = field
                 .iter()
                 .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
@@ -101,7 +107,9 @@ mod rkyv_header_map {
         }
     }
 
-    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<Vec<(String, Vec<u8>)>>, HeaderMap, D> for AsHeaderVec {
+    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<Vec<(String, Vec<u8>)>>, HeaderMap, D>
+        for AsHeaderVec
+    {
         fn deserialize_with(
             field: &rkyv::Archived<Vec<(String, Vec<u8>)>>,
             deserializer: &mut D,
@@ -122,7 +130,15 @@ mod rkyv_header_map {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "rkyv_format", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, rkyv_typename::TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(
+        rkyv::Archive,
+        rkyv::Serialize,
+        rkyv::Deserialize,
+        rkyv_typename::TypeName
+    )
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct SerializableHttpResponse {

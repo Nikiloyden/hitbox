@@ -1,10 +1,10 @@
 //! Tests for composition write policies (Sequential, OptimisticParallel).
 
 use bytes::Bytes;
+use hitbox_backend::Backend;
 use hitbox_backend::composition::policy::{
     OptimisticParallelWritePolicy, SequentialWritePolicy, WritePolicy,
 };
-use hitbox_backend::Backend;
 use hitbox_core::{CacheKey, CacheValue};
 
 use crate::common::{ErrorBackend, TestBackend};

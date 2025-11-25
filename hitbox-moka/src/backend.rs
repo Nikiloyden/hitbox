@@ -108,4 +108,5 @@ impl<S, C> hitbox_backend::CacheBackend for MokaBackend<S, C>
 where
     S: Format + Send + Sync,
     C: Compressor + Send + Sync,
-{}
+{
+}

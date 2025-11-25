@@ -2,7 +2,7 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hitbox_core::{Cacheable, CacheKey, CacheValue, CacheableResponse, Raw};
+use hitbox_core::{CacheKey, CacheValue, Cacheable, CacheableResponse, Raw};
 
 use crate::{
     BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
@@ -170,11 +170,12 @@ pub trait CacheBackend: Backend {
 
                     // Deserialize using with_deserializer to extract context
                     let mut deserialized_opt: Option<T::Cached> = None;
-                    let (_, context) = format.with_deserializer(&decompressed_bytes, &mut |deserializer| {
-                        let value: T::Cached = deserializer.deserialize()?;
-                        deserialized_opt = Some(value);
-                        Ok(())
-                    })?;
+                    let (_, context) =
+                        format.with_deserializer(&decompressed_bytes, &mut |deserializer| {
+                            let value: T::Cached = deserializer.deserialize()?;
+                            deserialized_opt = Some(value);
+                            Ok(())
+                        })?;
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -191,7 +192,11 @@ pub trait CacheBackend: Backend {
                         // Serialize with context, then call Backend::write directly
                         let serialized = format.serialize(&cached_value.data, &*context)?;
                         let compressed = self.compressor().compress(&serialized)?;
-                        let raw_value = CacheValue::new(Bytes::from(compressed), cached_value.expire, cached_value.stale);
+                        let raw_value = CacheValue::new(
+                            Bytes::from(compressed),
+                            cached_value.expire,
+                            cached_value.stale,
+                        );
                         let _ = self.write(key, raw_value, cached_value.ttl()).await;
                     }
 

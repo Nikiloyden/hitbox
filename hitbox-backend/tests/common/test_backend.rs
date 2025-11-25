@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
-    Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor,
-    DeleteStatus, PassthroughCompressor,
+    Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
+    PassthroughCompressor,
 };
 use hitbox_core::{CacheKey, CacheValue, Raw};
 use std::sync::Arc;
@@ -27,16 +27,6 @@ impl TestBackend {
         }
     }
 
-    /// Get the number of entries in the backend.
-    pub fn len(&self) -> usize {
-        self.store.len()
-    }
-
-    /// Check if the backend is empty.
-    pub fn is_empty(&self) -> bool {
-        self.store.is_empty()
-    }
-
     /// Clear all entries from the backend.
     pub fn clear(&self) {
         self.store.clear();
@@ -45,11 +35,6 @@ impl TestBackend {
     /// Check if a key exists in the backend.
     pub fn has(&self, key: &CacheKey) -> bool {
         self.store.contains_key(key)
-    }
-
-    /// Get a value directly (for test assertions).
-    pub fn get_value(&self, key: &CacheKey) -> Option<CacheValue<Raw>> {
-        self.store.get(key).map(|v| v.clone())
     }
 }
 
@@ -106,9 +91,9 @@ pub struct ErrorBackend;
 #[async_trait]
 impl Backend for ErrorBackend {
     async fn read(&self, _key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-        Err(BackendError::InternalError(Box::new(std::io::Error::other(
-            "simulated error",
-        ))))
+        Err(BackendError::InternalError(Box::new(
+            std::io::Error::other("simulated error"),
+        )))
     }
 
     async fn write(
@@ -117,15 +102,15 @@ impl Backend for ErrorBackend {
         _value: CacheValue<Raw>,
         _ttl: Option<Duration>,
     ) -> BackendResult<()> {
-        Err(BackendError::InternalError(Box::new(std::io::Error::other(
-            "simulated error",
-        ))))
+        Err(BackendError::InternalError(Box::new(
+            std::io::Error::other("simulated error"),
+        )))
     }
 
     async fn remove(&self, _key: &CacheKey) -> BackendResult<DeleteStatus> {
-        Err(BackendError::InternalError(Box::new(std::io::Error::other(
-            "simulated error",
-        ))))
+        Err(BackendError::InternalError(Box::new(
+            std::io::Error::other("simulated error"),
+        )))
     }
 
     fn value_format(&self) -> &dyn Format {

@@ -11,7 +11,15 @@ use serde::{Deserialize, Serialize};
 
 /// Test response type for backend testing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "rkyv_format", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, rkyv_typename::TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(
+        rkyv::Archive,
+        rkyv::Serialize,
+        rkyv::Deserialize,
+        rkyv_typename::TypeName
+    )
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct TestResponse {

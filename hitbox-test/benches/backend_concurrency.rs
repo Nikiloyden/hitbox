@@ -1,18 +1,18 @@
 use bytes::Bytes;
 use hitbox::{CacheKey, CacheableResponse};
-use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
 use hitbox_backend::format::BincodeFormat;
+use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
 use hitbox_core::CacheValue;
+use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
-use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_redis::RedisBackend;
 use http::Response;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers::runners::AsyncRunner;
+use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::redis::Redis;
 
 // Use Empty as placeholder body type
@@ -64,9 +64,10 @@ where
                 let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
                 let value = CacheValue::new(response.clone(), None, None);
 
-                if let Err(_) = backend
+                if backend
                     .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
                     .await
+                    .is_err()
                 {
                     errors += 1;
                 }
@@ -113,7 +114,7 @@ where
                 let key_num = (task_id * 1000 + ops) % 1000;
                 let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
 
-                if let Err(_) = backend.get::<BenchResponse>(&key).await {
+                if backend.get::<BenchResponse>(&key).await.is_err() {
                     errors += 1;
                 }
                 ops += 1;
@@ -163,15 +164,16 @@ where
                 let value = CacheValue::new(response.clone(), None, None);
 
                 // Write
-                if let Err(_) = backend
+                if backend
                     .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
                     .await
+                    .is_err()
                 {
                     errors += 1;
                 }
 
                 // Read
-                if let Err(_) = backend.get::<BenchResponse>(&key).await {
+                if backend.get::<BenchResponse>(&key).await.is_err() {
                     errors += 1;
                 }
 
@@ -194,10 +196,21 @@ where
     (elapsed, total_ops, total_errors)
 }
 
-fn print_results(backend_name: &str, operation: &str, payload_size: &str, results: &[(usize, Duration, usize, usize)]) {
-    println!("\n{} {} Concurrency Test ({})", backend_name, operation, payload_size);
+fn print_results(
+    backend_name: &str,
+    operation: &str,
+    payload_size: &str,
+    results: &[(usize, Duration, usize, usize)],
+) {
+    println!(
+        "\n{} {} Concurrency Test ({})",
+        backend_name, operation, payload_size
+    );
     println!("{:-<90}", "");
-    println!("{:>12} {:>15} {:>20} {:>15} {:>20}", "Tasks", "Ops/sec", "Total Ops", "Errors", "Duration");
+    println!(
+        "{:>12} {:>15} {:>20} {:>15} {:>20}",
+        "Tasks", "Ops/sec", "Total Ops", "Errors", "Duration"
+    );
     println!("{:-<90}", "");
 
     for (num_tasks, elapsed, total_ops, errors) in results {
@@ -242,11 +255,7 @@ async fn main() {
         .unwrap_or(10);
     let test_duration = Duration::from_secs(test_duration_secs);
 
-    let payload_sizes = [
-        ("1KB", 1024),
-        ("10KB", 10 * 1024),
-        ("100KB", 100 * 1024),
-    ];
+    let payload_sizes = [("1KB", 1024), ("10KB", 10 * 1024), ("100KB", 100 * 1024)];
 
     println!("Backend Concurrency Benchmark");
     println!("==============================");
@@ -260,7 +269,7 @@ async fn main() {
             MokaBackend::builder(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
-                .build()
+                .build(),
         );
 
         // Write test
@@ -271,7 +280,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             write_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Moka", "Write", size_name, &write_results);
@@ -280,17 +290,17 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
-            backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await.unwrap();
+            backend
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .await
+                .unwrap();
         }
 
         // Read test
         let mut read_results = Vec::new();
         for &num_tasks in &concurrency_levels {
-            let (elapsed, total_ops, errors) = concurrent_read_test(
-                Arc::clone(&backend),
-                num_tasks,
-                test_duration,
-            ).await;
+            let (elapsed, total_ops, errors) =
+                concurrent_read_test(Arc::clone(&backend), num_tasks, test_duration).await;
             read_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Moka", "Read", size_name, &read_results);
@@ -303,7 +313,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             mixed_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Moka", "Mixed", size_name, &mixed_results);
@@ -321,7 +332,7 @@ async fn main() {
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build()
-                .unwrap()
+                .unwrap(),
         );
 
         // Write test
@@ -332,7 +343,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             write_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("FeOxDB", "Write", size_name, &write_results);
@@ -341,17 +353,16 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
-            let _ = backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await;
+            let _ = backend
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .await;
         }
 
         // Read test
         let mut read_results = Vec::new();
         for &num_tasks in &concurrency_levels {
-            let (elapsed, total_ops, errors) = concurrent_read_test(
-                Arc::clone(&backend),
-                num_tasks,
-                test_duration,
-            ).await;
+            let (elapsed, total_ops, errors) =
+                concurrent_read_test(Arc::clone(&backend), num_tasks, test_duration).await;
             read_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("FeOxDB", "Read", size_name, &read_results);
@@ -364,7 +375,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             mixed_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("FeOxDB", "Mixed", size_name, &mixed_results);
@@ -403,7 +415,7 @@ async fn main() {
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build()
-                .unwrap()
+                .unwrap(),
         );
 
         // Write test
@@ -414,7 +426,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             write_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Redis", "Write", size_name, &write_results);
@@ -423,17 +436,16 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
-            let _ = backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))).await;
+            let _ = backend
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .await;
         }
 
         // Read test
         let mut read_results = Vec::new();
         for &num_tasks in &concurrency_levels {
-            let (elapsed, total_ops, errors) = concurrent_read_test(
-                Arc::clone(&backend),
-                num_tasks,
-                test_duration,
-            ).await;
+            let (elapsed, total_ops, errors) =
+                concurrent_read_test(Arc::clone(&backend), num_tasks, test_duration).await;
             read_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Redis", "Read", size_name, &read_results);
@@ -446,7 +458,8 @@ async fn main() {
                 response.clone(),
                 num_tasks,
                 test_duration,
-            ).await;
+            )
+            .await;
             mixed_results.push((num_tasks, elapsed, total_ops, errors));
         }
         print_results("Redis", "Mixed", size_name, &mixed_results);

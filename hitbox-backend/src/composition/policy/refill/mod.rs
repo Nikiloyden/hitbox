@@ -80,11 +80,7 @@ pub trait RefillPolicy: Send + Sync {
     /// # Note
     /// This method is called on the read path. Policies should minimize overhead
     /// for cases where refill is skipped. Expensive logic should use caching.
-    async fn execute<'a, T, F, Fut>(
-        &self,
-        value: &'a CacheValue<T>,
-        refill_fn: F,
-    ) -> ()
+    async fn execute<'a, T, F, Fut>(&self, value: &'a CacheValue<T>, refill_fn: F) -> ()
     where
         T: Send + Sync,
         F: FnOnce() -> Fut + Send,

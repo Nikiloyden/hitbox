@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use hitbox_core::Raw;
 
-use crate::BackendContext;
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
+use crate::BackendContext;
 
 // Newtype wrapper for Vec<u8> to implement bincode's Writer trait
 // (bincode has an internal VecWriter but it's not publicly exported)
@@ -65,7 +65,10 @@ impl Format for BincodeFormat {
         let mut format_deser = FormatDeserializer::Bincode(&mut decoder);
         f(&mut format_deser)?;
 
-        Ok(((), std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>))
+        Ok((
+            (),
+            std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>,
+        ))
     }
 
     fn clone_box(&self) -> Box<dyn Format> {

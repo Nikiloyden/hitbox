@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use hitbox_core::Raw;
 
-use crate::BackendContext;
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
+use crate::BackendContext;
 
 /// JSON format (default)
 #[derive(Debug, Clone, Copy, Default)]
@@ -31,7 +31,10 @@ impl Format for JsonFormat {
         let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deser);
         let mut format_deser = FormatDeserializer::Serde(&mut erased);
         f(&mut format_deser)?;
-        Ok(((), std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>))
+        Ok((
+            (),
+            std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>,
+        ))
     }
 
     fn clone_box(&self) -> Box<dyn Format> {

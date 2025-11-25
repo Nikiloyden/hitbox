@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox_backend::composition::policy::{AlwaysRefill, NeverRefill, RefillPolicy};
 use hitbox_backend::CacheBackend;
+use hitbox_backend::composition::policy::{AlwaysRefill, NeverRefill, RefillPolicy};
 use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -16,7 +16,10 @@ use rkyv_typename::TypeName;
 use crate::common::TestBackend;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+)]
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
@@ -63,12 +66,12 @@ async fn test_always_refill_policy() {
     );
 
     // Execute refill - should call the closure
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(l1.has(&key));
 }
@@ -87,12 +90,12 @@ async fn test_never_refill_policy() {
     );
 
     // Execute refill - should NOT call the closure
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(!l1.has(&key));
 }
@@ -115,12 +118,12 @@ async fn test_manual_refill_with_always_policy() {
     );
 
     // Simulate L2 hit - policy executes refill
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(l1.has(&key));
 }
@@ -139,19 +142,19 @@ async fn test_manual_refill_with_never_policy() {
     );
 
     // Simulate L2 hit - policy skips refill
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(!l1.has(&key));
 }
 
 #[tokio::test]
 async fn test_default_always_refill() {
-    let policy = AlwaysRefill::default();
+    let policy = AlwaysRefill;
     let l1 = TestBackend::new();
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -162,19 +165,19 @@ async fn test_default_always_refill() {
         None,
     );
 
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(l1.has(&key));
 }
 
 #[tokio::test]
 async fn test_default_never_refill() {
-    let policy = NeverRefill::default();
+    let policy = NeverRefill;
     let l1 = TestBackend::new();
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -185,12 +188,12 @@ async fn test_default_never_refill() {
         None,
     );
 
-    policy.execute(
-        &value,
-        || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60))).await
-        }
-    ).await;
+    policy
+        .execute(&value, || async {
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+                .await
+        })
+        .await;
 
     assert!(!l1.has(&key));
 }

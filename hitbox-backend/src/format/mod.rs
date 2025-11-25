@@ -5,12 +5,12 @@ use thiserror::Error;
 use crate::BackendContext;
 
 // Bincode imports for concrete types (use absolute paths to avoid conflict with our bincode module)
-use ::bincode::{Encode, Decode};
-use ::bincode::enc::EncoderImpl;
+use ::bincode::config::Configuration;
 use ::bincode::de::DecoderImpl;
 use ::bincode::de::read::SliceReader;
-use ::bincode::config::Configuration;
+use ::bincode::enc::EncoderImpl;
 use ::bincode::serde::Compat;
+use ::bincode::{Decode, Encode};
 
 // Import the BincodeVecWriter from bincode module
 use self::bincode::BincodeVecWriter;
@@ -18,17 +18,17 @@ use self::bincode::BincodeVecWriter;
 #[cfg(feature = "rkyv_format")]
 use ::rkyv::Infallible;
 
-mod json;
 mod bincode;
-mod ron;
+mod json;
 #[cfg(feature = "rkyv_format")]
 mod rkyv;
+mod ron;
 
-pub use json::JsonFormat;
 pub use bincode::BincodeFormat;
-pub use ron::RonFormat;
+pub use json::JsonFormat;
 #[cfg(feature = "rkyv_format")]
 pub use rkyv::RkyvFormat;
+pub use ron::RonFormat;
 
 #[derive(Error, Debug)]
 pub enum FormatError {
@@ -104,14 +104,16 @@ impl<'a> FormatSerializer<'a> {
         match self {
             FormatSerializer::Serde(ser) => {
                 let erased_value = value as &dyn erased_serde::Serialize;
-                erased_value.erased_serialize(*ser)
+                erased_value
+                    .erased_serialize(*ser)
                     .map_err(|e| FormatError::Serialize(Box::new(e)))
             }
             #[cfg(feature = "rkyv_format")]
             FormatSerializer::Rkyv(ser) => {
                 let rkyv_value = value as &dyn rkyv_dyn::SerializeDyn;
-                rkyv_value.serialize_dyn(*ser)
-                    .map(|_| ())  // Discard the position, return ()
+                rkyv_value
+                    .serialize_dyn(*ser)
+                    .map(|_| ()) // Discard the position, return ()
                     .map_err(|e| {
                         // Use dedicated error type to preserve error information
                         FormatError::Serialize(Box::new(RkyvSerializeError::new(e)))
@@ -120,8 +122,7 @@ impl<'a> FormatSerializer<'a> {
             FormatSerializer::Bincode(enc) => {
                 // Use Compat wrapper to bridge serde and bincode
                 let compat = Compat(value);
-                Encode::encode(&compat, enc)
-                    .map_err(|e| FormatError::Serialize(Box::new(e)))
+                Encode::encode(&compat, enc).map_err(|e| FormatError::Serialize(Box::new(e)))
             }
         }
     }
@@ -146,8 +147,7 @@ impl<'a> FormatDeserializer<'a> {
 
         match self {
             FormatDeserializer::Serde(deser) => {
-                erased_serde::deserialize(*deser)
-                    .map_err(|e| FormatError::Deserialize(Box::new(e)))
+                erased_serde::deserialize(*deser).map_err(|e| FormatError::Deserialize(Box::new(e)))
             }
             #[cfg(feature = "rkyv_format")]
             FormatDeserializer::Rkyv(data) => {
@@ -159,15 +159,16 @@ impl<'a> FormatDeserializer<'a> {
                 // Deserialize from the validated archive
                 // Note: With Infallible as the error type, this can never actually fail
                 // The empty match on Infallible is exhaustive since it has no constructors
-                let value: T = archived.deserialize(&mut Infallible)
+                let value: T = archived
+                    .deserialize(&mut Infallible)
                     .map_err(|inf| match inf {})?;
 
                 Ok(value)
             }
             FormatDeserializer::Bincode(dec) => {
                 // Use Compat wrapper to decode from bincode
-                let compat: Compat<T> = Decode::decode(dec)
-                    .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+                let compat: Compat<T> =
+                    Decode::decode(dec).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
                 Ok(compat.0)
             }
         }
@@ -214,10 +215,7 @@ pub trait FormatExt: Format {
     where
         T: Cacheable,
     {
-        self.with_serializer(
-            &mut |serializer| serializer.serialize(value),
-            context,
-        )
+        self.with_serializer(&mut |serializer| serializer.serialize(value), context)
     }
 
     fn deserialize<T>(&self, data: &Raw) -> Result<T, FormatError>

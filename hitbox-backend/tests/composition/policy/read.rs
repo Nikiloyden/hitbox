@@ -1,10 +1,10 @@
 //! Tests for composition read policies (Sequential, Race, Parallel).
 
 use bytes::Bytes;
+use hitbox_backend::Backend;
 use hitbox_backend::composition::policy::{
     ParallelReadPolicy, RaceReadPolicy, ReadPolicy, SequentialReadPolicy,
 };
-use hitbox_backend::Backend;
 use hitbox_core::{CacheKey, CacheValue};
 
 use crate::common::{ErrorBackend, TestBackend};
@@ -181,12 +181,20 @@ async fn test_parallel_both_hit_prefer_l1() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    l1.write(&key, CacheValue::new(Bytes::from("from_l1"), None, None), None)
-        .await
-        .unwrap();
-    l2.write(&key, CacheValue::new(Bytes::from("from_l2"), None, None), None)
-        .await
-        .unwrap();
+    l1.write(
+        &key,
+        CacheValue::new(Bytes::from("from_l1"), None, None),
+        None,
+    )
+    .await
+    .unwrap();
+    l2.write(
+        &key,
+        CacheValue::new(Bytes::from("from_l2"), None, None),
+        None,
+    )
+    .await
+    .unwrap();
 
     let read_l1 = |k| async move { l1.read(k).await };
     let read_l2 = |k| async move { l2.read(k).await };
@@ -347,17 +355,9 @@ async fn test_parallel_both_hit_equal_ttl() {
     let expiry = now + chrono::Duration::seconds(30);
 
     // Both have same TTL
-    let l1_value = CacheValue::new(
-        Bytes::from("from_l1"),
-        Some(expiry),
-        None,
-    );
+    let l1_value = CacheValue::new(Bytes::from("from_l1"), Some(expiry), None);
 
-    let l2_value = CacheValue::new(
-        Bytes::from("from_l2"),
-        Some(expiry),
-        None,
-    );
+    let l2_value = CacheValue::new(Bytes::from("from_l2"), Some(expiry), None);
 
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
@@ -391,11 +391,7 @@ async fn test_parallel_both_hit_l2_no_expiry() {
     );
 
     // L2 has no expiry (infinite TTL)
-    let l2_value = CacheValue::new(
-        Bytes::from("from_l2"),
-        None,
-        None,
-    );
+    let l2_value = CacheValue::new(Bytes::from("from_l2"), None, None);
 
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
@@ -422,11 +418,7 @@ async fn test_parallel_both_hit_l1_no_expiry() {
     let now = Utc::now();
 
     // L1 has no expiry (infinite TTL)
-    let l1_value = CacheValue::new(
-        Bytes::from("from_l1"),
-        None,
-        None,
-    );
+    let l1_value = CacheValue::new(Bytes::from("from_l1"), None, None);
 
     // L2 has expiry
     let l2_value = CacheValue::new(

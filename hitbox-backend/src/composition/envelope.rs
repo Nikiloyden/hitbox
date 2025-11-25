@@ -20,8 +20,8 @@
 //! The implementation uses bytemuck for safe zero-copy type conversions,
 //! achieving 1.7-3.1% better performance than unsafe pointer casting.
 
-use bytes::Bytes;
 use bytemuck::{Pod, Zeroable};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use std::io::{self, Write};
 
@@ -219,12 +219,8 @@ impl CompositionEnvelope {
                 Ok(Bytes::from(buf))
             }
             CompositionEnvelope::Both { l1, l2 } => {
-                let header = EnvelopeHeader::new_both(
-                    l1.data.len(),
-                    l2.data.len(),
-                    l1.expire,
-                    l1.stale,
-                );
+                let header =
+                    EnvelopeHeader::new_both(l1.data.len(), l2.data.len(), l1.expire, l1.stale);
                 let total_size = EnvelopeHeader::SIZE + l1.data.len() + l2.data.len();
                 let mut buf = Vec::with_capacity(total_size);
 

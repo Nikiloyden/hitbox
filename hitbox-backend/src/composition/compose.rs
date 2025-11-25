@@ -24,9 +24,9 @@
 //! let cache = mem_backend.compose_with(redis_backend, policy);
 //! ```
 
-use crate::Backend;
-use super::{CompositionBackend, CompositionPolicy};
 use super::policy::{ReadPolicy, RefillPolicy, WritePolicy};
+use super::{CompositionBackend, CompositionPolicy};
+use crate::Backend;
 
 /// Trait for composing backends into layered cache hierarchies.
 ///
@@ -123,10 +123,15 @@ impl<T: Backend> Compose for T {}
 mod tests {
     use super::*;
     use crate::format::{Format, JsonFormat};
-    use crate::{Backend, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor};
+    use crate::{
+        Backend, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
+        PassthroughCompressor,
+    };
     use async_trait::async_trait;
     use chrono::Utc;
-    use hitbox_core::{CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+    use hitbox_core::{
+        CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw,
+    };
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -189,7 +194,10 @@ mod tests {
     impl CacheBackend for TestBackend {}
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    #[cfg_attr(feature = "rkyv_format", derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName))]
+    #[cfg_attr(
+        feature = "rkyv_format",
+        derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    )]
     #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
     #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
     struct CachedData {
@@ -230,13 +238,18 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "test_value".to_string() },
+            CachedData {
+                value: "test_value".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Write and read
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .await
+            .unwrap();
 
         let result = cache.get::<MockResponse>(&key).await.unwrap();
         assert_eq!(result.unwrap().data.value, "test_value");
@@ -262,13 +275,17 @@ mod tests {
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
-            CachedData { value: "from_l2".to_string() },
+            CachedData {
+                value: "from_l2".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Populate only L2
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .await
+            .unwrap();
 
         // Read through composition (should use RaceReadPolicy)
         let result = cache.get::<MockResponse>(&key).await.unwrap();
@@ -293,13 +310,18 @@ mod tests {
 
         let key = CacheKey::from_str("test", "nested_key");
         let value = CacheValue::new(
-            CachedData { value: "nested_value".to_string() },
+            CachedData {
+                value: "nested_value".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
         // Write through nested composition
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .await
+            .unwrap();
 
         // All three levels should have the data
         assert!(l1.get::<MockResponse>(&key).await.unwrap().is_some());
@@ -315,18 +337,21 @@ mod tests {
         let l2 = TestBackend::new();
 
         // Test method chaining: compose + builder methods
-        let cache = l1.clone()
-            .compose(l2.clone())
-            .read(RaceReadPolicy::new());
+        let cache = l1.clone().compose(l2.clone()).read(RaceReadPolicy::new());
 
         let key = CacheKey::from_str("test", "chain_key");
         let value = CacheValue::new(
-            CachedData { value: "chain_value".to_string() },
+            CachedData {
+                value: "chain_value".to_string(),
+            },
             Some(Utc::now() + chrono::Duration::seconds(60)),
             None,
         );
 
-        cache.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60))).await.unwrap();
+        cache
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .await
+            .unwrap();
 
         let result = cache.get::<MockResponse>(&key).await.unwrap();
         assert_eq!(result.unwrap().data.value, "chain_value");

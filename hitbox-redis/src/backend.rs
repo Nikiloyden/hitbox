@@ -168,7 +168,8 @@ where
             .query_async(&mut con)
             .await
             .map_err(Error::from)?;
-        Ok(result.map(|value| CacheValue::new(Bytes::from(value), Some(Utc::now()), Some(Utc::now()))))
+        Ok(result
+            .map(|value| CacheValue::new(Bytes::from(value), Some(Utc::now()), Some(Utc::now()))))
     }
 
     async fn write(
@@ -297,4 +298,5 @@ impl<S, C> hitbox_backend::CacheBackend for RedisBackend<S, C>
 where
     S: Format + Send + Sync,
     C: Compressor + Send + Sync,
-{}
+{
+}
