@@ -10,6 +10,7 @@ use hitbox_backend::{
     format::{Format, JsonFormat},
 };
 use redis::{Client, aio::ConnectionManager};
+use smol_str::SmolStr;
 use tokio::sync::OnceCell;
 use tracing::trace;
 
@@ -31,6 +32,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
+    name: SmolStr,
 }
 
 impl RedisBackend<JsonFormat, PassthroughCompressor> {
@@ -85,6 +87,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
+    name: SmolStr,
 }
 
 impl Default for RedisBackendBuilder<JsonFormat, PassthroughCompressor> {
@@ -94,6 +97,7 @@ impl Default for RedisBackendBuilder<JsonFormat, PassthroughCompressor> {
             serializer: JsonFormat,
             key_format: CacheKeyFormat::default(),
             compressor: PassthroughCompressor,
+            name: SmolStr::new_static("redis"),
         }
     }
 }
@@ -119,12 +123,22 @@ where
             serializer,
             key_format: self.key_format,
             compressor: self.compressor,
+            name: self.name,
         }
     }
 
     /// Set key serialization format (String, JSON, Bincode, UrlEncoded)
     pub fn key_format(mut self, key_format: CacheKeyFormat) -> Self {
         self.key_format = key_format;
+        self
+    }
+
+    /// Set a custom name for this backend.
+    ///
+    /// The name is used for source path composition in multi-layer caches.
+    /// For example, with name "sessions", the source path might be "composition.L1.sessions".
+    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+        self.name = name.into();
         self
     }
 
@@ -138,6 +152,7 @@ where
             serializer: self.serializer,
             key_format: self.key_format,
             compressor,
+            name: self.name,
         }
     }
 
@@ -149,6 +164,7 @@ where
             serializer: self.serializer,
             key_format: self.key_format,
             compressor: self.compressor,
+            name: self.name,
         })
     }
 }
@@ -209,6 +225,10 @@ where
         } else {
             Ok(DeleteStatus::Missing)
         }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn value_format(&self) -> &dyn Format {

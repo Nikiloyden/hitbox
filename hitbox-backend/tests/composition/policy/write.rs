@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use hitbox_backend::Backend;
 use hitbox_backend::composition::policy::{
-    OptimisticParallelWritePolicy, SequentialWritePolicy, WritePolicy,
+    CompositionWritePolicy, OptimisticParallelWritePolicy, SequentialWritePolicy,
 };
 use hitbox_core::{CacheKey, CacheValue};
 

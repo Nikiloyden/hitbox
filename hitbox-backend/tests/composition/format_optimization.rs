@@ -1,6 +1,7 @@
 use hitbox_backend::PassthroughCompressor;
 use hitbox_backend::composition::CompositionFormat;
 use hitbox_backend::format::{BincodeFormat, FormatExt, JsonFormat};
+use hitbox_core::{BoxContext, CacheContext};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -43,10 +44,14 @@ fn test_same_format_optimization() {
     );
 
     let data = TestData::large();
-    let serialized = composition.serialize(&data, &()).unwrap();
+    let ctx = CacheContext::default();
+    let serialized = composition.serialize(&data, &ctx).unwrap();
 
     // Deserialize to verify it works
-    let deserialized: TestData = composition.deserialize(&serialized).unwrap();
+    let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
+    let deserialized: TestData = composition
+        .deserialize(&serialized, &mut boxed_ctx)
+        .unwrap();
     assert_eq!(data, deserialized);
 
     println!("Same format test passed");
@@ -63,10 +68,14 @@ fn test_different_formats() {
     );
 
     let data = TestData::large();
-    let serialized = composition.serialize(&data, &()).unwrap();
+    let ctx = CacheContext::default();
+    let serialized = composition.serialize(&data, &ctx).unwrap();
 
     // Deserialize to verify it works
-    let deserialized: TestData = composition.deserialize(&serialized).unwrap();
+    let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
+    let deserialized: TestData = composition
+        .deserialize(&serialized, &mut boxed_ctx)
+        .unwrap();
     assert_eq!(data, deserialized);
 
     println!("Different formats test passed");
@@ -76,9 +85,11 @@ fn test_different_formats() {
 fn test_serialization_size_comparison() {
     let data = TestData::large();
 
+    let ctx = CacheContext::default();
+
     // Single JSON serialization
     let json_format = JsonFormat;
-    let json_size = json_format.serialize(&data, &()).unwrap().len();
+    let json_size = json_format.serialize(&data, &ctx).unwrap().len();
 
     // CompositionFormat with same formats (should be ~2x JSON + small overhead)
     let composition_same = CompositionFormat::new(
@@ -87,7 +98,7 @@ fn test_serialization_size_comparison() {
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
     );
-    let composition_same_size = composition_same.serialize(&data, &()).unwrap().len();
+    let composition_same_size = composition_same.serialize(&data, &ctx).unwrap().len();
 
     // CompositionFormat with different formats
     let composition_diff = CompositionFormat::new(
@@ -96,7 +107,7 @@ fn test_serialization_size_comparison() {
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
     );
-    let composition_diff_size = composition_diff.serialize(&data, &()).unwrap().len();
+    let composition_diff_size = composition_diff.serialize(&data, &ctx).unwrap().len();
 
     println!("JSON size: {} bytes", json_size);
     println!(

@@ -12,7 +12,10 @@ use hitbox_backend::{
     Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend, Compressor,
     DeleteStatus, PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate, Raw,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -196,14 +199,16 @@ async fn test_backend_with_policy_functional() {
         None,
     );
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+
     // Write via backend
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read via backend
-    let result = backend.get::<TestValue>(&key).await.unwrap();
+    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 }

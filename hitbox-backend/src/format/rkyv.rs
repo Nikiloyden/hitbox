@@ -1,8 +1,8 @@
 use bytes::Bytes;
-use hitbox_core::Raw;
+use hitbox_core::{BoxContext, Raw};
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::BackendContext;
+use crate::Context;
 
 /// Rkyv format - high-performance zero-copy serialization
 ///
@@ -78,7 +78,7 @@ impl Format for RkyvFormat {
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
-        _context: &dyn BackendContext,
+        _context: &dyn Context,
     ) -> Result<Raw, FormatError> {
         // Create a pre-allocated buffer with the configured hint
         let buffer = rkyv::AlignedVec::with_capacity(self.buffer_hint);
@@ -111,14 +111,12 @@ impl Format for RkyvFormat {
         &self,
         data: &[u8],
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
-    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError> {
+        _ctx: &mut BoxContext,
+    ) -> Result<(), FormatError> {
         // For rkyv, we just pass the archived bytes directly
         let mut format_deser = FormatDeserializer::Rkyv(data);
         f(&mut format_deser)?;
-        Ok((
-            (),
-            std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>,
-        ))
+        Ok(())
     }
 
     fn clone_box(&self) -> Box<dyn Format> {

@@ -2,7 +2,9 @@ use bytes::Bytes;
 use hitbox_core::{Cacheable, Raw};
 use thiserror::Error;
 
-use crate::BackendContext;
+use hitbox_core::BoxContext;
+
+use crate::Context;
 
 // Bincode imports for concrete types (use absolute paths to avoid conflict with our bincode module)
 use ::bincode::config::Configuration;
@@ -189,16 +191,17 @@ pub trait Format: std::fmt::Debug + Send + Sync {
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
-        context: &dyn BackendContext,
+        context: &dyn Context,
     ) -> Result<Raw, FormatError>;
 
-    /// Provides access to a deserializer via a callback to avoid lifetime issues
-    /// Returns a tuple of (result, context) where context is extracted from the data
+    /// Provides access to a deserializer via a callback to avoid lifetime issues.
+    /// The context is passed by mutable reference and can be modified/upgraded during deserialization.
     fn with_deserializer(
         &self,
         data: &[u8],
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
-    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError>;
+        ctx: &mut BoxContext,
+    ) -> Result<(), FormatError>;
 
     /// Clone this format into a box (for object safety)
     fn clone_box(&self) -> Box<dyn Format>;
@@ -211,23 +214,27 @@ pub trait Format: std::fmt::Debug + Send + Sync {
 /// Extension trait providing generic serialize/deserialize methods
 /// This is automatically implemented for all Format types
 pub trait FormatExt: Format {
-    fn serialize<T>(&self, value: &T, context: &dyn BackendContext) -> Result<Raw, FormatError>
+    fn serialize<T>(&self, value: &T, context: &dyn Context) -> Result<Raw, FormatError>
     where
         T: Cacheable,
     {
         self.with_serializer(&mut |serializer| serializer.serialize(value), context)
     }
 
-    fn deserialize<T>(&self, data: &Raw) -> Result<T, FormatError>
+    fn deserialize<T>(&self, data: &Raw, ctx: &mut BoxContext) -> Result<T, FormatError>
     where
         T: Cacheable,
     {
         let mut result: Option<T> = None;
-        let (_, _context) = self.with_deserializer(data, &mut |deserializer| {
-            let value: T = deserializer.deserialize()?;
-            result = Some(value);
-            Ok(())
-        })?;
+        self.with_deserializer(
+            data,
+            &mut |deserializer| {
+                let value: T = deserializer.deserialize()?;
+                result = Some(value);
+                Ok(())
+            },
+            ctx,
+        )?;
 
         result.ok_or_else(|| {
             FormatError::Deserialize(Box::new(std::io::Error::other(
@@ -252,7 +259,7 @@ impl Format for Box<dyn Format> {
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
-        context: &dyn BackendContext,
+        context: &dyn Context,
     ) -> Result<Raw, FormatError> {
         (**self).with_serializer(f, context)
     }
@@ -261,8 +268,9 @@ impl Format for Box<dyn Format> {
         &self,
         data: &[u8],
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
-    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError> {
-        (**self).with_deserializer(data, f)
+        ctx: &mut BoxContext,
+    ) -> Result<(), FormatError> {
+        (**self).with_deserializer(data, f, ctx)
     }
 
     fn clone_box(&self) -> Box<dyn Format> {
@@ -279,7 +287,7 @@ impl Format for std::sync::Arc<dyn Format> {
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
-        context: &dyn BackendContext,
+        context: &dyn Context,
     ) -> Result<Raw, FormatError> {
         (**self).with_serializer(f, context)
     }
@@ -288,8 +296,9 @@ impl Format for std::sync::Arc<dyn Format> {
         &self,
         data: &[u8],
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
-    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError> {
-        (**self).with_deserializer(data, f)
+        ctx: &mut BoxContext,
+    ) -> Result<(), FormatError> {
+        (**self).with_deserializer(data, f, ctx)
     }
 
     fn clone_box(&self) -> Box<dyn Format> {

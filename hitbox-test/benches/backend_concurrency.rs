@@ -2,7 +2,7 @@ use bytes::Bytes;
 use hitbox::{CacheKey, CacheableResponse};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
-use hitbox_core::CacheValue;
+use hitbox_core::{CacheContext, CacheValue};
 use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
@@ -63,9 +63,10 @@ where
                 let key_num = (task_id * 1000 + ops) % 1000;
                 let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
                 let value = CacheValue::new(response.clone(), None, None);
+                let mut ctx = CacheContext::default().boxed();
 
                 if backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                     .await
                     .is_err()
                 {
@@ -113,8 +114,9 @@ where
             while Instant::now() < deadline {
                 let key_num = (task_id * 1000 + ops) % 1000;
                 let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
+                let mut ctx = CacheContext::default().boxed();
 
-                if backend.get::<BenchResponse>(&key).await.is_err() {
+                if backend.get::<BenchResponse>(&key, &mut ctx).await.is_err() {
                     errors += 1;
                 }
                 ops += 1;
@@ -162,10 +164,11 @@ where
                 let key_num = (task_id * 1000 + ops) % 1000;
                 let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
                 let value = CacheValue::new(response.clone(), None, None);
+                let mut ctx = CacheContext::default().boxed();
 
                 // Write
                 if backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                     .await
                     .is_err()
                 {
@@ -173,7 +176,7 @@ where
                 }
 
                 // Read
-                if backend.get::<BenchResponse>(&key).await.is_err() {
+                if backend.get::<BenchResponse>(&key, &mut ctx).await.is_err() {
                     errors += 1;
                 }
 
@@ -290,8 +293,9 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
+            let mut ctx = CacheContext::default().boxed();
             backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                 .await
                 .unwrap();
         }
@@ -353,8 +357,9 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
+            let mut ctx = CacheContext::default().boxed();
             let _ = backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                 .await;
         }
 
@@ -436,8 +441,9 @@ async fn main() {
         for i in 0..1000 {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
+            let mut ctx = CacheContext::default().boxed();
             let _ = backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                 .await;
         }
 

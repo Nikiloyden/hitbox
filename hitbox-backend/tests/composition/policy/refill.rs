@@ -3,8 +3,11 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::CacheBackend;
-use hitbox_backend::composition::policy::{AlwaysRefill, NeverRefill, RefillPolicy};
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate};
+use hitbox_backend::composition::policy::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -49,7 +52,7 @@ impl CacheableResponse for TestValue {
 }
 
 // =============================================================================
-// RefillPolicy Trait Tests
+// CompositionRefillPolicy Trait Tests
 // =============================================================================
 
 #[tokio::test]
@@ -66,9 +69,10 @@ async fn test_always_refill_policy() {
     );
 
     // Execute refill - should call the closure
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
@@ -90,9 +94,10 @@ async fn test_never_refill_policy() {
     );
 
     // Execute refill - should NOT call the closure
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
@@ -118,9 +123,10 @@ async fn test_manual_refill_with_always_policy() {
     );
 
     // Simulate L2 hit - policy executes refill
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
@@ -142,9 +148,10 @@ async fn test_manual_refill_with_never_policy() {
     );
 
     // Simulate L2 hit - policy skips refill
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
@@ -165,9 +172,10 @@ async fn test_default_always_refill() {
         None,
     );
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
@@ -188,12 +196,21 @@ async fn test_default_never_refill() {
         None,
     );
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
                 .await
         })
         .await;
 
     assert!(!l1.has(&key));
 }
+
+// =============================================================================
+// Metrics Tests
+// =============================================================================
+// Note: CompositionRefillPolicy metrics collection is tested via CompositionBackend
+// integration tests (test_metrics_recorded_on_l2_hit_with_refill) because
+// async closures need to own the context. Standalone CompositionRefillPolicy tests
+// verify only that the closure is executed or skipped.

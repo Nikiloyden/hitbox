@@ -5,7 +5,10 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend,
     Compressor, DeleteStatus, PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate, Raw,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -116,9 +119,11 @@ async fn test_both_layers_fail_set() {
         None,
     );
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+
     // When both layers fail, should return CompositionError with both errors
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await;
 
     assert!(result.is_err());
@@ -157,8 +162,10 @@ async fn test_both_layers_fail_delete() {
 
     let key = CacheKey::from_str("test", "key1");
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+
     // When both layers fail, should return CompositionError with both errors
-    let result = composition.delete(&key).await;
+    let result = composition.delete(&key, &mut ctx).await;
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -202,9 +209,11 @@ async fn test_both_layers_fail_backend_write() {
         None,
     );
 
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+
     // Test via CacheBackend::set (which uses Backend::write internally)
     let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await;
 
     assert!(result.is_err());

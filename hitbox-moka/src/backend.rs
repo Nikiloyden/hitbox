@@ -7,6 +7,7 @@ use hitbox_backend::{
     BackendResult, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
 use moka::{Expiry, future::Cache};
+use smol_str::SmolStr;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,6 +37,7 @@ where
     pub key_format: CacheKeyFormat,
     pub serializer: S,
     pub compressor: C,
+    pub name: SmolStr,
 }
 
 impl<S, C> std::fmt::Debug for MokaBackend<S, C>
@@ -45,6 +47,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MokaBackend")
+            .field("name", &self.name)
             .field("cache", &self.cache)
             .field("key_format", &self.key_format)
             .field("serializer", &std::any::type_name::<S>())
@@ -88,6 +91,10 @@ where
             Some(_) => Ok(DeleteStatus::Deleted(1)),
             None => Ok(DeleteStatus::Missing),
         }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn value_format(&self) -> &dyn Format {

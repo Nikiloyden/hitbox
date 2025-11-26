@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use hitbox_core::CacheKey;
 use std::future::Future;
 
-use super::WritePolicy;
+use super::CompositionWritePolicy;
 use crate::BackendError;
 
 /// Sequential write policy: Write to L1, then L2 (write-through).
@@ -69,7 +69,7 @@ impl SequentialWritePolicy {
 }
 
 #[async_trait]
-impl WritePolicy for SequentialWritePolicy {
+impl CompositionWritePolicy for SequentialWritePolicy {
     #[tracing::instrument(skip(self, write_l1, write_l2), level = "trace")]
     async fn execute_with<'a, F1, F2, Fut1, Fut2>(
         &self,

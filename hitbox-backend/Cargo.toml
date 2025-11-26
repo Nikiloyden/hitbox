@@ -30,6 +30,7 @@ serde_urlencoded = { version = "0.7.1", default-features = false }
 erased-serde = "0.4"
 bytes = { version = "1", features = ["serde"] }
 bytemuck = { version = "1.19", features = ["derive"] }
+smol_str = { workspace = true }
 
 # Compression support (optional)
 flate2 = { version = "1", optional = true }

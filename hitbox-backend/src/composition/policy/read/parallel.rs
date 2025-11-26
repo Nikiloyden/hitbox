@@ -4,11 +4,11 @@
 //! preferring the response with the longest remaining TTL (freshest data).
 
 use async_trait::async_trait;
-use hitbox_core::{CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue};
 use std::future::Future;
 
-use super::ReadPolicy;
-use crate::composition::CompositionSource;
+use super::{CompositionReadPolicy, ReadResult};
+use crate::composition::CompositionLayer;
 
 /// Parallel read policy: Query both L1 and L2 in parallel, prefer freshest data (by TTL).
 ///
@@ -57,24 +57,24 @@ impl ParallelReadPolicy {
 }
 
 #[async_trait]
-impl ReadPolicy for ParallelReadPolicy {
+impl CompositionReadPolicy for ParallelReadPolicy {
     #[tracing::instrument(skip(self, read_l1, read_l2), level = "trace")]
     async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
         &self,
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
+    ) -> Result<ReadResult<T>, E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,
         F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
         F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<Option<CacheValue<T>>, E>> + Send + 'a,
-        Fut2: Future<Output = Result<Option<CacheValue<T>>, E>> + Send + 'a,
+        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
+        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
     {
         // Query both in parallel and wait for both to complete
-        let (l1_result, l2_result) = futures::join!(read_l1(key), read_l2(key));
+        let ((l1_result, l1_ctx), (l2_result, l2_ctx)) = futures::join!(read_l1(key), read_l2(key));
 
         // Aggregate results, preferring freshest data (by TTL)
         match (l1_result, l2_result) {
@@ -84,33 +84,57 @@ impl ReadPolicy for ParallelReadPolicy {
                 match (l1_value.ttl(), l2_value.ttl()) {
                     (Some(l1_ttl), Some(l2_ttl)) if l2_ttl > l1_ttl => {
                         tracing::trace!("Both hit, preferring L2 (fresher TTL)");
-                        Ok((Some(l2_value), CompositionSource::L2))
+                        Ok(ReadResult {
+                            value: Some(l2_value),
+                            source: CompositionLayer::L2,
+                            context: l2_ctx,
+                        })
                     }
                     (Some(_), None) => {
                         tracing::trace!("Both hit, preferring L2 (no expiry)");
-                        Ok((Some(l2_value), CompositionSource::L2))
+                        Ok(ReadResult {
+                            value: Some(l2_value),
+                            source: CompositionLayer::L2,
+                            context: l2_ctx,
+                        })
                     }
                     _ => {
                         // L1 >= L2, or L1 has no expiry, or both no expiry - prefer L1
                         tracing::trace!("Both hit, preferring L1 (fresher or equal TTL)");
-                        Ok((Some(l1_value), CompositionSource::L1))
+                        Ok(ReadResult {
+                            value: Some(l1_value),
+                            source: CompositionLayer::L1,
+                            context: l1_ctx,
+                        })
                     }
                 }
             }
             // L1 hit, L2 miss/error
             (Ok(Some(value)), _) => {
                 tracing::trace!("L1 hit, L2 miss/error");
-                Ok((Some(value), CompositionSource::L1))
+                Ok(ReadResult {
+                    value: Some(value),
+                    source: CompositionLayer::L1,
+                    context: l1_ctx,
+                })
             }
             // L2 hit, L1 miss/error
             (_, Ok(Some(value))) => {
                 tracing::trace!("L2 hit, L1 miss/error");
-                Ok((Some(value), CompositionSource::L2))
+                Ok(ReadResult {
+                    value: Some(value),
+                    source: CompositionLayer::L2,
+                    context: l2_ctx,
+                })
             }
             // Both miss
             (Ok(None), Ok(None)) => {
                 tracing::trace!("Both layers miss");
-                Ok((None, CompositionSource::L2))
+                Ok(ReadResult {
+                    value: None,
+                    source: CompositionLayer::L2,
+                    context: CacheContext::default().boxed(),
+                })
             }
             // Both error
             (Err(e1), Err(e2)) => {
@@ -120,7 +144,11 @@ impl ReadPolicy for ParallelReadPolicy {
             // One error, one miss
             (Ok(None), Err(e)) | (Err(e), Ok(None)) => {
                 tracing::warn!(error = ?e, "One layer failed, one missed");
-                Ok((None, CompositionSource::L2))
+                Ok(ReadResult {
+                    value: None,
+                    source: CompositionLayer::L2,
+                    context: CacheContext::default().boxed(),
+                })
             }
         }
     }

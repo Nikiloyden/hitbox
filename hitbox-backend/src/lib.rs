@@ -16,7 +16,7 @@ pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]
 pub use compressor::ZstdCompressor;
 pub use compressor::{CompressionError, Compressor, PassthroughCompressor};
-pub use context::{BackendContext, BackendPolicy};
+pub use context::{Context, ReadMode};
 use format::FormatError;
 #[cfg(feature = "rkyv_format")]
 pub use format::RkyvFormat;

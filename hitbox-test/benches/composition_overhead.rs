@@ -4,7 +4,7 @@ use hitbox::{CacheKey, CacheableResponse};
 use hitbox_backend::composition::policy::{CompositionPolicy, NeverRefill};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, CompositionBackend, PassthroughCompressor};
-use hitbox_core::CacheValue;
+use hitbox_core::{CacheContext, CacheValue};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
 use http::Response;
@@ -54,7 +54,12 @@ fn bench_direct_moka(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -63,8 +68,9 @@ fn bench_direct_moka(c: &mut Criterion) {
             &(&backend, &key, &value),
             |b, (backend, key, value)| {
                 b.to_async(&runtime).iter(|| async {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -77,7 +83,8 @@ fn bench_direct_moka(c: &mut Criterion) {
             &(&backend, &key),
             |b, (backend, key)| {
                 b.to_async(&runtime).iter(|| async {
-                    backend.get::<BenchResponse>(key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(key, &mut ctx).await.unwrap();
                 });
             },
         );
@@ -115,7 +122,12 @@ fn bench_composition_concrete(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -124,8 +136,9 @@ fn bench_composition_concrete(c: &mut Criterion) {
             &(&backend, &key, &value),
             |b, (backend, key, value)| {
                 b.to_async(&runtime).iter(|| async {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -138,7 +151,8 @@ fn bench_composition_concrete(c: &mut Criterion) {
             &(&backend, &key),
             |b, (backend, key)| {
                 b.to_async(&runtime).iter(|| async {
-                    backend.get::<BenchResponse>(key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(key, &mut ctx).await.unwrap();
                 });
             },
         );
@@ -177,7 +191,12 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -190,8 +209,14 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
                 let key = key_clone.clone();
                 let value = value_clone.clone();
                 async move {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(
+                            &key,
+                            &value,
+                            Some(Duration::from_secs(3600)),
+                            &mut ctx,
+                        )
                         .await
                         .unwrap();
                 }
@@ -206,7 +231,8 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
                 let backend = backend_clone.clone();
                 let key = key_clone.clone();
                 async move {
-                    backend.get::<BenchResponse>(&key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
                 }
             });
         });
@@ -248,7 +274,12 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -261,8 +292,14 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
                 let key = key_clone.clone();
                 let value = value_clone.clone();
                 async move {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(
+                            &key,
+                            &value,
+                            Some(Duration::from_secs(3600)),
+                            &mut ctx,
+                        )
                         .await
                         .unwrap();
                 }
@@ -277,7 +314,8 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
                 let backend = backend_clone.clone();
                 let key = key_clone.clone();
                 async move {
-                    backend.get::<BenchResponse>(&key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
                 }
             });
         });
@@ -321,7 +359,12 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -334,8 +377,14 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
                 let key = key_clone.clone();
                 let value = value_clone.clone();
                 async move {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(
+                            &key,
+                            &value,
+                            Some(Duration::from_secs(3600)),
+                            &mut ctx,
+                        )
                         .await
                         .unwrap();
                 }
@@ -350,7 +399,8 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
                 let backend = backend_clone.clone();
                 let key = key_clone.clone();
                 async move {
-                    backend.get::<BenchResponse>(&key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
                 }
             });
         });
@@ -398,7 +448,12 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -407,8 +462,9 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
             &(&backend, &key, &value),
             |b, (backend, key, value)| {
                 b.to_async(&runtime).iter(|| async {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -421,7 +477,8 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
             &(&backend, &key),
             |b, (backend, key)| {
                 b.to_async(&runtime).iter(|| async {
-                    backend.get::<BenchResponse>(key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(key, &mut ctx).await.unwrap();
                 });
             },
         );
@@ -480,7 +537,12 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -493,8 +555,14 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
                 let key = key_clone.clone();
                 let value = value_clone.clone();
                 async move {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(
+                            &key,
+                            &value,
+                            Some(Duration::from_secs(3600)),
+                            &mut ctx,
+                        )
                         .await
                         .unwrap();
                 }
@@ -509,7 +577,8 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
                 let backend = backend_clone.clone();
                 let key = key_clone.clone();
                 async move {
-                    backend.get::<BenchResponse>(&key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
                 }
             });
         });
@@ -563,7 +632,12 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -572,8 +646,9 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
             &(&backend, &key, &value),
             |b, (backend, key, value)| {
                 b.to_async(&runtime).iter(|| async {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -586,7 +661,8 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
             &(&backend, &key),
             |b, (backend, key)| {
                 b.to_async(&runtime).iter(|| async {
-                    backend.get::<BenchResponse>(key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(key, &mut ctx).await.unwrap();
                 });
             },
         );
@@ -657,7 +733,12 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         // Pre-populate for read benchmark
         runtime
-            .block_on(backend.set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600))))
+            .block_on(async {
+                let mut ctx = CacheContext::default().boxed();
+                backend
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .await
+            })
             .unwrap();
 
         // Write benchmark
@@ -666,8 +747,9 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
             &(&backend, &key, &value),
             |b, (backend, key, value)| {
                 b.to_async(&runtime).iter(|| async {
+                    let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)))
+                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -680,7 +762,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
             &(&backend, &key),
             |b, (backend, key)| {
                 b.to_async(&runtime).iter(|| async {
-                    backend.get::<BenchResponse>(key).await.unwrap();
+                    let mut ctx = CacheContext::default().boxed();
+                    backend.get::<BenchResponse>(key, &mut ctx).await.unwrap();
                 });
             },
         );

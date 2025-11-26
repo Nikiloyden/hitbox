@@ -1,4 +1,5 @@
 mod cacheable;
+mod context;
 mod extractor;
 mod key;
 mod policy;
@@ -10,6 +11,9 @@ mod upstream;
 mod value;
 
 pub use cacheable::Cacheable;
+pub use context::{
+    BoxContext, CacheContext, CacheStatus, Context, LayerMetrics, Metrics, ReadMode, ResponseSource,
+};
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};
 pub use policy::{CachePolicy, EntityPolicyConfig};
