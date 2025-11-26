@@ -22,39 +22,53 @@ pub enum State<Res, Req>
 where
     Res: CacheableResponse,
 {
-    Initial,
+    /// Initial state - context is created here
+    Initial { ctx: Option<BoxContext> },
+    /// Checking if request should be cached
     CheckRequestCachePolicy {
         #[pin]
         cache_policy_future: RequestCachePolicyFuture<Req>,
+        ctx: Option<BoxContext>,
     },
+    /// Polling the cache backend - context is captured in the future
     PollCache {
         #[pin]
         poll_cache: PollCacheFuture<Res::Cached>,
         request: Option<Req>,
+        // Note: ctx is inside poll_cache future, returned with result
     },
-    // CachePolled {
-    //     cache_result: CacheResult<C::Cached>,
-    // },
+    /// Checking cache state (actual/stale/expired)
     CheckCacheState {
         cache_state: CacheStateFuture<Res>,
         request: Option<Req>,
+        ctx: Option<BoxContext>,
     },
+    /// Polling upstream service
     PollUpstream {
         upstream_future: UpstreamFuture<Res>,
+        ctx: Option<BoxContext>,
     },
+    /// Upstream response received
     UpstreamPolled {
         upstream_result: Option<Res>,
+        ctx: Option<BoxContext>,
     },
+    /// Checking if response should be cached
     CheckResponseCachePolicy {
         #[pin]
         cache_policy: BoxFuture<'static, ResponseCachePolicy<Res>>,
+        ctx: Option<BoxContext>,
     },
+    /// Updating cache with response - context is captured in the future
     UpdateCache {
         #[pin]
         update_cache_future: UpdateCache<Res>,
+        // Note: ctx is inside update_cache_future, returned with result
     },
+    /// Final state with response
     Response {
         response: Option<Res>,
+        ctx: Option<BoxContext>,
     },
 }
 
@@ -64,10 +78,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            State::Initial => f.write_str("State::Initial"),
+            State::Initial { .. } => f.write_str("State::Initial"),
             State::CheckRequestCachePolicy { .. } => f.write_str("State::CheckRequestCachePolicy"),
             State::PollCache { .. } => f.write_str("State::PollCache"),
-            // State::CachePolled { .. } => f.write_str("State::PollCache"),
             State::CheckCacheState { .. } => f.write_str("State::CheckCacheState"),
             State::CheckResponseCachePolicy { .. } => {
                 f.write_str("State::CheckResponseCachePolicy")

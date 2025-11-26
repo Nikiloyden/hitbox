@@ -28,10 +28,10 @@ impl Format for JsonFormat {
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
         _ctx: &mut BoxContext,
     ) -> Result<(), FormatError> {
-        let mut deser = serde_json::Deserializer::from_slice(data);
-        let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deser);
-        let mut format_deser = FormatDeserializer::Serde(&mut erased);
-        f(&mut format_deser)?;
+        let mut deserializer = serde_json::Deserializer::from_slice(data);
+        let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deserializer);
+        let mut format_deserializer = FormatDeserializer::Serde(&mut erased);
+        f(&mut format_deserializer)?;
         Ok(())
     }
 
