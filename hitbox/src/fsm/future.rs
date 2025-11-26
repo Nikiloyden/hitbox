@@ -251,13 +251,12 @@ where
                     ctx,
                 } => {
                     let policy = ready!(cache_policy_future.poll(cx));
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
                             let backend = this.backend.clone();
                             let cache_key = key.clone();
                             let _ = this.cache_key.insert(key);
-                            let mut ctx = ctx;
                             let poll_cache = Box::pin(async move {
                                 let result = backend.get::<Res>(&cache_key, &mut ctx).await;
                                 (result, ctx)
@@ -382,10 +381,9 @@ where
                     let policy = ready!(cache_policy.poll(cx));
                     let backend = this.backend.clone();
                     let cache_key = this.cache_key.take().expect("CacheKey not found");
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(cache_value) => {
-                            let mut ctx = ctx;
                             let update_cache_future = Box::pin(async move {
                                 let update_cache_result = backend
                                     .set::<Res>(&cache_key, &cache_value, None, &mut ctx)
