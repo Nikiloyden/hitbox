@@ -33,11 +33,11 @@ impl Format for RonFormat {
         _ctx: &mut BoxContext,
     ) -> Result<(), FormatError> {
         let s = std::str::from_utf8(data).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
-        let mut deser = ron::de::Deserializer::from_str(s)
+        let mut deserializer = ron::de::Deserializer::from_str(s)
             .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
-        let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deser);
-        let mut format_deser = FormatDeserializer::Serde(&mut erased);
-        f(&mut format_deser)?;
+        let mut erased = <dyn erased_serde::Deserializer>::erase(&mut deserializer);
+        let mut format_deserializer = FormatDeserializer::Serde(&mut erased);
+        f(&mut format_deserializer)?;
         Ok(())
     }
 

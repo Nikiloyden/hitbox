@@ -63,8 +63,8 @@ impl Format for BincodeFormat {
         let mut decoder = ::bincode::de::DecoderImpl::new(reader, config, context);
 
         // Create FormatDeserializer::Bincode variant with concrete DecoderImpl
-        let mut format_deser = FormatDeserializer::Bincode(&mut decoder);
-        f(&mut format_deser)?;
+        let mut format_deserializer = FormatDeserializer::Bincode(&mut decoder);
+        f(&mut format_deserializer)?;
 
         Ok(())
     }

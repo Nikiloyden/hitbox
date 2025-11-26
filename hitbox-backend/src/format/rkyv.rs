@@ -114,8 +114,8 @@ impl Format for RkyvFormat {
         _ctx: &mut BoxContext,
     ) -> Result<(), FormatError> {
         // For rkyv, we just pass the archived bytes directly
-        let mut format_deser = FormatDeserializer::Rkyv(data);
-        f(&mut format_deser)?;
+        let mut format_deserializer = FormatDeserializer::Rkyv(data);
+        f(&mut format_deserializer)?;
         Ok(())
     }
 

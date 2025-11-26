@@ -8,8 +8,8 @@ use std::{
 };
 
 use crate::{
-    BoxContext, CacheContext, CachePolicy, CacheState, CacheStatus, CacheableResponse,
-    ResponseSource, policy::PolicyConfig,
+    CacheContext, CachePolicy, CacheState, CacheStatus, CacheableResponse, ResponseSource,
+    policy::PolicyConfig,
 };
 use futures::ready;
 use hitbox_core::{Cacheable, CacheablePolicyData, EntityPolicyConfig, Upstream};
@@ -23,7 +23,7 @@ use crate::{
 };
 
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
-const CONTEXT_TAKEN_ERROR: &str = "Context already taken";
+const CONTEXT_TAKEN_ERROR: &str = "Context already taken from state";
 
 // #[cfg(test)]
 // mod tests {
@@ -160,7 +160,6 @@ where
     backend: Arc<B>,
     request: Option<Req>,
     cache_key: Option<CacheKey>,
-    context: Option<BoxContext>,
     #[pin]
     state: State<Res, Req>,
     #[pin]
@@ -191,9 +190,10 @@ where
             upstream,
             backend,
             cache_key: None,
-            context: Some(CacheContext::default().boxed()),
             request: Some(request),
-            state: State::Initial,
+            state: State::Initial {
+                ctx: Some(CacheContext::default().boxed()),
+            },
             poll_cache: None,
             request_predicates,
             response_predicates,
@@ -217,16 +217,16 @@ where
 {
     type Output = (Res, CacheContext);
 
-    // #[instrument(skip(self, cx), fields(state = ?self.state, request = type_name::<T::Response>(), backend = type_name::<B>()))]
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
         loop {
             let state = match this.state.as_mut().project() {
-                StateProj::Initial => {
+                StateProj::Initial { ctx } => {
                     let predicates = this.request_predicates.clone();
                     let extractors = this.key_extractors.clone();
                     let request = this.request.take().expect(POLL_AFTER_READY_ERROR);
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.policy.as_ref() {
                         PolicyConfig::Enabled(_) => {
                             let cache_policy_future = Box::pin(async move {
@@ -234,24 +234,30 @@ where
                             });
                             State::CheckRequestCachePolicy {
                                 cache_policy_future,
+                                ctx: Some(ctx),
                             }
                         }
                         PolicyConfig::Disabled => {
                             let upstream_future = Box::pin(this.upstream.call(request));
-                            State::PollUpstream { upstream_future }
+                            State::PollUpstream {
+                                upstream_future,
+                                ctx: Some(ctx),
+                            }
                         }
                     }
                 }
                 StateProj::CheckRequestCachePolicy {
                     cache_policy_future,
+                    ctx,
                 } => {
                     let policy = ready!(cache_policy_future.poll(cx));
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
                             let backend = this.backend.clone();
                             let cache_key = key.clone();
                             let _ = this.cache_key.insert(key);
-                            let mut ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR);
+                            let mut ctx = ctx;
                             let poll_cache = Box::pin(async move {
                                 let result = backend.get::<Res>(&cache_key, &mut ctx).await;
                                 (result, ctx)
@@ -263,7 +269,10 @@ where
                         }
                         CachePolicy::NonCacheable(request) => {
                             let upstream_future = Box::pin(this.upstream.call(request));
-                            State::PollUpstream { upstream_future }
+                            State::PollUpstream {
+                                upstream_future,
+                                ctx: Some(ctx),
+                            }
                         }
                     }
                 }
@@ -272,8 +281,6 @@ where
                     request,
                 } => {
                     let (cache_result, ctx) = ready!(poll_cache.poll(cx));
-                    // Restore context from the async block
-                    *this.context = Some(ctx);
                     let cached = cache_result.unwrap_or_else(|_err| {
                         //println!("cache backend error: {err}");
                         None
@@ -282,55 +289,71 @@ where
                         Some(cached_value) => State::CheckCacheState {
                             cache_state: Box::pin(cached_value.cache_state()),
                             request: request.take(),
+                            ctx: Some(ctx),
                         },
                         None => {
                             let upstream_future = Box::pin(
                                 this.upstream
                                     .call(request.take().expect(POLL_AFTER_READY_ERROR)),
                             );
-                            State::PollUpstream { upstream_future }
+                            State::PollUpstream {
+                                upstream_future,
+                                ctx: Some(ctx),
+                            }
                         }
                     }
                 }
                 StateProj::CheckCacheState {
                     cache_state,
                     request,
+                    ctx,
                 } => {
                     let state = ready!(cache_state.as_mut().poll(cx));
-                    this.context
-                        .as_mut()
+                    // Set status on the context while it's still in the Option
+                    ctx.as_mut()
                         .expect(CONTEXT_TAKEN_ERROR)
                         .set_status(CacheStatus::Hit);
                     match state {
                         CacheState::Actual(response) => State::Response {
                             response: Some(response),
+                            ctx: ctx.take(),
                         },
                         CacheState::Stale(response) => State::Response {
                             response: Some(response),
+                            ctx: ctx.take(),
                         },
-                        // TODO: remove code duplication with PollCache (upstream_future creation)
                         CacheState::Expired(_response) => {
-                            this.context
-                                .as_mut()
-                                .expect(CONTEXT_TAKEN_ERROR)
-                                .set_status(CacheStatus::Miss);
+                            let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                            ctx.set_status(CacheStatus::Miss);
                             let upstream_future = Box::pin(
                                 this.upstream
                                     .call(request.take().expect(POLL_AFTER_READY_ERROR)),
                             );
-                            State::PollUpstream { upstream_future }
+                            State::PollUpstream {
+                                upstream_future,
+                                ctx: Some(ctx),
+                            }
                         }
                     }
                 }
-                StateProj::PollUpstream { upstream_future } => {
+                StateProj::PollUpstream {
+                    upstream_future,
+                    ctx,
+                } => {
                     let res = ready!(upstream_future.as_mut().poll(cx));
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     State::UpstreamPolled {
                         upstream_result: Some(res),
+                        ctx: Some(ctx),
                     }
                 }
-                StateProj::UpstreamPolled { upstream_result } => {
+                StateProj::UpstreamPolled {
+                    upstream_result,
+                    ctx,
+                } => {
                     let upstream_result = upstream_result.take().expect(POLL_AFTER_READY_ERROR);
                     let predicates = this.response_predicates.clone();
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.cache_key {
                         Some(_cache_key) => {
                             let entity_config = match this.policy.as_ref() {
@@ -346,20 +369,23 @@ where
                                         .cache_policy(predicates, &entity_config)
                                         .await
                                 }),
+                                ctx: Some(ctx),
                             }
                         }
                         None => State::Response {
                             response: Some(upstream_result),
+                            ctx: Some(ctx),
                         },
                     }
                 }
-                StateProj::CheckResponseCachePolicy { cache_policy } => {
+                StateProj::CheckResponseCachePolicy { cache_policy, ctx } => {
                     let policy = ready!(cache_policy.poll(cx));
                     let backend = this.backend.clone();
                     let cache_key = this.cache_key.take().expect("CacheKey not found");
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(cache_value) => {
-                            let mut ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR);
+                            let mut ctx = ctx;
                             let update_cache_future = Box::pin(async move {
                                 let update_cache_result = backend
                                     .set::<Res>(&cache_key, &cache_value, None, &mut ctx)
@@ -374,6 +400,7 @@ where
                         }
                         CachePolicy::NonCacheable(response) => State::Response {
                             response: Some(response),
+                            ctx: Some(ctx),
                         },
                     }
                 }
@@ -383,28 +410,24 @@ where
                     // TODO: check backend result
                     let (_backend_result, upstream_result, ctx) =
                         ready!(update_cache_future.poll(cx));
-                    // Restore context from the async block
-                    *this.context = Some(ctx);
                     State::Response {
                         response: Some(upstream_result),
+                        ctx: Some(ctx),
                     }
                 }
-                StateProj::Response { response } => {
+                StateProj::Response { response, ctx } => {
                     let upstream_response = response.take().expect(POLL_AFTER_READY_ERROR);
-                    let ctx = this.context.as_mut().expect(CONTEXT_TAKEN_ERROR);
-                    let source = match ctx.status() {
+                    let ctx_ref = ctx.as_mut().expect(CONTEXT_TAKEN_ERROR);
+                    let source = match ctx_ref.status() {
                         CacheStatus::Hit | CacheStatus::Stale => {
                             // TODO: get backend name from backend instance
                             ResponseSource::Backend("unknown".to_string())
                         }
                         CacheStatus::Miss => ResponseSource::Upstream,
                     };
-                    ctx.set_source(source);
-                    let ctx = this
-                        .context
-                        .take()
-                        .expect(CONTEXT_TAKEN_ERROR)
-                        .into_cache_context();
+                    ctx_ref.set_source(source);
+                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let ctx = ctx.into_cache_context();
                     return Poll::Ready((upstream_response, ctx));
                 }
             };
