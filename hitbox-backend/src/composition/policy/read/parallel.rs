@@ -133,7 +133,7 @@ impl CompositionReadPolicy for ParallelReadPolicy {
                 Ok(ReadResult {
                     value: None,
                     source: CompositionLayer::L2,
-                    context: Box::new(CacheContext::default()),
+                    context: CacheContext::default().boxed(),
                 })
             }
             // Both error
@@ -147,7 +147,7 @@ impl CompositionReadPolicy for ParallelReadPolicy {
                 Ok(ReadResult {
                     value: None,
                     source: CompositionLayer::L2,
-                    context: Box::new(CacheContext::default()),
+                    context: CacheContext::default().boxed(),
                 })
             }
         }

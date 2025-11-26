@@ -119,7 +119,7 @@ async fn test_both_layers_fail_set() {
         None,
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // When both layers fail, should return CompositionError with both errors
     let result = composition
@@ -162,7 +162,7 @@ async fn test_both_layers_fail_delete() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // When both layers fail, should return CompositionError with both errors
     let result = composition.delete(&key, &mut ctx).await;
@@ -209,7 +209,7 @@ async fn test_both_layers_fail_backend_write() {
         None,
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // Test via CacheBackend::set (which uses Backend::write internally)
     let result = composition

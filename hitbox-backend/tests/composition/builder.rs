@@ -199,7 +199,7 @@ async fn test_backend_with_policy_functional() {
         None,
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // Write via backend
     backend

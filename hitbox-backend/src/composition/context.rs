@@ -45,7 +45,7 @@ impl CompositionContext {
     /// the data should be written back to L1 for cache refill.
     pub fn new(layer: CompositionLayer, format: CompositionFormat) -> Self {
         Self {
-            inner: Box::new(CacheContext::default()),
+            inner: CacheContext::default().boxed(),
             layer,
             format,
         }
@@ -137,6 +137,6 @@ impl std::fmt::Debug for CompositionContext {
 /// This takes ownership of the existing context and wraps it with
 /// composition-specific data.
 pub fn upgrade_context(ctx: &mut BoxContext, layer: CompositionLayer, format: CompositionFormat) {
-    let inner = std::mem::replace(ctx, Box::new(CacheContext::default()));
+    let inner = std::mem::replace(ctx, CacheContext::default().boxed());
     *ctx = Box::new(CompositionContext::wrap(inner, layer, format));
 }

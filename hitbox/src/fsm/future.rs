@@ -191,7 +191,7 @@ where
             upstream,
             backend,
             cache_key: None,
-            context: Some(Box::new(CacheContext::default())),
+            context: Some(CacheContext::default().boxed()),
             request: Some(request),
             state: State::Initial,
             poll_cache: None,

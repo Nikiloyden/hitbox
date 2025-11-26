@@ -247,25 +247,25 @@ mod tests {
         );
 
         // Write and read
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "test_value");
 
         // Verify both layers have the data
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l1.get::<MockResponse>(&key, &mut ctx)
                 .await
                 .unwrap()
                 .is_some()
         );
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l2.get::<MockResponse>(&key, &mut ctx)
                 .await
@@ -298,18 +298,18 @@ mod tests {
         );
 
         // Populate only L2
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through composition (should use RaceReadPolicy)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "from_l2");
 
         // With NeverRefill, L1 should NOT be populated
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l1.get::<MockResponse>(&key, &mut ctx)
                 .await
@@ -341,28 +341,28 @@ mod tests {
         );
 
         // Write through nested composition
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // All three levels should have the data
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l1.get::<MockResponse>(&key, &mut ctx)
                 .await
                 .unwrap()
                 .is_some()
         );
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l2.get::<MockResponse>(&key, &mut ctx)
                 .await
                 .unwrap()
                 .is_some()
         );
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         assert!(
             l3.get::<MockResponse>(&key, &mut ctx)
                 .await
@@ -390,13 +390,13 @@ mod tests {
             None,
         );
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "chain_value");
     }

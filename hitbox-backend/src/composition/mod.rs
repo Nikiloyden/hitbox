@@ -54,7 +54,9 @@ use crate::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use hitbox_core::{BoxContext, CacheKey, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode,
+};
 use policy::{
     AlwaysRefill, CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy,
     OptimisticParallelWritePolicy, ReadResult, SequentialReadPolicy,
@@ -562,7 +564,7 @@ where
         let l2 = &self.l2;
 
         let read_l1_with_envelope = |k| async move {
-            let ctx: BoxContext = Box::new(hitbox_core::CacheContext::default());
+            let ctx: BoxContext = CacheContext::default().boxed();
             let result = match l1.read(k).await {
                 Ok(Some(l1_value)) => {
                     let (expire, stale) = (l1_value.expire, l1_value.stale);
@@ -579,7 +581,7 @@ where
         };
 
         let read_l2_with_envelope = |k| async move {
-            let ctx: BoxContext = Box::new(hitbox_core::CacheContext::default());
+            let ctx: BoxContext = CacheContext::default().boxed();
             let result = match l2.read(k).await {
                 Ok(Some(l2_value)) => {
                     let (expire, stale) = (l2_value.expire, l2_value.stale);
@@ -969,14 +971,14 @@ mod tests {
         );
 
         // Write to populate both layers
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read should hit L1
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "value1");
 
@@ -1003,7 +1005,7 @@ mod tests {
         );
 
         // Write only to L2
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
@@ -1011,7 +1013,7 @@ mod tests {
         let backend = CompositionBackend::new(l1.clone(), l2).name("cache");
 
         // First read should hit L2 and populate L1
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "value1");
 
@@ -1023,7 +1025,7 @@ mod tests {
         );
 
         // Verify L1 was populated from L2 (cache warming)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let l1_result = l1.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert!(l1_result.is_some(), "L1 should be populated from L2 hit");
         assert_eq!(l1_result.unwrap().data.value, "value1");
@@ -1037,7 +1039,7 @@ mod tests {
 
         let key = CacheKey::from_str("test", "nonexistent");
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert!(result.is_none());
     }
@@ -1058,18 +1060,18 @@ mod tests {
 
         let backend = CompositionBackend::new(l1.clone(), l2.clone());
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Verify both layers have the value
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let l1_result = l1.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(l1_result.unwrap().data.value, "value1");
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let l2_result = l2.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(l2_result.unwrap().data.value, "value1");
     }
@@ -1091,23 +1093,23 @@ mod tests {
         let backend = CompositionBackend::new(l1.clone(), l2.clone());
 
         // Write to both
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Delete from both
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let status = backend.delete(&key, &mut ctx).await.unwrap();
         assert_eq!(status, DeleteStatus::Deleted(2));
 
         // Verify both layers no longer have the value
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let l1_result = l1.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert!(l1_result.is_none());
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let l2_result = l2.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert!(l2_result.is_none());
     }
@@ -1130,14 +1132,14 @@ mod tests {
         );
 
         // Write via original
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
             .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read via clone should work (shared backends)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cloned.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "value1");
     }
@@ -1167,13 +1169,13 @@ mod tests {
         );
 
         // Write only to innermost L1 (moka)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l1.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through outer composition - should hit inner.L1 (moka)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = outer.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "nested_value");
 
@@ -1209,13 +1211,13 @@ mod tests {
         );
 
         // Write only to inner L2 (redis) - not to moka
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through outer composition - should hit inner.L2 (redis)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = outer.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "from_redis");
 
@@ -1251,13 +1253,13 @@ mod tests {
         );
 
         // Write only to outer L2 (disk) - not to inner composition
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l3.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through outer composition - should hit outer L2 (disk)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = outer.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "from_disk");
 
@@ -1285,7 +1287,7 @@ mod tests {
         );
 
         // Write directly to L1 backend to set up the test
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l1.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
@@ -1297,7 +1299,7 @@ mod tests {
         assert!(metrics.layers["moka"].bytes_written > 0);
 
         // Read through composition should hit L1
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "value1");
 
@@ -1328,7 +1330,7 @@ mod tests {
         );
 
         // Write only to L2
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
@@ -1336,7 +1338,7 @@ mod tests {
         let backend = CompositionBackend::new(l1.clone(), l2).name("cache");
 
         // Read should hit L2 and refill L1
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "from_l2");
 
@@ -1386,13 +1388,13 @@ mod tests {
         );
 
         // Write to innermost L1 (moka)
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l1.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through outer composition
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = outer.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "nested");
 

@@ -111,7 +111,7 @@ impl CompositionReadPolicy for RaceReadPolicy {
                         Ok(ReadResult {
                             value: None,
                             source: CompositionLayer::L2,
-                            context: Box::new(CacheContext::default()),
+                            context: CacheContext::default().boxed(),
                         })
                     }
                     (Err(e1), Err(e2)) => {
@@ -123,7 +123,7 @@ impl CompositionReadPolicy for RaceReadPolicy {
                         Ok(ReadResult {
                             value: None,
                             source: CompositionLayer::L2,
-                            context: Box::new(CacheContext::default()),
+                            context: CacheContext::default().boxed(),
                         })
                     }
                 }
@@ -166,7 +166,7 @@ impl CompositionReadPolicy for RaceReadPolicy {
                         Ok(ReadResult {
                             value: None,
                             source: CompositionLayer::L2,
-                            context: Box::new(CacheContext::default()),
+                            context: CacheContext::default().boxed(),
                         })
                     }
                     (Err(e1), Err(e2)) => {
@@ -178,7 +178,7 @@ impl CompositionReadPolicy for RaceReadPolicy {
                         Ok(ReadResult {
                             value: None,
                             source: CompositionLayer::L2,
-                            context: Box::new(CacheContext::default()),
+                            context: CacheContext::default().boxed(),
                         })
                     }
                 }

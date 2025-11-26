@@ -248,6 +248,15 @@ pub struct CacheContext {
     pub metrics: Metrics,
 }
 
+impl CacheContext {
+    /// Convert this context into a boxed trait object.
+    ///
+    /// This is a convenience method for creating `BoxContext` from `CacheContext`.
+    pub fn boxed(self) -> BoxContext {
+        Box::new(self)
+    }
+}
+
 impl Context for CacheContext {
     fn status(&self) -> CacheStatus {
         self.status

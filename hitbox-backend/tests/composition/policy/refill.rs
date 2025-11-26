@@ -69,7 +69,7 @@ async fn test_always_refill_policy() {
     );
 
     // Execute refill - should call the closure
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
@@ -94,7 +94,7 @@ async fn test_never_refill_policy() {
     );
 
     // Execute refill - should NOT call the closure
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
@@ -123,7 +123,7 @@ async fn test_manual_refill_with_always_policy() {
     );
 
     // Simulate L2 hit - policy executes refill
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
@@ -148,7 +148,7 @@ async fn test_manual_refill_with_never_policy() {
     );
 
     // Simulate L2 hit - policy skips refill
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
@@ -172,7 +172,7 @@ async fn test_default_always_refill() {
         None,
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
@@ -196,7 +196,7 @@ async fn test_default_never_refill() {
         None,
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
             l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)

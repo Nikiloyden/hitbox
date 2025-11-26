@@ -48,7 +48,7 @@ fn test_same_format_optimization() {
     let serialized = composition.serialize(&data, &ctx).unwrap();
 
     // Deserialize to verify it works
-    let mut boxed_ctx: BoxContext = Box::new(CacheContext::default());
+    let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
     let deserialized: TestData = composition
         .deserialize(&serialized, &mut boxed_ctx)
         .unwrap();
@@ -72,7 +72,7 @@ fn test_different_formats() {
     let serialized = composition.serialize(&data, &ctx).unwrap();
 
     // Deserialize to verify it works
-    let mut boxed_ctx: BoxContext = Box::new(CacheContext::default());
+    let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
     let deserialized: TestData = composition
         .deserialize(&serialized, &mut boxed_ctx)
         .unwrap();

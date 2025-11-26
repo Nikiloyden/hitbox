@@ -3,7 +3,7 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use hitbox::{CacheKey, CacheableResponse};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, PassthroughCompressor};
-use hitbox_core::CacheValue;
+use hitbox_core::{CacheContext, CacheValue};
 use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
@@ -49,8 +49,9 @@ async fn bench_write_single<B>(
 {
     let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
     let value = CacheValue::new(serialized.clone(), None, None);
+    let mut ctx = CacheContext::default().boxed();
     backend
-        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .unwrap();
 }
@@ -61,8 +62,9 @@ where
     B: Backend + CacheBackend,
 {
     let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
+    let mut ctx = CacheContext::default().boxed();
     let _value: Option<CacheValue<hitbox_http::SerializableHttpResponse>> =
-        backend.get::<BenchResponse>(&key).await.unwrap();
+        backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
 }
 
 /// Benchmark mixed read/write throughput
@@ -75,16 +77,17 @@ async fn bench_mixed_single<B>(
 {
     let key = CacheKey::from_str("bench", &format!("key-{}", key_num));
     let value = CacheValue::new(serialized.clone(), None, None);
+    let mut ctx = CacheContext::default().boxed();
 
     // Write
     backend
-        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .unwrap();
 
     // Read back
     let _value: Option<CacheValue<hitbox_http::SerializableHttpResponse>> =
-        backend.get::<BenchResponse>(&key).await.unwrap();
+        backend.get::<BenchResponse>(&key, &mut ctx).await.unwrap();
 }
 
 fn moka_backend_benchmarks(c: &mut Criterion) {
@@ -136,8 +139,9 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
             for i in 0..1000 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
+                let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                     .await
                     .unwrap();
             }
@@ -248,8 +252,9 @@ fn feoxdb_backend_benchmarks(c: &mut Criterion) {
             for i in 0..1000 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
+                let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                     .await
                     .unwrap();
             }
@@ -381,8 +386,9 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
             for i in 0..1000 {
                 let key = CacheKey::from_str("bench", &format!("key-{}", i));
                 let value = CacheValue::new(response.clone(), None, None);
+                let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)))
+                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
                     .await
                     .unwrap();
             }

@@ -86,7 +86,7 @@ async fn test_nested_composition_static_dispatch() {
     );
 
     // Write through nested composition - should populate all 3 levels
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -98,7 +98,7 @@ async fn test_nested_composition_static_dispatch() {
     assert!(l3.has(&key), "L3 should have the value");
 
     // Read should return the value (from L1)
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -127,7 +127,7 @@ async fn test_nested_composition_static_l1_miss() {
     );
 
     // Populate only L3
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -137,7 +137,7 @@ async fn test_nested_composition_static_l1_miss() {
     let cache = CompositionBackend::new(l1.clone(), l2_l3);
 
     // Read should miss L1, miss L2, hit L3
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -175,7 +175,7 @@ async fn test_nested_composition_static_4_levels() {
     );
 
     // Populate only L4 (deepest level)
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -186,7 +186,7 @@ async fn test_nested_composition_static_4_levels() {
     let cache = CompositionBackend::new(l1.clone(), l2_l3_l4);
 
     // Read should cascade through all 4 levels
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -231,13 +231,13 @@ async fn test_nested_composition_dynamic_dispatch() {
     );
 
     // Write and read through dynamic dispatch
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -273,13 +273,13 @@ async fn test_nested_composition_dynamic_as_trait_object() {
     let backend: Box<dyn Backend> = Box::new(nested);
 
     // Operations through trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -308,15 +308,15 @@ async fn test_nested_composition_delete_cascades() {
     );
 
     // Populate all levels
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -330,7 +330,7 @@ async fn test_nested_composition_delete_cascades() {
     let l2_l3 = CompositionBackend::new(l2.clone(), l3.clone());
     let cache = CompositionBackend::new(l1.clone(), l2_l3);
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     cache.delete(&key, &mut ctx).await.unwrap();
 
     // Verify all levels no longer have the data

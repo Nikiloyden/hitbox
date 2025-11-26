@@ -70,7 +70,7 @@ async fn test_refill_with_boxed_composition_backend() {
     );
 
     // Populate only L2
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -80,7 +80,7 @@ async fn test_refill_with_boxed_composition_backend() {
     let backend: Box<dyn Backend> = Box::new(composition);
 
     // Read through trait object - should trigger refill
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some(), "Should get value from L2");
     assert_eq!(result.unwrap().data.data, "from_l2");
@@ -109,7 +109,7 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
     );
 
     // Populate only L2
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -122,7 +122,7 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
     let backend: Box<dyn Backend> = Box::new(composition);
 
     // Trigger refill through trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
@@ -134,7 +134,7 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
     );
 
     // Verify the data is correct
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let l1_value = l1_inspect.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(l1_value.is_some());
     assert_eq!(l1_value.unwrap().data.data, "test_value");
@@ -164,7 +164,7 @@ async fn test_direct_write_through_trait_object() {
     let backend: Box<dyn Backend> = Box::new(composition);
 
     // Direct write through trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -203,7 +203,7 @@ async fn test_nested_composition_with_trait_objects() {
     );
 
     // Populate only L3
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -216,7 +216,7 @@ async fn test_nested_composition_with_trait_objects() {
     let l2_l3_composition = CompositionBackend::new(l2, l3);
 
     // First, trigger refill at the inner level by reading through L2+L3
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let inner_result = l2_l3_composition
         .get::<TestValue>(&key, &mut ctx)
         .await
@@ -240,7 +240,7 @@ async fn test_nested_composition_with_trait_objects() {
     l1_inspect.clear();
 
     // Read through nested trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "from_l3");
@@ -277,7 +277,7 @@ async fn test_arc_wrapped_composition_refill() {
     );
 
     // Populate only L2 directly before wrapping
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2_arc
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -290,7 +290,7 @@ async fn test_arc_wrapped_composition_refill() {
     let composition = CompositionBackend::new(l1_arc, l2_arc);
 
     // Trigger refill
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = composition.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "from_l2_arc");
@@ -323,7 +323,7 @@ async fn test_multiple_refills_through_trait_object() {
             None,
         );
 
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         l2_ref
             .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
@@ -338,7 +338,7 @@ async fn test_multiple_refills_through_trait_object() {
         let key = CacheKey::from_str("test", &format!("key{}", i));
 
         // Read should trigger refill
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap().data.data, format!("value_{}", i));

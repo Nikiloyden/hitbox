@@ -11,7 +11,7 @@ use crate::common::{ErrorBackend, TestBackend};
 
 /// Helper to create a default context for tests
 fn default_ctx() -> BoxContext {
-    Box::new(CacheContext::default())
+    CacheContext::default().boxed()
 }
 
 // =============================================================================

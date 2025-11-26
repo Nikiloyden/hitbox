@@ -91,14 +91,14 @@ async fn test_write_and_read<B: CacheBackend>(backend: &B) {
     let value = CacheValue::new(response.clone(), None, None);
 
     // Write
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .expect("failed to write");
 
     // Read
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -118,14 +118,14 @@ async fn test_write_and_read_with_metadata<B: CacheBackend>(backend: &B) {
     let value = CacheValue::new(response.clone(), expire, stale);
 
     // Write
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .expect("failed to write");
 
     // Read
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -144,14 +144,14 @@ async fn test_delete_existing<B: CacheBackend>(backend: &B) {
     let value = CacheValue::new(response, None, None);
 
     // Write
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .expect("failed to write");
 
     // Delete
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let status = backend
         .delete(&key, &mut ctx)
         .await
@@ -159,7 +159,7 @@ async fn test_delete_existing<B: CacheBackend>(backend: &B) {
     assert_eq!(status, DeleteStatus::Deleted(1), "should delete 1 key");
 
     // Verify deleted
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -170,7 +170,7 @@ async fn test_delete_existing<B: CacheBackend>(backend: &B) {
 async fn test_delete_missing<B: CacheBackend>(backend: &B) {
     let key = CacheKey::from_str("test", "delete-missing");
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let status = backend
         .delete(&key, &mut ctx)
         .await
@@ -181,7 +181,7 @@ async fn test_delete_missing<B: CacheBackend>(backend: &B) {
 async fn test_read_nonexistent<B: CacheBackend>(backend: &B) {
     let key = CacheKey::from_str("test", "nonexistent");
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -195,7 +195,7 @@ async fn test_overwrite<B: CacheBackend>(backend: &B) {
     // Write first value
     let response1 = TestResponse::new(4, "original", vec![1, 2, 3]);
     let value1 = CacheValue::new(response1, None, None);
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value1, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -204,14 +204,14 @@ async fn test_overwrite<B: CacheBackend>(backend: &B) {
     // Overwrite with second value
     let response2 = TestResponse::new(5, "updated", vec![4, 5, 6, 7]);
     let value2 = CacheValue::new(response2.clone(), None, None);
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value2, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .expect("failed to overwrite");
 
     // Read and verify we get the second value
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -239,7 +239,7 @@ async fn test_multiple_keys<B: CacheBackend>(backend: &B) {
     // Write all
     for (key, response) in &keys_and_values {
         let value = CacheValue::new(response.clone(), None, None);
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
             .set::<TestResponse>(key, &value, Some(Duration::from_secs(3600)), &mut ctx)
             .await
@@ -248,7 +248,7 @@ async fn test_multiple_keys<B: CacheBackend>(backend: &B) {
 
     // Read all and verify
     for (key, expected_response) in &keys_and_values {
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         let result: Option<CacheValue<TestResponse>> = backend
             .get::<TestResponse>(key, &mut ctx)
             .await
@@ -271,14 +271,14 @@ async fn test_binary_data<B: CacheBackend>(backend: &B) {
     let value = CacheValue::new(response.clone(), None, None);
 
     // Write
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
         .expect("failed to write binary data");
 
     // Read
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -306,7 +306,7 @@ pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend:
     let value = CacheValue::new(response.clone(), None, None);
 
     // Write and read
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -334,7 +334,7 @@ pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend:
     );
 
     // Verify can deserialize
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -355,7 +355,7 @@ pub async fn test_url_encoded_key_bincode_value<B: Backend + CacheBackend>(backe
     let response = TestResponse::new(101, "url-bincode-test", vec![4, 5, 6]);
     let value = CacheValue::new(response.clone(), None, None);
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -382,7 +382,7 @@ pub async fn test_url_encoded_key_bincode_value<B: Backend + CacheBackend>(backe
     );
 
     // Verify can deserialize
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -403,7 +403,7 @@ pub async fn test_bitcode_key_json_value<B: Backend + CacheBackend>(backend: &B)
     let response = TestResponse::new(102, "bitcode-json-test", vec![7, 8, 9]);
     let value = CacheValue::new(response.clone(), None, None);
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -430,7 +430,7 @@ pub async fn test_bitcode_key_json_value<B: Backend + CacheBackend>(backend: &B)
         "Value should be in JSON format"
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -451,7 +451,7 @@ pub async fn test_bitcode_key_bincode_value<B: Backend + CacheBackend>(backend: 
     let response = TestResponse::new(103, "bitcode-bincode-test", vec![10, 11, 12]);
     let value = CacheValue::new(response.clone(), None, None);
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -477,7 +477,7 @@ pub async fn test_bitcode_key_bincode_value<B: Backend + CacheBackend>(backend: 
         "Value should be in Bincode format (binary), not JSON"
     );
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await
@@ -511,7 +511,7 @@ where
         .expect("failed to serialize");
 
     // Write to backend (should apply compression via compressor)
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
         .await
@@ -531,7 +531,7 @@ where
     );
 
     // Verify backend can correctly deserialize the data
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result: Option<CacheValue<TestResponse>> = backend
         .get::<TestResponse>(&key, &mut ctx)
         .await

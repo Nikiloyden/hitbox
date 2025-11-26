@@ -119,7 +119,7 @@ where
             Some(Utc::now()),
             Some(Utc::now()),
         );
-        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let mut ctx: BoxContext = CacheContext::default().boxed();
         self.backend
             .set::<Value>(&CacheKey::from_str("key3", ""), &value, None, &mut ctx)
             .await
@@ -138,7 +138,7 @@ async fn dyn_backend() {
     let key1 = CacheKey::from_str("key1", "");
     let key2 = CacheKey::from_str("key2", "");
     let storage = MemBackend::new();
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let value = storage.get::<Value>(&key1, &mut ctx).await.unwrap();
     dbg!(value);
 
@@ -187,7 +187,7 @@ async fn test_composition_with_boxed_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     composition
         .set::<Value>(
             &key_both,
@@ -233,7 +233,7 @@ async fn test_composition_with_arc_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     composition
         .set::<Value>(
             &key,
@@ -256,7 +256,7 @@ async fn test_composition_l1_l2_different_keys() {
     let l1_mem = MemBackend::new();
     let l2_mem = MemBackend::new();
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // Populate L1 with key1
     let key1 = CacheKey::from_str("key1", "");
@@ -325,7 +325,7 @@ async fn test_composition_backend_as_trait_object() {
     let l1_mem = MemBackend::new();
     let l2_mem = MemBackend::new();
 
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // Populate L1 with one key
     let key_l1 = CacheKey::from_str("l1_key", "");

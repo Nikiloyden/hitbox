@@ -125,7 +125,7 @@ async fn test_boxed_composition_backend() {
     );
 
     // Should work through Box
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     boxed
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -155,7 +155,7 @@ async fn test_arc_composition_backend() {
     );
 
     // Should work through Arc
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
@@ -186,7 +186,7 @@ async fn test_ref_composition_backend() {
     );
 
     // Should work through reference
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     composition
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -216,7 +216,7 @@ async fn test_composition_as_dyn_backend() {
     );
 
     // Should work through trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -246,7 +246,7 @@ async fn test_boxed_composition_as_dyn_backend() {
     );
 
     // Should work through boxed trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -276,7 +276,7 @@ async fn test_arc_composition_as_dyn_backend() {
     );
 
     // Should work through Arc'd trait object
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await

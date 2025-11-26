@@ -32,14 +32,14 @@ async fn test_compose_trait_basic_usage() {
     );
 
     // Write through composition
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read through composition
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -76,13 +76,13 @@ async fn test_compose_with_custom_policy() {
     );
 
     // Populate only L2
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read through composition (uses RaceReadPolicy)
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
@@ -116,7 +116,7 @@ async fn test_compose_nested_3_levels() {
     );
 
     // Write cascades to all 3 levels
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
         .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
@@ -128,7 +128,7 @@ async fn test_compose_nested_3_levels() {
     assert!(l3.has(&key), "L3 should have the value");
 
     // Read returns the value
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert_eq!(
         result.unwrap().data,
@@ -160,13 +160,13 @@ async fn test_compose_with_builder_chaining() {
     );
 
     // Populate only L2
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read through composition
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert_eq!(
         result.unwrap().data,
@@ -201,13 +201,13 @@ async fn test_compose_4_levels_cascade() {
     );
 
     // Populate only L4 (deepest level)
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read cascades through all 4 levels
-    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert_eq!(
         result.unwrap().data,
