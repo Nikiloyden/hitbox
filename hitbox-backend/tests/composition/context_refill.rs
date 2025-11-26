@@ -7,7 +7,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionBackend;
 use hitbox_backend::{Backend, CacheBackend};
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -214,7 +217,10 @@ async fn test_nested_composition_with_trait_objects() {
 
     // First, trigger refill at the inner level by reading through L2+L3
     let mut ctx: BoxContext = Box::new(CacheContext::default());
-    let inner_result = l2_l3_composition.get::<TestValue>(&key, &mut ctx).await.unwrap();
+    let inner_result = l2_l3_composition
+        .get::<TestValue>(&key, &mut ctx)
+        .await
+        .unwrap();
     assert!(inner_result.is_some());
 
     // Now L2 should be refilled by the inner composition

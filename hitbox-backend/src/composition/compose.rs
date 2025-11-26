@@ -259,9 +259,19 @@ mod tests {
 
         // Verify both layers have the data
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        assert!(
+            l1.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_some()
+        );
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l2.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        assert!(
+            l2.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -300,7 +310,12 @@ mod tests {
 
         // With NeverRefill, L1 should NOT be populated
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_none());
+        assert!(
+            l1.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -334,11 +349,26 @@ mod tests {
 
         // All three levels should have the data
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        assert!(
+            l1.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_some()
+        );
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l2.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        assert!(
+            l2.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_some()
+        );
         let mut ctx: BoxContext = Box::new(CacheContext::default());
-        assert!(l3.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        assert!(
+            l3.get::<MockResponse>(&key, &mut ctx)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]

@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::{Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend};
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -152,7 +154,10 @@ async fn dyn_backend() {
         Some(Utc::now()),
         Some(Utc::now()),
     );
-    backend.set::<Value>(&key2, &value, None, &mut ctx).await.unwrap();
+    backend
+        .set::<Value>(&key2, &value, None, &mut ctx)
+        .await
+        .unwrap();
     let value = backend.get::<Value>(&key2, &mut ctx).await.unwrap();
     dbg!(value);
 
@@ -200,7 +205,10 @@ async fn test_composition_with_boxed_backends() {
 
     // Test 2: Key that doesn't exist - should return None
     let key_missing = CacheKey::from_str("missing", "");
-    let result = composition.get::<Value>(&key_missing, &mut ctx).await.unwrap();
+    let result = composition
+        .get::<Value>(&key_missing, &mut ctx)
+        .await
+        .unwrap();
     assert!(result.is_none());
 }
 
@@ -227,7 +235,12 @@ async fn test_composition_with_arc_backends() {
     );
     let mut ctx: BoxContext = Box::new(CacheContext::default());
     composition
-        .set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60)), &mut ctx)
+        .set::<Value>(
+            &key,
+            &value,
+            Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
+        )
         .await
         .unwrap();
 
@@ -256,7 +269,12 @@ async fn test_composition_l1_l2_different_keys() {
         None,
     );
     l1_mem
-        .set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60)), &mut ctx)
+        .set::<Value>(
+            &key1,
+            &value1,
+            Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
+        )
         .await
         .unwrap();
 
@@ -271,7 +289,12 @@ async fn test_composition_l1_l2_different_keys() {
         None,
     );
     l2_mem
-        .set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60)), &mut ctx)
+        .set::<Value>(
+            &key2,
+            &value2,
+            Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
+        )
         .await
         .unwrap();
 
@@ -315,7 +338,12 @@ async fn test_composition_backend_as_trait_object() {
         None,
     );
     l1_mem
-        .set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60)), &mut ctx)
+        .set::<Value>(
+            &key_l1,
+            &value_l1,
+            Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
+        )
         .await
         .unwrap();
 
@@ -330,7 +358,12 @@ async fn test_composition_backend_as_trait_object() {
         None,
     );
     l2_mem
-        .set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60)), &mut ctx)
+        .set::<Value>(
+            &key_l2,
+            &value_l2,
+            Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
+        )
         .await
         .unwrap();
 

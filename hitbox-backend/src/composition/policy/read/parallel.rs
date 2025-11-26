@@ -74,8 +74,7 @@ impl CompositionReadPolicy for ParallelReadPolicy {
         Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
     {
         // Query both in parallel and wait for both to complete
-        let ((l1_result, l1_ctx), (l2_result, l2_ctx)) =
-            futures::join!(read_l1(key), read_l2(key));
+        let ((l1_result, l1_ctx), (l2_result, l2_ctx)) = futures::join!(read_l1(key), read_l2(key));
 
         // Aggregate results, preferring freshest data (by TTL)
         match (l1_result, l2_result) {

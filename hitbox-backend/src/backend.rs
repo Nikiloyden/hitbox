@@ -185,11 +185,15 @@ pub trait CacheBackend: Backend {
 
                     // Deserialize using with_deserializer - context may be upgraded
                     let mut deserialized_opt: Option<T::Cached> = None;
-                    format.with_deserializer(&decompressed_bytes, &mut |deserializer| {
-                        let value: T::Cached = deserializer.deserialize()?;
-                        deserialized_opt = Some(value);
-                        Ok(())
-                    }, ctx)?;
+                    format.with_deserializer(
+                        &decompressed_bytes,
+                        &mut |deserializer| {
+                            let value: T::Cached = deserializer.deserialize()?;
+                            deserialized_opt = Some(value);
+                            Ok(())
+                        },
+                        ctx,
+                    )?;
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -202,11 +206,14 @@ pub trait CacheBackend: Backend {
                     // Refill L1 if read mode is Refill (data came from L2).
                     // CompositionFormat will create L1-only envelope, so only L1 gets populated.
                     if ctx.read_mode() == ReadMode::Refill {
-                        let _ = self.set::<T>(key, &cached_value, cached_value.ttl(), ctx).await;
+                        let _ = self
+                            .set::<T>(key, &cached_value, cached_value.ttl(), ctx)
+                            .await;
                     }
 
                     // Record read metrics
-                    ctx.metrics_mut().record_read(&backend_name, bytes_read, true);
+                    ctx.metrics_mut()
+                        .record_read(&backend_name, bytes_read, true);
                     ctx.set_status(CacheStatus::Hit);
                     ctx.set_source(ResponseSource::Backend(backend_name));
                     Ok(Some(cached_value))
@@ -266,7 +273,8 @@ pub trait CacheBackend: Backend {
             let backend_name = self.name().to_owned();
             let result = self.remove(key).await;
             // Record delete metrics
-            ctx.metrics_mut().record_delete(&backend_name, result.is_ok());
+            ctx.metrics_mut()
+                .record_delete(&backend_name, result.is_ok());
             result
         }
     }

@@ -118,7 +118,10 @@ where
     /// let policy = CompositionPolicy::new()
     ///     .refill(NeverRefill::new());
     /// ```
-    pub fn refill<NewF: CompositionRefillPolicy>(self, refill: NewF) -> CompositionPolicy<R, W, NewF> {
+    pub fn refill<NewF: CompositionRefillPolicy>(
+        self,
+        refill: NewF,
+    ) -> CompositionPolicy<R, W, NewF> {
         CompositionPolicy {
             read: self.read,
             write: self.write,

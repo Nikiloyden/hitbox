@@ -226,11 +226,15 @@ pub trait FormatExt: Format {
         T: Cacheable,
     {
         let mut result: Option<T> = None;
-        self.with_deserializer(data, &mut |deserializer| {
-            let value: T = deserializer.deserialize()?;
-            result = Some(value);
-            Ok(())
-        }, ctx)?;
+        self.with_deserializer(
+            data,
+            &mut |deserializer| {
+                let value: T = deserializer.deserialize()?;
+                result = Some(value);
+                Ok(())
+            },
+            ctx,
+        )?;
 
         result.ok_or_else(|| {
             FormatError::Deserialize(Box::new(std::io::Error::other(

@@ -297,7 +297,10 @@ where
                     request,
                 } => {
                     let state = ready!(cache_state.as_mut().poll(cx));
-                    this.context.as_mut().expect(CONTEXT_TAKEN_ERROR).set_status(CacheStatus::Hit);
+                    this.context
+                        .as_mut()
+                        .expect(CONTEXT_TAKEN_ERROR)
+                        .set_status(CacheStatus::Hit);
                     match state {
                         CacheState::Actual(response) => State::Response {
                             response: Some(response),
@@ -307,7 +310,10 @@ where
                         },
                         // TODO: remove code duplication with PollCache (upstream_future creation)
                         CacheState::Expired(_response) => {
-                            this.context.as_mut().expect(CONTEXT_TAKEN_ERROR).set_status(CacheStatus::Miss);
+                            this.context
+                                .as_mut()
+                                .expect(CONTEXT_TAKEN_ERROR)
+                                .set_status(CacheStatus::Miss);
                             let upstream_future = Box::pin(
                                 this.upstream
                                     .call(request.take().expect(POLL_AFTER_READY_ERROR)),
@@ -355,8 +361,9 @@ where
                         CachePolicy::Cacheable(cache_value) => {
                             let mut ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR);
                             let update_cache_future = Box::pin(async move {
-                                let update_cache_result =
-                                    backend.set::<Res>(&cache_key, &cache_value, None, &mut ctx).await;
+                                let update_cache_result = backend
+                                    .set::<Res>(&cache_key, &cache_value, None, &mut ctx)
+                                    .await;
                                 let upstream_result =
                                     Res::from_cached(cache_value.into_inner()).await;
                                 (update_cache_result, upstream_result, ctx)
@@ -374,7 +381,8 @@ where
                     update_cache_future,
                 } => {
                     // TODO: check backend result
-                    let (_backend_result, upstream_result, ctx) = ready!(update_cache_future.poll(cx));
+                    let (_backend_result, upstream_result, ctx) =
+                        ready!(update_cache_future.poll(cx));
                     // Restore context from the async block
                     *this.context = Some(ctx);
                     State::Response {
@@ -392,7 +400,11 @@ where
                         CacheStatus::Miss => ResponseSource::Upstream,
                     };
                     ctx.set_source(source);
-                    let ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR).into_cache_context();
+                    let ctx = this
+                        .context
+                        .take()
+                        .expect(CONTEXT_TAKEN_ERROR)
+                        .into_cache_context();
                     return Poll::Ready((upstream_response, ctx));
                 }
             };

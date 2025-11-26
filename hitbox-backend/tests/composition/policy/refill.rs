@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::CacheBackend;
 use hitbox_backend::composition::policy::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 

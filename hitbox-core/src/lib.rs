@@ -12,8 +12,7 @@ mod value;
 
 pub use cacheable::Cacheable;
 pub use context::{
-    BoxContext, CacheContext, CacheStatus, Context, LayerMetrics, Metrics, ReadMode,
-    ResponseSource,
+    BoxContext, CacheContext, CacheStatus, Context, LayerMetrics, Metrics, ReadMode, ResponseSource,
 };
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};

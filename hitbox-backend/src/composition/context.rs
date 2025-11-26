@@ -136,11 +136,7 @@ impl std::fmt::Debug for CompositionContext {
 ///
 /// This takes ownership of the existing context and wraps it with
 /// composition-specific data.
-pub fn upgrade_context(
-    ctx: &mut BoxContext,
-    layer: CompositionLayer,
-    format: CompositionFormat,
-) {
+pub fn upgrade_context(ctx: &mut BoxContext, layer: CompositionLayer, format: CompositionFormat) {
     let inner = std::mem::replace(ctx, Box::new(CacheContext::default()));
     *ctx = Box::new(CompositionContext::wrap(inner, layer, format));
 }

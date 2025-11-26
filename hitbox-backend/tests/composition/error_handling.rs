@@ -5,7 +5,10 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend,
     Compressor, DeleteStatus, PassthroughCompressor,
 };
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+use hitbox_core::{
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    Predicate, Raw,
+};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 

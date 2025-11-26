@@ -43,7 +43,7 @@ pub mod envelope;
 pub mod policy;
 
 pub use compose::Compose;
-pub use context::{upgrade_context, CompositionContext, CompositionLayer};
+pub use context::{CompositionContext, CompositionLayer, upgrade_context};
 pub use policy::CompositionPolicy;
 
 use crate::format::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};

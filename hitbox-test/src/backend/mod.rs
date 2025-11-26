@@ -152,7 +152,10 @@ async fn test_delete_existing<B: CacheBackend>(backend: &B) {
 
     // Delete
     let mut ctx: BoxContext = Box::new(CacheContext::default());
-    let status = backend.delete(&key, &mut ctx).await.expect("failed to delete");
+    let status = backend
+        .delete(&key, &mut ctx)
+        .await
+        .expect("failed to delete");
     assert_eq!(status, DeleteStatus::Deleted(1), "should delete 1 key");
 
     // Verify deleted
@@ -168,7 +171,10 @@ async fn test_delete_missing<B: CacheBackend>(backend: &B) {
     let key = CacheKey::from_str("test", "delete-missing");
 
     let mut ctx: BoxContext = Box::new(CacheContext::default());
-    let status = backend.delete(&key, &mut ctx).await.expect("failed to delete");
+    let status = backend
+        .delete(&key, &mut ctx)
+        .await
+        .expect("failed to delete");
     assert_eq!(status, DeleteStatus::Missing, "should report missing");
 }
 

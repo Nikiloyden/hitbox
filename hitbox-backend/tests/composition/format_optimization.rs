@@ -49,7 +49,9 @@ fn test_same_format_optimization() {
 
     // Deserialize to verify it works
     let mut boxed_ctx: BoxContext = Box::new(CacheContext::default());
-    let deserialized: TestData = composition.deserialize(&serialized, &mut boxed_ctx).unwrap();
+    let deserialized: TestData = composition
+        .deserialize(&serialized, &mut boxed_ctx)
+        .unwrap();
     assert_eq!(data, deserialized);
 
     println!("Same format test passed");
@@ -71,7 +73,9 @@ fn test_different_formats() {
 
     // Deserialize to verify it works
     let mut boxed_ctx: BoxContext = Box::new(CacheContext::default());
-    let deserialized: TestData = composition.deserialize(&serialized, &mut boxed_ctx).unwrap();
+    let deserialized: TestData = composition
+        .deserialize(&serialized, &mut boxed_ctx)
+        .unwrap();
     assert_eq!(data, deserialized);
 
     println!("Different formats test passed");
