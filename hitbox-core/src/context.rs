@@ -3,6 +3,8 @@
 use std::any::Any;
 use std::collections::HashMap;
 
+use smol_str::SmolStr;
+
 /// Whether the request resulted in a cache hit, miss, or stale data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheStatus {
@@ -19,7 +21,7 @@ pub enum ResponseSource {
     #[default]
     Upstream,
     /// Response came from cache backend with the given name.
-    Backend(String),
+    Backend(SmolStr),
 }
 
 /// Mode for cache read operations.
@@ -79,7 +81,7 @@ impl LayerMetrics {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Metrics {
     /// Metrics aggregated by source path (e.g., "cache.moka" -> LayerMetrics).
-    pub layers: HashMap<String, LayerMetrics>,
+    pub layers: HashMap<SmolStr, LayerMetrics>,
 }
 
 impl Metrics {
@@ -90,7 +92,7 @@ impl Metrics {
 
     /// Record a read operation.
     pub fn record_read(&mut self, source: &str, bytes: u64, success: bool) {
-        let layer = self.layers.entry(source.to_owned()).or_default();
+        let layer = self.layers.entry(SmolStr::from(source)).or_default();
         layer.reads += 1;
         if success {
             layer.bytes_read += bytes;
@@ -101,7 +103,7 @@ impl Metrics {
 
     /// Record a write operation.
     pub fn record_write(&mut self, source: &str, bytes: u64, success: bool) {
-        let layer = self.layers.entry(source.to_owned()).or_default();
+        let layer = self.layers.entry(SmolStr::from(source)).or_default();
         layer.writes += 1;
         if success {
             layer.bytes_written += bytes;
@@ -112,7 +114,7 @@ impl Metrics {
 
     /// Record a delete operation.
     pub fn record_delete(&mut self, source: &str, success: bool) {
-        let layer = self.layers.entry(source.to_owned()).or_default();
+        let layer = self.layers.entry(SmolStr::from(source)).or_default();
         layer.deletes += 1;
         if !success {
             layer.delete_errors += 1;
@@ -125,7 +127,7 @@ impl Metrics {
     /// with hierarchical naming.
     pub fn merge_with_prefix(&mut self, other: &Metrics, prefix: &str) {
         for (source, layer_metrics) in &other.layers {
-            let prefixed_source = format!("{}.{}", prefix, source);
+            let prefixed_source = SmolStr::from(format!("{}.{}", prefix, source));
             self.layers
                 .entry(prefixed_source)
                 .or_default()
@@ -217,7 +219,7 @@ pub trait Context: Send + Sync {
         match other.source() {
             ResponseSource::Backend(inner_name) => {
                 // Compose: prefix.inner_name (e.g., "composition.moka")
-                let composed = format!("{}.{}", prefix, inner_name);
+                let composed = SmolStr::from(format!("{}.{}", prefix, inner_name));
                 self.set_source(ResponseSource::Backend(composed));
             }
             ResponseSource::Upstream => {

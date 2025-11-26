@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use hitbox_core::{
     BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode,
-    ResponseSource,
+    ResponseSource, SmolStr,
 };
 
 use crate::{
@@ -172,7 +172,7 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = self.name().to_owned();
+            let backend_name = SmolStr::from(self.name());
             let read_result = self.read(key).await;
 
             match read_result {

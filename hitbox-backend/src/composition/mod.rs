@@ -984,10 +984,7 @@ mod tests {
 
         // Verify source path is composed correctly: "cache.moka"
         assert_eq!(ctx.status(), CacheStatus::Hit);
-        assert_eq!(
-            ctx.source(),
-            &ResponseSource::Backend("cache.moka".to_string())
-        );
+        assert_eq!(ctx.source(), &ResponseSource::Backend("cache.moka".into()));
     }
 
     #[tokio::test]
@@ -1019,10 +1016,7 @@ mod tests {
 
         // Verify source path is composed correctly: "cache.redis" (hit L2)
         assert_eq!(ctx.status(), CacheStatus::Hit);
-        assert_eq!(
-            ctx.source(),
-            &ResponseSource::Backend("cache.redis".to_string())
-        );
+        assert_eq!(ctx.source(), &ResponseSource::Backend("cache.redis".into()));
 
         // Verify L1 was populated from L2 (cache warming)
         let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -1183,7 +1177,7 @@ mod tests {
         assert_eq!(ctx.status(), CacheStatus::Hit);
         assert_eq!(
             ctx.source(),
-            &ResponseSource::Backend("outer.inner.moka".to_string())
+            &ResponseSource::Backend("outer.inner.moka".into())
         );
     }
 
@@ -1225,7 +1219,7 @@ mod tests {
         assert_eq!(ctx.status(), CacheStatus::Hit);
         assert_eq!(
             ctx.source(),
-            &ResponseSource::Backend("outer.inner.redis".to_string())
+            &ResponseSource::Backend("outer.inner.redis".into())
         );
     }
 
@@ -1265,10 +1259,7 @@ mod tests {
 
         // Verify source path: "outer.disk"
         assert_eq!(ctx.status(), CacheStatus::Hit);
-        assert_eq!(
-            ctx.source(),
-            &ResponseSource::Backend("outer.disk".to_string())
-        );
+        assert_eq!(ctx.source(), &ResponseSource::Backend("outer.disk".into()));
     }
 
     #[tokio::test]
