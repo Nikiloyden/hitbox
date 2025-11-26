@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use hitbox_core::CacheValue;
 use std::future::Future;
 
-use super::RefillPolicy;
+use super::CompositionRefillPolicy;
 use crate::BackendError;
 
 /// Always refill policy: Always populate L1 after L2 hit.
@@ -57,8 +57,8 @@ impl AlwaysRefill {
 }
 
 #[async_trait]
-impl RefillPolicy for AlwaysRefill {
-    async fn execute<'a, T, F, Fut>(&self, _value: &'a CacheValue<T>, refill_fn: F) -> ()
+impl CompositionRefillPolicy for AlwaysRefill {
+    async fn execute<'a, T, F, Fut>(&self, _value: &'a CacheValue<T>, refill_fn: F)
     where
         T: Send + Sync,
         F: FnOnce() -> Fut + Send,

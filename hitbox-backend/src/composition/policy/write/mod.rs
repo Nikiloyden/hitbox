@@ -1,6 +1,6 @@
 //! Write policies for controlling write operations across cache layers.
 //!
-//! This module defines the WritePolicy trait and its implementations.
+//! This module defines the CompositionWritePolicy trait and its implementations.
 //! Different strategies (sequential, optimistic parallel) can be used to optimize
 //! write performance and availability based on application requirements.
 
@@ -32,7 +32,7 @@ pub use sequential::SequentialWritePolicy;
 /// # Example
 ///
 /// ```ignore
-/// use hitbox_backend::composition::policy::WritePolicy;
+/// use hitbox_backend::composition::policy::CompositionWritePolicy;
 ///
 /// let policy = SequentialWritePolicy::default();
 ///
@@ -44,7 +44,7 @@ pub use sequential::SequentialWritePolicy;
 /// ).await?;
 /// ```
 #[async_trait]
-pub trait WritePolicy: Send + Sync {
+pub trait CompositionWritePolicy: Send + Sync {
     /// Execute a write operation with custom write closures for each layer.
     ///
     /// The policy determines the control flow (when and how to call the closures),

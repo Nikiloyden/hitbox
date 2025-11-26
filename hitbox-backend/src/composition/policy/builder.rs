@@ -1,8 +1,8 @@
 //! CompositionPolicy builder for configuring all three policies together.
 
 use super::{
-    AlwaysRefill, OptimisticParallelWritePolicy, ReadPolicy, RefillPolicy, SequentialReadPolicy,
-    WritePolicy,
+    AlwaysRefill, CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy,
+    OptimisticParallelWritePolicy, SequentialReadPolicy,
 };
 
 /// Bundle of read, write, and refill policies for CompositionBackend.
@@ -30,9 +30,9 @@ pub struct CompositionPolicy<
     W = OptimisticParallelWritePolicy,
     F = AlwaysRefill,
 > where
-    R: ReadPolicy,
-    W: WritePolicy,
-    F: RefillPolicy,
+    R: CompositionReadPolicy,
+    W: CompositionWritePolicy,
+    F: CompositionRefillPolicy,
 {
     /// Read policy
     pub(crate) read: R,
@@ -68,9 +68,9 @@ impl Default
 
 impl<R, W, F> CompositionPolicy<R, W, F>
 where
-    R: ReadPolicy,
-    W: WritePolicy,
-    F: RefillPolicy,
+    R: CompositionReadPolicy,
+    W: CompositionWritePolicy,
+    F: CompositionRefillPolicy,
 {
     /// Set the read policy (builder pattern).
     ///
@@ -82,7 +82,7 @@ where
     /// let policy = CompositionPolicy::new()
     ///     .read(RaceReadPolicy::new());
     /// ```
-    pub fn read<NewR: ReadPolicy>(self, read: NewR) -> CompositionPolicy<NewR, W, F> {
+    pub fn read<NewR: CompositionReadPolicy>(self, read: NewR) -> CompositionPolicy<NewR, W, F> {
         CompositionPolicy {
             read,
             write: self.write,
@@ -100,7 +100,7 @@ where
     /// let policy = CompositionPolicy::new()
     ///     .write(SequentialWritePolicy::new());
     /// ```
-    pub fn write<NewW: WritePolicy>(self, write: NewW) -> CompositionPolicy<R, NewW, F> {
+    pub fn write<NewW: CompositionWritePolicy>(self, write: NewW) -> CompositionPolicy<R, NewW, F> {
         CompositionPolicy {
             read: self.read,
             write,
@@ -118,7 +118,7 @@ where
     /// let policy = CompositionPolicy::new()
     ///     .refill(NeverRefill::new());
     /// ```
-    pub fn refill<NewF: RefillPolicy>(self, refill: NewF) -> CompositionPolicy<R, W, NewF> {
+    pub fn refill<NewF: CompositionRefillPolicy>(self, refill: NewF) -> CompositionPolicy<R, W, NewF> {
         CompositionPolicy {
             read: self.read,
             write: self.write,

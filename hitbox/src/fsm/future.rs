@@ -3,11 +3,14 @@ use std::{
     future::Future,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
+    task::{self, Poll},
     time::Duration,
 };
 
-use crate::{CachePolicy, CacheState, CacheStatus, CacheableResponse, policy::PolicyConfig};
+use crate::{
+    BoxContext, CacheContext, CachePolicy, CacheState, CacheStatus, CacheableResponse,
+    ResponseSource, policy::PolicyConfig,
+};
 use futures::ready;
 use hitbox_core::{Cacheable, CacheablePolicyData, EntityPolicyConfig, Upstream};
 use pin_project::pin_project;
@@ -20,6 +23,7 @@ use crate::{
 };
 
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
+const CONTEXT_TAKEN_ERROR: &str = "Context already taken";
 
 // #[cfg(test)]
 // mod tests {
@@ -144,7 +148,7 @@ const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishin
 //     }
 // }
 
-#[pin_project]
+#[pin_project(project = CacheFutureProj)]
 pub struct CacheFuture<B, Req, Res, U>
 where
     U: Upstream<Req, Response = Res>,
@@ -156,8 +160,7 @@ where
     backend: Arc<B>,
     request: Option<Req>,
     cache_key: Option<CacheKey>,
-    cache_status: crate::CacheStatus,
-    cache_enabled: bool,
+    context: Option<BoxContext>,
     #[pin]
     state: State<Res, Req>,
     #[pin]
@@ -184,13 +187,11 @@ where
         key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
         policy: Arc<crate::policy::PolicyConfig>,
     ) -> Self {
-        let cache_enabled = matches!(policy.as_ref(), crate::policy::PolicyConfig::Enabled(_));
         CacheFuture {
             upstream,
             backend,
             cache_key: None,
-            cache_status: crate::CacheStatus::Miss,
-            cache_enabled,
+            context: Some(Box::new(CacheContext::default())),
             request: Some(request),
             state: State::Initial,
             poll_cache: None,
@@ -214,10 +215,10 @@ where
     Req: Debug,
     Res::Cached: Debug,
 {
-    type Output = (Res, crate::CacheContext);
+    type Output = (Res, CacheContext);
 
     // #[instrument(skip(self, cx), fields(state = ?self.state, request = type_name::<T::Response>(), backend = type_name::<B>()))]
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
         loop {
@@ -250,8 +251,11 @@ where
                             let backend = this.backend.clone();
                             let cache_key = key.clone();
                             let _ = this.cache_key.insert(key);
-                            let poll_cache =
-                                Box::pin(async move { backend.get::<Res>(&cache_key).await });
+                            let mut ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR);
+                            let poll_cache = Box::pin(async move {
+                                let result = backend.get::<Res>(&cache_key, &mut ctx).await;
+                                (result, ctx)
+                            });
                             State::PollCache {
                                 poll_cache,
                                 request: Some(request),
@@ -267,7 +271,10 @@ where
                     poll_cache,
                     request,
                 } => {
-                    let cached = ready!(poll_cache.poll(cx)).unwrap_or_else(|_err| {
+                    let (cache_result, ctx) = ready!(poll_cache.poll(cx));
+                    // Restore context from the async block
+                    *this.context = Some(ctx);
+                    let cached = cache_result.unwrap_or_else(|_err| {
                         //println!("cache backend error: {err}");
                         None
                     });
@@ -290,7 +297,7 @@ where
                     request,
                 } => {
                     let state = ready!(cache_state.as_mut().poll(cx));
-                    *this.cache_status = CacheStatus::Hit;
+                    this.context.as_mut().expect(CONTEXT_TAKEN_ERROR).set_status(CacheStatus::Hit);
                     match state {
                         CacheState::Actual(response) => State::Response {
                             response: Some(response),
@@ -300,7 +307,7 @@ where
                         },
                         // TODO: remove code duplication with PollCache (upstream_future creation)
                         CacheState::Expired(_response) => {
-                            *this.cache_status = CacheStatus::Miss;
+                            this.context.as_mut().expect(CONTEXT_TAKEN_ERROR).set_status(CacheStatus::Miss);
                             let upstream_future = Box::pin(
                                 this.upstream
                                     .call(request.take().expect(POLL_AFTER_READY_ERROR)),
@@ -346,12 +353,13 @@ where
                     let cache_key = this.cache_key.take().expect("CacheKey not found");
                     match policy {
                         CachePolicy::Cacheable(cache_value) => {
+                            let mut ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR);
                             let update_cache_future = Box::pin(async move {
                                 let update_cache_result =
-                                    backend.set::<Res>(&cache_key, &cache_value, None).await;
+                                    backend.set::<Res>(&cache_key, &cache_value, None, &mut ctx).await;
                                 let upstream_result =
                                     Res::from_cached(cache_value.into_inner()).await;
-                                (update_cache_result, upstream_result)
+                                (update_cache_result, upstream_result, ctx)
                             });
                             State::UpdateCache {
                                 update_cache_future,
@@ -366,26 +374,26 @@ where
                     update_cache_future,
                 } => {
                     // TODO: check backend result
-                    let (_backend_result, upstream_result) = ready!(update_cache_future.poll(cx));
+                    let (_backend_result, upstream_result, ctx) = ready!(update_cache_future.poll(cx));
+                    // Restore context from the async block
+                    *this.context = Some(ctx);
                     State::Response {
                         response: Some(upstream_result),
                     }
                 }
                 StateProj::Response { response } => {
                     let upstream_response = response.take().expect(POLL_AFTER_READY_ERROR);
-                    let cache_context = if *this.cache_enabled {
-                        let mut ctx = crate::CacheContext {
-                            status: *this.cache_status,
-                            ..Default::default()
-                        };
-                        if let Some(key) = this.cache_key.as_ref() {
-                            ctx.key = Some(key.clone());
+                    let ctx = this.context.as_mut().expect(CONTEXT_TAKEN_ERROR);
+                    let source = match ctx.status() {
+                        CacheStatus::Hit | CacheStatus::Stale => {
+                            // TODO: get backend name from backend instance
+                            ResponseSource::Backend("unknown".to_string())
                         }
-                        ctx
-                    } else {
-                        crate::CacheContext::default()
+                        CacheStatus::Miss => ResponseSource::Upstream,
                     };
-                    return Poll::Ready((upstream_response, cache_context));
+                    ctx.set_source(source);
+                    let ctx = this.context.take().expect(CONTEXT_TAKEN_ERROR).into_cache_context();
+                    return Poll::Ready((upstream_response, ctx));
                 }
             };
             debug!("{:?}", &state);

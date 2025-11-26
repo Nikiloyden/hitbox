@@ -2,14 +2,16 @@ use std::fmt::Debug;
 
 use futures::future::BoxFuture;
 use hitbox_backend::BackendError;
-use hitbox_core::{RequestCachePolicy, ResponseCachePolicy};
+use hitbox_core::{BoxContext, RequestCachePolicy, ResponseCachePolicy};
 use pin_project::pin_project;
 
 use crate::{CacheState, CacheValue, CacheableResponse};
 
 pub type CacheResult<T> = Result<Option<CacheValue<T>>, BackendError>;
-pub type PollCacheFuture<T> = BoxFuture<'static, CacheResult<T>>;
-pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T)>;
+/// Future that polls the cache and returns (result, context)
+pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
+/// Future that updates the cache and returns (backend_result, response, context)
+pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 pub type CacheStateFuture<T> = BoxFuture<'static, CacheState<T>>;
 pub type UpstreamFuture<T> = BoxFuture<'static, T>;

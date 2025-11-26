@@ -7,7 +7,7 @@ use hitbox_backend::{
     Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend, Compressor,
     DeleteStatus, PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -122,12 +122,13 @@ async fn test_boxed_composition_backend() {
     );
 
     // Should work through Box
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     boxed
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = boxed.get::<TestValue>(&key).await.unwrap();
+    let result = boxed.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 }
@@ -151,17 +152,18 @@ async fn test_arc_composition_backend() {
     );
 
     // Should work through Arc
-    arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = arc.get::<TestValue>(&key).await.unwrap();
+    let result = arc.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 
     // Arc should be cloneable
     let arc2 = arc.clone();
-    let result2 = arc2.get::<TestValue>(&key).await.unwrap();
+    let result2 = arc2.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result2.is_some());
 }
 
@@ -181,12 +183,13 @@ async fn test_ref_composition_backend() {
     );
 
     // Should work through reference
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = composition.get::<TestValue>(&key).await.unwrap();
+    let result = composition.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 }
@@ -210,12 +213,13 @@ async fn test_composition_as_dyn_backend() {
     );
 
     // Should work through trait object
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = backend.get::<TestValue>(&key).await.unwrap();
+    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 }
@@ -239,12 +243,13 @@ async fn test_boxed_composition_as_dyn_backend() {
     );
 
     // Should work through boxed trait object
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = backend.get::<TestValue>(&key).await.unwrap();
+    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 }
@@ -268,17 +273,18 @@ async fn test_arc_composition_as_dyn_backend() {
     );
 
     // Should work through Arc'd trait object
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)))
+        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
-    let result = backend.get::<TestValue>(&key).await.unwrap();
+    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.data, "test_value");
 
     // Arc trait object should be cloneable
     let backend2 = backend.clone();
-    let result2 = backend2.get::<TestValue>(&key).await.unwrap();
+    let result2 = backend2.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result2.is_some());
 }

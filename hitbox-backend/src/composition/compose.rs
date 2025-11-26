@@ -24,7 +24,7 @@
 //! let cache = mem_backend.compose_with(redis_backend, policy);
 //! ```
 
-use super::policy::{ReadPolicy, RefillPolicy, WritePolicy};
+use super::policy::{CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy};
 use super::{CompositionBackend, CompositionPolicy};
 use crate::Backend;
 
@@ -108,9 +108,9 @@ pub trait Compose: Backend + Sized {
     ) -> CompositionBackend<Self, L2, R, W, F>
     where
         L2: Backend,
-        R: ReadPolicy,
-        W: WritePolicy,
-        F: RefillPolicy,
+        R: CompositionReadPolicy,
+        W: CompositionWritePolicy,
+        F: CompositionRefillPolicy,
     {
         CompositionBackend::new(self, l2).with_policy(policy)
     }
@@ -130,7 +130,8 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use hitbox_core::{
-        CacheKey, CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, Predicate, Raw,
+        BoxContext, CacheContext, CacheKey, CachePolicy, CacheValue, CacheableResponse,
+        EntityPolicyConfig, Predicate, Raw,
     };
     use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
@@ -246,17 +247,21 @@ mod tests {
         );
 
         // Write and read
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
-        let result = cache.get::<MockResponse>(&key).await.unwrap();
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "test_value");
 
         // Verify both layers have the data
-        assert!(l1.get::<MockResponse>(&key).await.unwrap().is_some());
-        assert!(l2.get::<MockResponse>(&key).await.unwrap().is_some());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l2.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -283,16 +288,19 @@ mod tests {
         );
 
         // Populate only L2
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // Read through composition (should use RaceReadPolicy)
-        let result = cache.get::<MockResponse>(&key).await.unwrap();
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "from_l2");
 
         // With NeverRefill, L1 should NOT be populated
-        assert!(l1.get::<MockResponse>(&key).await.unwrap().is_none());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -318,15 +326,19 @@ mod tests {
         );
 
         // Write through nested composition
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
         // All three levels should have the data
-        assert!(l1.get::<MockResponse>(&key).await.unwrap().is_some());
-        assert!(l2.get::<MockResponse>(&key).await.unwrap().is_some());
-        assert!(l3.get::<MockResponse>(&key).await.unwrap().is_some());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l1.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l2.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        assert!(l3.get::<MockResponse>(&key, &mut ctx).await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -348,12 +360,14 @@ mod tests {
             None,
         );
 
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)))
+            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
             .await
             .unwrap();
 
-        let result = cache.get::<MockResponse>(&key).await.unwrap();
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
+        let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "chain_value");
     }
 }

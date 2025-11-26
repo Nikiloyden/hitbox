@@ -1,6 +1,6 @@
 //! Refill policies for controlling L1 population after L2 hits.
 //!
-//! This module defines the RefillPolicy trait and its implementations.
+//! This module defines the CompositionRefillPolicy trait and its implementations.
 //! Different strategies (always, never, conditional) can be used to optimize
 //! L1 cache utilization based on access patterns and workload characteristics.
 
@@ -36,7 +36,7 @@ pub use never::NeverRefill;
 /// execute the refill and controls how the refill is executed (synchronously,
 /// asynchronously, with retries, etc.).
 ///
-/// This design is consistent with `ReadPolicy` and `WritePolicy`, and allows
+/// This design is consistent with `CompositionReadPolicy` and `CompositionWritePolicy`, and allows
 /// policies to control execution strategy, not just make boolean decisions.
 ///
 /// # Error Handling
@@ -47,18 +47,18 @@ pub use never::NeverRefill;
 /// # Example
 ///
 /// ```ignore
-/// use hitbox_backend::composition::policy::RefillPolicy;
+/// use hitbox_backend::composition::policy::CompositionRefillPolicy;
 ///
 /// let policy = AlwaysRefill::default();
 ///
-/// // After L2 hit
+/// // After L2 hit - metrics are recorded directly in ctx
 /// policy.execute(
 ///     &value,
-///     || async { l1.set(key, &value, ttl).await }
+///     || async { l1.set(key, &value, ttl, &mut ctx).await }
 /// ).await;
 /// ```
 #[async_trait]
-pub trait RefillPolicy: Send + Sync {
+pub trait CompositionRefillPolicy: Send + Sync {
     /// Execute refill operation according to policy strategy.
     ///
     /// The policy controls whether and how the refill operation is executed.
@@ -80,7 +80,7 @@ pub trait RefillPolicy: Send + Sync {
     /// # Note
     /// This method is called on the read path. Policies should minimize overhead
     /// for cases where refill is skipped. Expensive logic should use caching.
-    async fn execute<'a, T, F, Fut>(&self, value: &'a CacheValue<T>, refill_fn: F) -> ()
+    async fn execute<'a, T, F, Fut>(&self, value: &'a CacheValue<T>, refill_fn: F)
     where
         T: Send + Sync,
         F: FnOnce() -> Fut + Send,

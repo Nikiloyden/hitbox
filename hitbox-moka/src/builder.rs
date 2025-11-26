@@ -3,6 +3,7 @@ use hitbox::{CacheKey, CacheValue, Raw};
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{CacheKeyFormat, Compressor, PassthroughCompressor};
 use moka::future::{Cache, CacheBuilder};
+use smol_str::SmolStr;
 
 pub struct MokaBackendBuilder<S = JsonFormat, C = PassthroughCompressor>
 where
@@ -13,6 +14,7 @@ where
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
+    name: SmolStr,
 }
 
 impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
@@ -23,6 +25,7 @@ impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
+            name: SmolStr::new_static("moka"),
         }
     }
 }
@@ -32,6 +35,15 @@ where
     S: Format,
     C: Compressor,
 {
+    /// Set a custom name for this backend.
+    ///
+    /// The name is used for source path composition in multi-layer caches.
+    /// For example, with name "sessions", the source path might be "composition.L1.sessions".
+    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+        self.name = name.into();
+        self
+    }
+
     pub fn key_format(mut self, format: CacheKeyFormat) -> Self {
         self.key_format = format;
         self
@@ -46,6 +58,7 @@ where
             key_format: self.key_format,
             serializer,
             compressor: self.compressor,
+            name: self.name,
         }
     }
 
@@ -58,6 +71,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor,
+            name: self.name,
         }
     }
 
@@ -69,6 +83,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor: self.compressor,
+            name: self.name,
         }
     }
 }

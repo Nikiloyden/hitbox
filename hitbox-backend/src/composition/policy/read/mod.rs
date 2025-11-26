@@ -1,14 +1,14 @@
 //! Read policies for controlling read operations across cache layers.
 //!
-//! This module defines the ReadPolicy trait and its implementations.
+//! This module defines the CompositionReadPolicy trait and its implementations.
 //! Different strategies (sequential, race, parallel) can be used to optimize
 //! read performance based on application requirements.
 
 use async_trait::async_trait;
-use hitbox_core::{CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheKey, CacheValue};
 use std::future::Future;
 
-use crate::composition::CompositionSource;
+use crate::composition::CompositionLayer;
 
 pub mod parallel;
 pub mod race;
@@ -18,12 +18,22 @@ pub use parallel::ParallelReadPolicy;
 pub use race::RaceReadPolicy;
 pub use sequential::SequentialReadPolicy;
 
-/// Policy trait for controlling read operations across cache layers.
+/// Result of a read operation including the value, source layer, and context.
+pub struct ReadResult<T> {
+    /// The cached value if found.
+    pub value: Option<CacheValue<T>>,
+    /// Which layer provided the data.
+    pub source: CompositionLayer,
+    /// The context from the layer that provided the data (for merging).
+    pub context: BoxContext,
+}
+
+/// Policy trait for controlling read operations across composition cache layers.
 ///
 /// This trait encapsulates the **control flow strategy** (sequential, race, parallel)
-/// for reading from multiple cache layers, while delegating the actual read operations
-/// to provided closures. This design allows the same policy to be used at both the
-/// `CacheBackend` level (typed data) and `Backend` level (raw bytes).
+/// for reading from multiple cache layers (L1/L2), while delegating the actual read
+/// operations to provided closures. This design allows the same policy to be used at
+/// both the `CacheBackend` level (typed data) and `Backend` level (raw bytes).
 ///
 /// # Type Parameters
 ///
@@ -35,26 +45,26 @@ pub use sequential::SequentialReadPolicy;
 /// # Example
 ///
 /// ```ignore
-/// use hitbox_backend::composition::policy::ReadPolicy;
+/// use hitbox_backend::composition::policy::CompositionReadPolicy;
 ///
 /// let policy = SequentialReadPolicy::default();
 ///
 /// // Use with CacheBackend level
 /// let result = policy.execute_with(
 ///     &key,
-///     |k| async { l1.get::<User>(k).await },
-///     |k| async {
-///         let value = l2.get::<User>(k).await?;
+///     |k, ctx| async { (l1.get::<User>(k, &mut ctx).await, ctx) },
+///     |k, ctx| async {
+///         let value = l2.get::<User>(k, &mut ctx).await?;
 ///         // Populate L1 on L2 hit
 ///         if let Some(ref v) = value {
-///             l1.set::<User>(k, v, v.ttl()).await.ok();
+///             l1.set::<User>(k, v, v.ttl(), &mut ctx.clone_box()).await.ok();
 ///         }
-///         Ok(value)
+///         Ok((value, ctx))
 ///     },
 /// ).await?;
 /// ```
 #[async_trait]
-pub trait ReadPolicy: Send + Sync {
+pub trait CompositionReadPolicy: Send + Sync {
     /// Execute a read operation with custom read closures for each layer.
     ///
     /// The policy determines the control flow (when and how to call the closures),
@@ -63,22 +73,23 @@ pub trait ReadPolicy: Send + Sync {
     ///
     /// # Arguments
     /// * `key` - The cache key to look up
-    /// * `read_l1` - Closure that reads from L1
-    /// * `read_l2` - Closure that reads from L2 (only called if L1 misses/fails)
+    /// * `read_l1` - Closure that reads from L1, returns (result, context)
+    /// * `read_l2` - Closure that reads from L2, returns (result, context)
     ///
     /// # Returns
-    /// A tuple of (value, source) where source indicates which layer provided the data.
+    /// A `ReadResult` containing the value, source layer, and context from the layer
+    /// that provided the data. The context can be used for merging with outer context.
     async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
         &self,
         key: &'a CacheKey,
         read_l1: F1,
         read_l2: F2,
-    ) -> Result<(Option<CacheValue<T>>, CompositionSource), E>
+    ) -> Result<ReadResult<T>, E>
     where
         T: Send + 'a,
         E: Send + std::fmt::Debug + 'a,
         F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
         F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<Option<CacheValue<T>>, E>> + Send + 'a,
-        Fut2: Future<Output = Result<Option<CacheValue<T>>, E>> + Send + 'a;
+        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
+        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a;
 }

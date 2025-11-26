@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use hitbox_core::CacheKey;
 use std::future::Future;
 
-use super::WritePolicy;
+use super::CompositionWritePolicy;
 use crate::{BackendError, composition::CompositionError};
 
 /// Optimistic parallel write policy: Write to both simultaneously, succeed if ≥1 succeeds.
@@ -52,7 +52,7 @@ impl OptimisticParallelWritePolicy {
 }
 
 #[async_trait]
-impl WritePolicy for OptimisticParallelWritePolicy {
+impl CompositionWritePolicy for OptimisticParallelWritePolicy {
     #[tracing::instrument(skip(self, write_l1, write_l2), level = "trace")]
     async fn execute_with<'a, F1, F2, Fut1, Fut2>(
         &self,

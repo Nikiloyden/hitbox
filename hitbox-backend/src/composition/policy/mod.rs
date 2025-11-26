@@ -32,10 +32,12 @@ pub mod write;
 pub use builder::CompositionPolicy;
 
 // Re-export read policies
-pub use read::{ParallelReadPolicy, RaceReadPolicy, ReadPolicy, SequentialReadPolicy};
+pub use read::{
+    CompositionReadPolicy, ParallelReadPolicy, RaceReadPolicy, ReadResult, SequentialReadPolicy,
+};
 
 // Re-export refill policies
-pub use refill::{AlwaysRefill, NeverRefill, RefillPolicy};
+pub use refill::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
 
 // Re-export write policies
-pub use write::{OptimisticParallelWritePolicy, SequentialWritePolicy, WritePolicy};
+pub use write::{CompositionWritePolicy, OptimisticParallelWritePolicy, SequentialWritePolicy};

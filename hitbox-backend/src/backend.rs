@@ -2,7 +2,10 @@ use std::{future::Future, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use hitbox_core::{CacheKey, CacheValue, Cacheable, CacheableResponse, Raw};
+use hitbox_core::{
+    BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode,
+    ResponseSource,
+};
 
 use crate::{
     BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
@@ -23,6 +26,14 @@ pub trait Backend: Sync + Send {
     ) -> BackendResult<()>;
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus>;
+
+    /// Returns the name of this backend for source path composition.
+    ///
+    /// This is used to build hierarchical source paths like "composition.l1.moka"
+    /// when backends are nested within CompositionBackend.
+    fn name(&self) -> &str {
+        "backend"
+    }
 
     fn value_format(&self) -> &dyn Format {
         &JsonFormat
@@ -54,6 +65,10 @@ impl Backend for &dyn Backend {
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         (*self).remove(key).await
+    }
+
+    fn name(&self) -> &str {
+        (*self).name()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -88,6 +103,10 @@ impl Backend for Box<dyn Backend> {
         (**self).remove(key).await
     }
 
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
     fn value_format(&self) -> &dyn Format {
         (**self).value_format()
     }
@@ -120,6 +139,10 @@ impl Backend for Arc<dyn Backend + Send + 'static> {
         (**self).remove(key).await
     }
 
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
     fn value_format(&self) -> &dyn Format {
         (**self).value_format()
     }
@@ -133,49 +156,40 @@ impl Backend for Arc<dyn Backend + Send + 'static> {
     }
 }
 
-// pub trait Backend: Send {
-//     fn read(
-//         &self,
-//         key: &CacheKey,
-//     ) -> impl Future<Output = BackendResult<Option<CacheValue<Raw>>>> + Send;
-//
-//     fn write(
-//         &self,
-//         key: &CacheKey,
-//         value: CacheValue<Raw>,
-//         ttl: Option<Duration>,
-//     ) -> impl Future<Output = BackendResult<()>> + Send;
-//
-//     fn remove(&self, key: &CacheKey) -> impl Future<Output = BackendResult<DeleteStatus>> + Send;
-// }
-
+/// High-level cache backend trait with typed operations.
+///
+/// This trait provides typed `get`, `set`, and `delete` operations that handle
+/// serialization/deserialization and context tracking. The context is passed
+/// as a mutable reference and updated in-place during operations.
 pub trait CacheBackend: Backend {
     fn get<T>(
         &self,
         key: &CacheKey,
+        ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<Option<CacheValue<T::Cached>>>> + Send
     where
         T: CacheableResponse,
         T::Cached: Cacheable,
     {
         async move {
-            let value_opt = self.read(key).await?;
+            let backend_name = self.name().to_owned();
+            let read_result = self.read(key).await;
 
-            match value_opt {
-                Some(value) => {
-                    let (meta, value) = value.into_parts();
+            match read_result {
+                Ok(Some(value)) => {
+                    let bytes_read = value.data.len() as u64;
+                    let (meta, raw_data) = value.into_parts();
                     let format = self.value_format();
-                    let decompressed = self.compressor().decompress(&value)?;
+                    let decompressed = self.compressor().decompress(&raw_data)?;
                     let decompressed_bytes = Bytes::from(decompressed);
 
-                    // Deserialize using with_deserializer to extract context
+                    // Deserialize using with_deserializer - context may be upgraded
                     let mut deserialized_opt: Option<T::Cached> = None;
-                    let (_, context) =
-                        format.with_deserializer(&decompressed_bytes, &mut |deserializer| {
-                            let value: T::Cached = deserializer.deserialize()?;
-                            deserialized_opt = Some(value);
-                            Ok(())
-                        })?;
+                    format.with_deserializer(&decompressed_bytes, &mut |deserializer| {
+                        let value: T::Cached = deserializer.deserialize()?;
+                        deserialized_opt = Some(value);
+                        Ok(())
+                    }, ctx)?;
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -185,24 +199,28 @@ pub trait CacheBackend: Backend {
 
                     let cached_value = CacheValue::new(deserialized, meta.expire, meta.stale);
 
-                    // Check if we should write back after read (refill from L2 to L1 in composition)
-                    // CacheBackend is high-level code that only uses the trait interface
-                    if context.policy().write_after_read {
-                        // Write back using the context from deserialization
-                        // Serialize with context, then call Backend::write directly
-                        let serialized = format.serialize(&cached_value.data, &*context)?;
-                        let compressed = self.compressor().compress(&serialized)?;
-                        let raw_value = CacheValue::new(
-                            Bytes::from(compressed),
-                            cached_value.expire,
-                            cached_value.stale,
-                        );
-                        let _ = self.write(key, raw_value, cached_value.ttl()).await;
+                    // Refill L1 if read mode is Refill (data came from L2).
+                    // CompositionFormat will create L1-only envelope, so only L1 gets populated.
+                    if ctx.read_mode() == ReadMode::Refill {
+                        let _ = self.set::<T>(key, &cached_value, cached_value.ttl(), ctx).await;
                     }
 
+                    // Record read metrics
+                    ctx.metrics_mut().record_read(&backend_name, bytes_read, true);
+                    ctx.set_status(CacheStatus::Hit);
+                    ctx.set_source(ResponseSource::Backend(backend_name));
                     Ok(Some(cached_value))
                 }
-                None => Ok(None),
+                Ok(None) => {
+                    // Record read miss (0 bytes)
+                    ctx.metrics_mut().record_read(&backend_name, 0, true);
+                    Ok(None)
+                }
+                Err(e) => {
+                    // Record read error
+                    ctx.metrics_mut().record_read(&backend_name, 0, false);
+                    Err(e)
+                }
             }
         }
     }
@@ -212,27 +230,45 @@ pub trait CacheBackend: Backend {
         key: &CacheKey,
         value: &CacheValue<T::Cached>,
         ttl: Option<Duration>,
+        ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<()>> + Send
     where
         T: CacheableResponse,
         T::Cached: Cacheable,
     {
         async move {
+            let backend_name = self.name().to_owned();
             let format = self.value_format();
-            // Use unit context for normal writes (no refill context)
-            let serialized_value = format.serialize(&value.data, &())?;
+            // Use the context for serialization (allows CompositionFormat to check policy)
+            let serialized_value = format.serialize(&value.data, &**ctx)?;
             let compressed_value = self.compressor().compress(&serialized_value)?;
-            self.write(
-                key,
-                CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
-                ttl,
-            )
-            .await
+            let bytes_written = compressed_value.len() as u64;
+            let result = self
+                .write(
+                    key,
+                    CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
+                    ttl,
+                )
+                .await;
+            // Record write metrics
+            ctx.metrics_mut()
+                .record_write(&backend_name, bytes_written, result.is_ok());
+            result
         }
     }
 
-    fn delete(&self, key: &CacheKey) -> impl Future<Output = BackendResult<DeleteStatus>> + Send {
-        async move { self.remove(key).await }
+    fn delete(
+        &self,
+        key: &CacheKey,
+        ctx: &mut BoxContext,
+    ) -> impl Future<Output = BackendResult<DeleteStatus>> + Send {
+        async move {
+            let backend_name = self.name().to_owned();
+            let result = self.remove(key).await;
+            // Record delete metrics
+            ctx.metrics_mut().record_delete(&backend_name, result.is_ok());
+            result
+        }
     }
 }
 

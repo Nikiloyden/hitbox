@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::{Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend};
-use hitbox_core::{CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw};
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Raw};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -117,13 +117,14 @@ where
             Some(Utc::now()),
             Some(Utc::now()),
         );
+        let mut ctx: BoxContext = Box::new(CacheContext::default());
         self.backend
-            .set::<Value>(&CacheKey::from_str("key3", ""), &value, None)
+            .set::<Value>(&CacheKey::from_str("key3", ""), &value, None, &mut ctx)
             .await
             .unwrap();
         dbg!(
             self.backend
-                .get::<Value>(&CacheKey::from_str("key3", ""))
+                .get::<Value>(&CacheKey::from_str("key3", ""), &mut ctx)
                 .await
                 .unwrap()
         );
@@ -135,11 +136,12 @@ async fn dyn_backend() {
     let key1 = CacheKey::from_str("key1", "");
     let key2 = CacheKey::from_str("key2", "");
     let storage = MemBackend::new();
-    let value = storage.get::<Value>(&key1).await.unwrap();
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
+    let value = storage.get::<Value>(&key1, &mut ctx).await.unwrap();
     dbg!(value);
 
     let backend: Box<dyn Backend> = Box::new(storage);
-    let value = backend.get::<Value>(&key1).await.unwrap();
+    let value = backend.get::<Value>(&key1, &mut ctx).await.unwrap();
     dbg!(value);
 
     let value = CacheValue::new(
@@ -150,8 +152,8 @@ async fn dyn_backend() {
         Some(Utc::now()),
         Some(Utc::now()),
     );
-    backend.set::<Value>(&key2, &value, None).await.unwrap();
-    let value = backend.get::<Value>(&key2).await.unwrap();
+    backend.set::<Value>(&key2, &value, None, &mut ctx).await.unwrap();
+    let value = backend.get::<Value>(&key2, &mut ctx).await.unwrap();
     dbg!(value);
 
     let cache = Cache::new(backend);
@@ -180,23 +182,25 @@ async fn test_composition_with_boxed_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     composition
         .set::<Value>(
             &key_both,
             &value_both,
             Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
         )
         .await
         .unwrap();
 
     // Read should return the value
-    let result = composition.get::<Value>(&key_both).await.unwrap();
+    let result = composition.get::<Value>(&key_both, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "both_layers");
 
     // Test 2: Key that doesn't exist - should return None
     let key_missing = CacheKey::from_str("missing", "");
-    let result = composition.get::<Value>(&key_missing).await.unwrap();
+    let result = composition.get::<Value>(&key_missing, &mut ctx).await.unwrap();
     assert!(result.is_none());
 }
 
@@ -221,13 +225,14 @@ async fn test_composition_with_arc_backends() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
     composition
-        .set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60)))
+        .set::<Value>(&key, &value, Some(std::time::Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
     // Read it back
-    let result = composition.get::<Value>(&key).await.unwrap();
+    let result = composition.get::<Value>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "arc_value");
 }
@@ -237,6 +242,8 @@ async fn test_composition_l1_l2_different_keys() {
     // Create L1 and L2 backends
     let l1_mem = MemBackend::new();
     let l2_mem = MemBackend::new();
+
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
 
     // Populate L1 with key1
     let key1 = CacheKey::from_str("key1", "");
@@ -249,7 +256,7 @@ async fn test_composition_l1_l2_different_keys() {
         None,
     );
     l1_mem
-        .set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60)))
+        .set::<Value>(&key1, &value1, Some(std::time::Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
@@ -264,7 +271,7 @@ async fn test_composition_l1_l2_different_keys() {
         None,
     );
     l2_mem
-        .set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60)))
+        .set::<Value>(&key2, &value2, Some(std::time::Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
@@ -274,18 +281,18 @@ async fn test_composition_l1_l2_different_keys() {
     let composition = CompositionBackend::new(l1, l2);
 
     // Test 1: Read key1 - should hit L1
-    let result = composition.get::<Value>(&key1).await.unwrap();
+    let result = composition.get::<Value>(&key1, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "l1_only");
 
     // Test 2: Read key2 - should miss L1, hit L2
-    let result = composition.get::<Value>(&key2).await.unwrap();
+    let result = composition.get::<Value>(&key2, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "l2_only");
 
     // Test 3: Read key3 - should miss both
     let key3 = CacheKey::from_str("key3", "");
-    let result = composition.get::<Value>(&key3).await.unwrap();
+    let result = composition.get::<Value>(&key3, &mut ctx).await.unwrap();
     assert!(result.is_none());
 }
 
@@ -294,6 +301,8 @@ async fn test_composition_backend_as_trait_object() {
     // Create L1 and L2 backends
     let l1_mem = MemBackend::new();
     let l2_mem = MemBackend::new();
+
+    let mut ctx: BoxContext = Box::new(CacheContext::default());
 
     // Populate L1 with one key
     let key_l1 = CacheKey::from_str("l1_key", "");
@@ -306,7 +315,7 @@ async fn test_composition_backend_as_trait_object() {
         None,
     );
     l1_mem
-        .set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60)))
+        .set::<Value>(&key_l1, &value_l1, Some(std::time::Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
@@ -321,7 +330,7 @@ async fn test_composition_backend_as_trait_object() {
         None,
     );
     l2_mem
-        .set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60)))
+        .set::<Value>(&key_l2, &value_l2, Some(std::time::Duration::from_secs(60)), &mut ctx)
         .await
         .unwrap();
 
@@ -334,12 +343,12 @@ async fn test_composition_backend_as_trait_object() {
     let backend: Box<dyn Backend> = Box::new(composition);
 
     // Test 1: Read key from L1 through trait object
-    let result = backend.get::<Value>(&key_l1).await.unwrap();
+    let result = backend.get::<Value>(&key_l1, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "in_l1");
 
     // Test 2: Read key from L2 through trait object
-    let result = backend.get::<Value>(&key_l2).await.unwrap();
+    let result = backend.get::<Value>(&key_l2, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "in_l2");
 
@@ -358,18 +367,19 @@ async fn test_composition_backend_as_trait_object() {
             &key_new,
             &value_new,
             Some(std::time::Duration::from_secs(60)),
+            &mut ctx,
         )
         .await
         .unwrap();
 
     // Read back the new key
-    let result = backend.get::<Value>(&key_new).await.unwrap();
+    let result = backend.get::<Value>(&key_new, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "nested_trait");
 
     // Test 4: Missing key should return None
     let key_missing = CacheKey::from_str("not_there", "");
-    let result = backend.get::<Value>(&key_missing).await.unwrap();
+    let result = backend.get::<Value>(&key_missing, &mut ctx).await.unwrap();
     assert!(result.is_none());
 }
 

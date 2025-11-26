@@ -1,8 +1,8 @@
 use bytes::Bytes;
-use hitbox_core::Raw;
+use hitbox_core::{BoxContext, Raw};
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::BackendContext;
+use crate::Context;
 
 // Newtype wrapper for Vec<u8> to implement bincode's Writer trait
 // (bincode has an internal VecWriter but it's not publicly exported)
@@ -34,7 +34,7 @@ impl Format for BincodeFormat {
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
-        _context: &dyn BackendContext,
+        _context: &dyn Context,
     ) -> Result<Raw, FormatError> {
         let writer = BincodeVecWriter::new();
         let config = ::bincode::config::standard();
@@ -53,7 +53,8 @@ impl Format for BincodeFormat {
         &self,
         data: &[u8],
         f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
-    ) -> Result<((), std::sync::Arc<dyn BackendContext>), FormatError> {
+        _ctx: &mut BoxContext,
+    ) -> Result<(), FormatError> {
         use ::bincode::de::read::SliceReader;
 
         let reader = SliceReader::new(data);
@@ -65,10 +66,7 @@ impl Format for BincodeFormat {
         let mut format_deser = FormatDeserializer::Bincode(&mut decoder);
         f(&mut format_deser)?;
 
-        Ok((
-            (),
-            std::sync::Arc::new(()) as std::sync::Arc<dyn BackendContext>,
-        ))
+        Ok(())
     }
 
     fn clone_box(&self) -> Box<dyn Format> {

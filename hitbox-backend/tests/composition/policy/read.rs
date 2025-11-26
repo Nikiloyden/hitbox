@@ -3,11 +3,16 @@
 use bytes::Bytes;
 use hitbox_backend::Backend;
 use hitbox_backend::composition::policy::{
-    ParallelReadPolicy, RaceReadPolicy, ReadPolicy, SequentialReadPolicy,
+    CompositionReadPolicy, ParallelReadPolicy, RaceReadPolicy, SequentialReadPolicy,
 };
-use hitbox_core::{CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue};
 
 use crate::common::{ErrorBackend, TestBackend};
+
+/// Helper to create a default context for tests
+fn default_ctx() -> BoxContext {
+    Box::new(CacheContext::default())
+}
 
 // =============================================================================
 // SequentialReadPolicy Tests
@@ -24,13 +29,13 @@ async fn test_sequential_l1_hit() {
 
     l1.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -44,13 +49,13 @@ async fn test_sequential_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -61,12 +66,12 @@ async fn test_sequential_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_none());
+    assert!(read_result.value.is_none());
 }
 
 #[tokio::test]
@@ -80,13 +85,13 @@ async fn test_sequential_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -104,13 +109,13 @@ async fn test_race_l1_hit() {
 
     l1.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -124,13 +129,13 @@ async fn test_race_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -141,12 +146,12 @@ async fn test_race_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_none());
+    assert!(read_result.value.is_none());
 }
 
 #[tokio::test]
@@ -160,13 +165,13 @@ async fn test_race_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -196,14 +201,14 @@ async fn test_parallel_both_hit_prefer_l1() {
     .await
     .unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // Both have no expiry - should prefer L1 (tie-breaker)
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -217,13 +222,13 @@ async fn test_parallel_l1_miss_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -234,12 +239,12 @@ async fn test_parallel_both_miss() {
 
     let key = CacheKey::from_str("test", "key1");
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_none());
+    assert!(read_result.value.is_none());
 }
 
 #[tokio::test]
@@ -253,13 +258,13 @@ async fn test_parallel_l1_error_l2_hit() {
 
     l2.write(&key, value.clone(), None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert!(read_result.value.is_some());
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -294,14 +299,14 @@ async fn test_parallel_both_hit_l2_fresher_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // Should prefer L2 (fresher/longer TTL)
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -332,14 +337,14 @@ async fn test_parallel_both_hit_l1_fresher_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // Should prefer L1 (fresher/longer TTL)
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -362,14 +367,14 @@ async fn test_parallel_both_hit_equal_ttl() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // Equal TTLs - should prefer L1 (tie-breaker)
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -396,14 +401,14 @@ async fn test_parallel_both_hit_l2_no_expiry() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // L2 has no expiry (infinite) - should prefer L2
-    assert_eq!(result.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -430,12 +435,12 @@ async fn test_parallel_both_hit_l1_no_expiry() {
     l1.write(&key, l1_value, None).await.unwrap();
     l2.write(&key, l2_value, None).await.unwrap();
 
-    let read_l1 = |k| async move { l1.read(k).await };
-    let read_l2 = |k| async move { l2.read(k).await };
+    let read_l1 = |k| async move { (l1.read(k).await, default_ctx()) };
+    let read_l2 = |k| async move { (l2.read(k).await, default_ctx()) };
 
-    let (result, _source) = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
+    let read_result = policy.execute_with(&key, read_l1, read_l2).await.unwrap();
 
-    assert!(result.is_some());
+    assert!(read_result.value.is_some());
     // L1 has no expiry (infinite) - should prefer L1
-    assert_eq!(result.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
 }
