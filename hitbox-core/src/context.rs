@@ -200,6 +200,14 @@ pub trait Context: Send + Sync {
     /// Consumes boxed self and returns a `CacheContext`.
     fn into_cache_context(self: Box<Self>) -> CacheContext;
 
+    /// Record an FSM state transition.
+    ///
+    /// Default is no-op. `CacheContext` overrides this when `fsm-trace` feature is enabled.
+    #[inline]
+    fn record_state(&mut self, _state: &str) {
+        // Default no-op
+    }
+
     /// Merge fields from another context into this one.
     ///
     /// Used by composition backends to combine results from inner backends.
@@ -248,6 +256,9 @@ pub struct CacheContext {
     pub source: ResponseSource,
     /// Metrics aggregated by source path.
     pub metrics: Metrics,
+    /// FSM states visited during the cache operation (only with `fsm-trace` feature).
+    #[cfg(feature = "fsm-trace")]
+    pub states: Vec<String>,
 }
 
 impl CacheContext {
@@ -294,5 +305,10 @@ impl Context for CacheContext {
 
     fn into_cache_context(self: Box<Self>) -> CacheContext {
         *self
+    }
+
+    #[cfg(feature = "fsm-trace")]
+    fn record_state(&mut self, state: &str) {
+        self.states.push(state.to_owned());
     }
 }

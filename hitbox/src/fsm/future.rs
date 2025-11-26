@@ -179,9 +179,10 @@ where
                     let predicates = this.request_predicates.clone();
                     let extractors = this.key_extractors.clone();
                     let request = this.request.take().expect(POLL_AFTER_READY_ERROR);
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.policy.as_ref() {
                         PolicyConfig::Enabled(_) => {
+                            ctx.record_state("CheckRequestCachePolicy");
                             let cache_policy_future = Box::pin(async move {
                                 request.cache_policy(predicates, extractors).await
                             });
@@ -191,6 +192,7 @@ where
                             }
                         }
                         PolicyConfig::Disabled => {
+                            ctx.record_state("PollUpstream");
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
@@ -209,6 +211,7 @@ where
                     let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match policy {
                         CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
+                            ctx.record_state("PollCache");
                             let backend = this.backend.clone();
                             let cache_key = key.clone();
                             debug!(?cache_key, "FSM looking up cache key");
@@ -227,6 +230,7 @@ where
                             }
                         }
                         CachePolicy::NonCacheable(request) => {
+                            ctx.record_state("PollUpstream");
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
@@ -241,36 +245,46 @@ where
                     poll_cache,
                     request,
                 } => {
-                    let (cache_result, ctx) = ready!(poll_cache.poll(cx));
+                    let (cache_result, mut ctx) = ready!(poll_cache.poll(cx));
                     let cached = cache_result.unwrap_or_else(|_err| {
                         //println!("cache backend error: {err}");
                         None
                     });
                     match cached {
-                        Some(cached_value) => State::CheckCacheState {
-                            cache_state: Box::pin(cached_value.cache_state()),
-                            request: request.take(),
-                            ctx: Some(ctx),
-                        },
-                        None => State::CheckConcurrency {
-                            request: request.take(),
-                            ctx: Some(ctx),
-                        },
+                        Some(cached_value) => {
+                            ctx.record_state("CheckCacheState");
+                            State::CheckCacheState {
+                                cache_state: Box::pin(cached_value.cache_state()),
+                                request: request.take(),
+                                ctx: Some(ctx),
+                            }
+                        }
+                        None => {
+                            ctx.record_state("CheckConcurrency");
+                            State::CheckConcurrency {
+                                request: request.take(),
+                                ctx: Some(ctx),
+                            }
+                        }
                     }
                 }
                 StateProj::CheckConcurrency { request, ctx } => {
                     let request = request.take().expect(POLL_AFTER_READY_ERROR);
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.policy.as_ref() {
                         PolicyConfig::Enabled(crate::policy::EnabledCacheConfig {
                             concurrency: Some(concurrency),
                             ..
-                        }) => State::ConcurrentPollUpstream {
-                            request: Some(request),
-                            concurrency: *concurrency as usize,
-                            ctx: Some(ctx),
-                        },
+                        }) => {
+                            ctx.record_state("ConcurrentPollUpstream");
+                            State::ConcurrentPollUpstream {
+                                request: Some(request),
+                                concurrency: *concurrency as usize,
+                                ctx: Some(ctx),
+                            }
+                        }
                         _ => {
+                            ctx.record_state("PollUpstream");
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
@@ -288,13 +302,14 @@ where
                 } => {
                     let request = request.take().expect(POLL_AFTER_READY_ERROR);
                     let concurrency = *concurrency;
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     let cache_key = this
                         .cache_key
                         .as_ref()
                         .expect("CacheKey not found for concurrency check");
                     match this.concurrency_manager.check(cache_key, concurrency) {
                         ConcurrencyDecision::Proceed(permit) => {
+                            ctx.record_state("PollUpstream");
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
@@ -304,6 +319,7 @@ where
                             }
                         }
                         ConcurrencyDecision::ProceedWithoutPermit => {
+                            ctx.record_state("PollUpstream");
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                             let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
@@ -312,11 +328,14 @@ where
                                 ctx: Some(ctx),
                             }
                         }
-                        ConcurrencyDecision::Await(await_future) => State::AwaitResponse {
-                            await_response_future: await_future,
-                            request: Some(request),
-                            ctx: Some(ctx),
-                        },
+                        ConcurrencyDecision::Await(await_future) => {
+                            ctx.record_state("AwaitResponse");
+                            State::AwaitResponse {
+                                await_response_future: await_future,
+                                request: Some(request),
+                                ctx: Some(ctx),
+                            }
+                        }
                     }
                 }
                 StateProj::AwaitResponse {
@@ -328,15 +347,19 @@ where
                     match result {
                         Ok(response) => {
                             // Successfully received response from concurrent request
+                            let mut ctx = ctx.take();
+                            if let Some(ref mut cache_ctx) = ctx {
+                                cache_ctx.record_state("Response");
+                            }
                             State::Response {
                                 response: Some(response),
-                                ctx: ctx.take(),
+                                ctx,
                             }
                         }
                         Err(concurrency_error) => {
                             // Concurrency error (Lagged or Closed)
                             // Fallback to direct upstream call and cache the result normally
-                            let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                            let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                             match &concurrency_error {
                                 crate::concurrency::ConcurrencyError::Lagged(n) => {
                                     debug!(
@@ -355,8 +378,10 @@ where
                                 }
                             }
 
+                            ctx.record_state("PollUpstream");
                             let request = request.take().expect(POLL_AFTER_READY_ERROR);
-                            let upstream_future = Box::pin(this.upstream.call(request));
+                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
+                            let upstream_future = Box::pin(upstream.call(request));
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -376,10 +401,16 @@ where
                         .expect(CONTEXT_TAKEN_ERROR)
                         .set_status(CacheStatus::Hit);
                     match state {
-                        CacheState::Actual(response) => State::Response {
-                            response: Some(response),
-                            ctx: ctx.take(),
-                        },
+                        CacheState::Actual(response) => {
+                            let mut ctx = ctx.take();
+                            if let Some(ref mut cache_ctx) = ctx {
+                                cache_ctx.record_state("Response");
+                            }
+                            State::Response {
+                                response: Some(response),
+                                ctx,
+                            }
+                        }
                         CacheState::Stale(response) => {
                             let stale_policy = match this.policy.as_ref() {
                                 PolicyConfig::Enabled(EnabledCacheConfig { policy, .. }) => {
@@ -391,18 +422,21 @@ where
                             match stale_policy {
                                 StalePolicy::Return => {
                                     // Just return stale data, no revalidation
-                                    ctx.as_mut()
-                                        .expect(CONTEXT_TAKEN_ERROR)
-                                        .set_status(CacheStatus::Stale);
+                                    let mut ctx = ctx.take();
+                                    if let Some(ref mut cache_ctx) = ctx {
+                                        cache_ctx.set_status(CacheStatus::Stale);
+                                        cache_ctx.record_state("Response");
+                                    }
                                     State::Response {
                                         response: Some(response),
-                                        ctx: ctx.take(),
+                                        ctx,
                                     }
                                 }
                                 StalePolicy::Revalidate => {
                                     // Treat stale as expired - block and wait for fresh data
                                     let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                                     ctx.set_status(CacheStatus::Miss);
+                                    ctx.record_state("PollUpstream");
                                     let upstream =
                                         this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
                                     let upstream_future = Box::pin(
@@ -463,23 +497,25 @@ where
                                         }
                                     }
 
-                                    ctx.as_mut()
-                                        .expect(CONTEXT_TAKEN_ERROR)
-                                        .set_status(CacheStatus::Stale);
+                                    let mut ctx = ctx.take();
+                                    if let Some(ref mut cache_ctx) = ctx {
+                                        cache_ctx.set_status(CacheStatus::Stale);
+                                        cache_ctx.record_state("Response");
+                                    }
                                     State::Response {
                                         response: Some(response),
-                                        ctx: ctx.take(),
+                                        ctx,
                                     }
                                 }
                             }
                         }
                         CacheState::Expired(_response) => {
-                            ctx.as_mut()
-                                .expect(CONTEXT_TAKEN_ERROR)
-                                .set_status(CacheStatus::Miss);
+                            let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                            ctx.set_status(CacheStatus::Miss);
+                            ctx.record_state("CheckConcurrency");
                             State::CheckConcurrency {
                                 request: request.take(),
-                                ctx: ctx.take(),
+                                ctx: Some(ctx),
                             }
                         }
                     }
@@ -490,10 +526,14 @@ where
                     ctx,
                 } => {
                     let res = ready!(upstream_future.as_mut().poll(cx));
+                    let mut ctx = ctx.take();
+                    if let Some(ref mut cache_ctx) = ctx {
+                        cache_ctx.record_state("UpstreamPolled");
+                    }
                     State::UpstreamPolled {
                         upstream_result: Some(res),
                         permit: permit.take(),
-                        ctx: ctx.take(),
+                        ctx,
                     }
                 }
                 StateProj::UpstreamPolled {
@@ -504,9 +544,10 @@ where
                     let upstream_result = upstream_result.take().expect(POLL_AFTER_READY_ERROR);
                     let permit = permit.take();
                     let predicates = this.response_predicates.clone();
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
+                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.cache_key {
                         Some(_cache_key) => {
+                            ctx.record_state("CheckResponseCachePolicy");
                             let entity_config = match this.policy.as_ref() {
                                 PolicyConfig::Enabled(config) => EntityPolicyConfig {
                                     ttl: config.ttl.map(|s| Duration::from_secs(s as u64)),
@@ -524,10 +565,13 @@ where
                                 ctx: Some(ctx),
                             }
                         }
-                        None => State::Response {
-                            response: Some(upstream_result),
-                            ctx: Some(ctx),
-                        },
+                        None => {
+                            ctx.record_state("Response");
+                            State::Response {
+                                response: Some(upstream_result),
+                                ctx: Some(ctx),
+                            }
+                        }
                     }
                 }
                 StateProj::CheckResponseCachePolicy {
@@ -547,6 +591,7 @@ where
                             if permit.is_some() {
                                 this.concurrency_manager.resolve(&cache_key, &cache_value);
                             }
+                            ctx.record_state("UpdateCache");
                             let update_cache_future = Box::pin(async move {
                                 let update_cache_result = backend
                                     .set::<Res>(&cache_key, &cache_value, None, &mut ctx)
@@ -565,6 +610,7 @@ where
                             if permit.is_some() {
                                 this.concurrency_manager.cleanup(&cache_key);
                             }
+                            ctx.record_state("Response");
                             State::Response {
                                 response: Some(response),
                                 ctx: Some(ctx),
@@ -576,8 +622,9 @@ where
                     update_cache_future,
                 } => {
                     // TODO: check backend result
-                    let (_backend_result, upstream_result, ctx) =
+                    let (_backend_result, upstream_result, mut ctx) =
                         ready!(update_cache_future.poll(cx));
+                    ctx.record_state("Response");
                     State::Response {
                         response: Some(upstream_result),
                         ctx: Some(ctx),

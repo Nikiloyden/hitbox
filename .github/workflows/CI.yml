@@ -54,6 +54,10 @@ jobs:
       - name: Run BDD integration tests
         run: cargo test --test integration --all-features
 
+      # Phase 3: Run FSM BDD tests
+      - name: Run FSM BDD tests
+        run: cargo test --test fsm --all-features
+
       - name: Upload unit test results
         if: always()
         uses: actions/upload-artifact@v4

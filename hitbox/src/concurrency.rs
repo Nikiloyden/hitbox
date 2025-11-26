@@ -11,6 +11,9 @@ use hitbox_core::{CacheValue, CacheableResponse};
 
 use crate::CacheKey;
 
+/// Type alias for the in-flight request entry: (broadcast sender, semaphore)
+type InFlightEntry<T> = (broadcast::Sender<Arc<CacheValue<T>>>, Arc<Semaphore>);
+
 /// Errors that can occur when waiting for a concurrent request
 #[derive(Debug, Clone)]
 pub enum ConcurrencyError {
@@ -59,6 +62,10 @@ where
     fn resolve(&self, _cache_key: &CacheKey, _cache_value: &CacheValue<Res::Cached>) {
         // No-op: nothing to resolve
     }
+
+    fn cleanup(&self, _cache_key: &CacheKey) {
+        // No-op: nothing to cleanup
+    }
 }
 
 /// Broadcast-based concurrency manager that prevents dogpile effect with semaphore-based concurrency control
@@ -72,14 +79,17 @@ pub struct BroadcastConcurrencyManager<Res>
 where
     Res: CacheableResponse,
 {
-    // Maps cache keys to (broadcast sender, semaphore) for in-flight requests
-    in_flight: DashMap<
-        CacheKey,
-        (
-            broadcast::Sender<Arc<CacheValue<Res::Cached>>>,
-            Arc<Semaphore>,
-        ),
-    >,
+    /// Maps cache keys to (broadcast sender, semaphore) for in-flight requests
+    in_flight: DashMap<CacheKey, InFlightEntry<Res::Cached>>,
+}
+
+impl<Res> Default for BroadcastConcurrencyManager<Res>
+where
+    Res: CacheableResponse,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<Res> BroadcastConcurrencyManager<Res>
@@ -90,15 +100,6 @@ where
         Self {
             in_flight: DashMap::new(),
         }
-    }
-}
-
-impl<Res> Default for BroadcastConcurrencyManager<Res>
-where
-    Res: CacheableResponse,
-{
-    fn default() -> Self {
-        Self::new()
     }
 }
 

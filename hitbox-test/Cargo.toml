@@ -74,6 +74,7 @@ default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
 rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
+fsm-trace = ["hitbox-core/fsm-trace"]
 
 [[test]]
 name = "integration"
@@ -98,3 +99,8 @@ harness = false
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+
+[[test]]
+name = "fsm"
+path = "tests/fsm/bdd.rs"
+harness = false

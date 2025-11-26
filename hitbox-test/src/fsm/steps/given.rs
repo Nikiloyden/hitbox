@@ -1,0 +1,129 @@
+use crate::fsm::world::{CacheState, FsmWorld};
+use anyhow::Error;
+use cucumber::given;
+
+// =============================================================================
+// Background/Setup Steps
+// =============================================================================
+
+#[given(expr = "upstream response delay is {int}ms")]
+fn upstream_delay(world: &mut FsmWorld, delay_ms: u64) -> Result<(), Error> {
+    world.upstream_delay_ms = delay_ms;
+    Ok(())
+}
+
+#[given(expr = "request delay between concurrent requests is {int}ms")]
+fn request_delay(world: &mut FsmWorld, delay_ms: u64) -> Result<(), Error> {
+    world.request_delay_ms = delay_ms;
+    Ok(())
+}
+
+// =============================================================================
+// Cache Policy Steps
+// =============================================================================
+
+#[given(expr = "cache policy is {string}")]
+fn cache_policy(world: &mut FsmWorld, policy: String) -> Result<(), Error> {
+    match policy.as_str() {
+        "Enabled" => world.config.cache_enabled = true,
+        "Disabled" => world.config.cache_enabled = false,
+        _ => return Err(anyhow::anyhow!("Unknown cache policy: {}", policy)),
+    }
+    Ok(())
+}
+
+// =============================================================================
+// Request Cacheability Steps
+// =============================================================================
+
+#[given(expr = "request is cacheable")]
+fn request_cacheable(world: &mut FsmWorld) -> Result<(), Error> {
+    world.config.request_cacheable = true;
+    Ok(())
+}
+
+#[given(expr = "request is non-cacheable")]
+fn request_non_cacheable(world: &mut FsmWorld) -> Result<(), Error> {
+    world.config.request_cacheable = false;
+    Ok(())
+}
+
+// =============================================================================
+// Response Cacheability Steps
+// =============================================================================
+
+#[given(expr = "response is cacheable")]
+fn response_cacheable(world: &mut FsmWorld) -> Result<(), Error> {
+    world.config.response_cacheable = true;
+    Ok(())
+}
+
+#[given(expr = "response is non-cacheable")]
+fn response_non_cacheable(world: &mut FsmWorld) -> Result<(), Error> {
+    world.config.response_cacheable = false;
+    Ok(())
+}
+
+// =============================================================================
+// Cache State Steps
+// =============================================================================
+
+#[given(expr = "cache is empty")]
+fn cache_empty(world: &mut FsmWorld) -> Result<(), Error> {
+    world.cache_state = CacheState::Empty;
+    Ok(())
+}
+
+#[given(expr = "cache contains fresh value {int}")]
+fn cache_fresh(world: &mut FsmWorld, value: u32) -> Result<(), Error> {
+    world.cache_state = CacheState::Fresh(value);
+    Ok(())
+}
+
+#[given(expr = "cache contains stale value {int}")]
+fn cache_stale(world: &mut FsmWorld, value: u32) -> Result<(), Error> {
+    world.cache_state = CacheState::Stale(value);
+    Ok(())
+}
+
+#[given(expr = "cache contains expired value {int}")]
+fn cache_expired(world: &mut FsmWorld, value: u32) -> Result<(), Error> {
+    world.cache_state = CacheState::Expired(value);
+    Ok(())
+}
+
+// =============================================================================
+// Concurrency Control Steps
+// =============================================================================
+
+#[given(expr = "concurrency control is disabled")]
+fn concurrency_disabled(world: &mut FsmWorld) -> Result<(), Error> {
+    world.config.concurrency = None;
+    Ok(())
+}
+
+#[given(expr = "concurrency limit is {int}")]
+fn concurrency_limit(world: &mut FsmWorld, limit: u8) -> Result<(), Error> {
+    world.config.concurrency = Some(limit);
+    Ok(())
+}
+
+// =============================================================================
+// Broadcast Channel Error Simulation Steps (for edge cases)
+// Note: These are placeholders - actual implementation would require
+// injecting mock concurrency managers
+// =============================================================================
+
+#[given(expr = "broadcast channel will be closed")]
+fn broadcast_will_close(_world: &mut FsmWorld) -> Result<(), Error> {
+    // TODO: This requires injecting a mock concurrency manager
+    // that forces channel closed behavior
+    Ok(())
+}
+
+#[given(expr = "broadcast channel will lag")]
+fn broadcast_will_lag(_world: &mut FsmWorld) -> Result<(), Error> {
+    // TODO: This requires injecting a mock concurrency manager
+    // that forces channel lagged behavior
+    Ok(())
+}
