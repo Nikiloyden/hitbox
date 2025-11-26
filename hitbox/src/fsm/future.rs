@@ -419,7 +419,7 @@ where
                     let source = match ctx_ref.status() {
                         CacheStatus::Hit | CacheStatus::Stale => {
                             // TODO: get backend name from backend instance
-                            ResponseSource::Backend("unknown".to_string())
+                            ResponseSource::Backend("unknown".into())
                         }
                         CacheStatus::Miss => ResponseSource::Upstream,
                     };

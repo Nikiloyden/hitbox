@@ -20,6 +20,7 @@ pub use policy::{CachePolicy, EntityPolicyConfig};
 pub use predicate::{Predicate, PredicateResult};
 pub use request::{CacheablePolicyData, CacheableRequest, RequestCachePolicy};
 pub use response::{CacheState, CacheableResponse, ResponseCachePolicy};
+pub use smol_str::SmolStr;
 pub use time_provider::TimeProvider;
 pub use upstream::Upstream;
 pub use value::CacheValue;
