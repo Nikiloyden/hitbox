@@ -1,33 +1,84 @@
 use hitbox_backend::format::FormatError;
 use hitbox_core::CacheKey;
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{MapAccess, Visitor};
+use serde::ser::SerializeMap;
+use std::fmt;
 
-/// Helper struct for flattened YAML serialization
-#[derive(Serialize, Deserialize)]
+/// Helper struct for YAML serialization supporting duplicate keys
+#[derive(Debug)]
 struct FlatCacheKey {
-    #[serde(skip_serializing_if = "is_default_version")]
-    #[serde(default)]
     version: u32,
-
-    #[serde(skip_serializing_if = "String::is_empty")]
-    #[serde(default)]
     prefix: String,
-
-    #[serde(flatten)]
-    parts: IndexMap<String, Option<String>>,
+    parts: Vec<(String, Option<String>)>,
 }
 
-fn is_default_version(v: &u32) -> bool {
-    *v == 0
+impl Serialize for FlatCacheKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+        if self.version != 0 {
+            map.serialize_entry("version", &self.version)?;
+        }
+        if !self.prefix.is_empty() {
+            map.serialize_entry("prefix", &self.prefix)?;
+        }
+        for (key, value) in &self.parts {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for FlatCacheKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(FlatCacheKeyVisitor)
+    }
+}
+
+struct FlatCacheKeyVisitor;
+
+impl<'de> Visitor<'de> for FlatCacheKeyVisitor {
+    type Value = FlatCacheKey;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a map with cache key parts")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut version = 0u32;
+        let mut prefix = String::new();
+        let mut parts = Vec::new();
+
+        while let Some(key) = access.next_key::<String>()? {
+            match key.as_str() {
+                "version" => version = access.next_value()?,
+                "prefix" => prefix = access.next_value()?,
+                _ => {
+                    let value: Option<String> = access.next_value()?;
+                    parts.push((key, value));
+                }
+            }
+        }
+
+        Ok(FlatCacheKey { version, prefix, parts })
+    }
 }
 
 impl From<&CacheKey> for FlatCacheKey {
     fn from(key: &CacheKey) -> Self {
-        let mut parts = IndexMap::new();
-        for part in key.parts() {
-            parts.insert(part.key().clone(), part.value().clone());
-        }
+        let parts = key
+            .parts()
+            .map(|part| (part.key().clone(), part.value().clone()))
+            .collect();
 
         FlatCacheKey {
             version: key.version(),

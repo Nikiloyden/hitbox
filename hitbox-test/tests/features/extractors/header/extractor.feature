@@ -70,3 +70,117 @@ Feature: Request Header Cache Key Extractor
       X-Tenant-Id: "tenant-123"
       X-User-Id: "user-456"
       ```
+
+  @extractor @header @regex
+  Scenario: Extract header value with regex - Bearer token
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: Authorization
+          value: "Bearer (.+)"
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      Authorization: Bearer my-secret-token-123
+      ```
+    Then cache key exists
+      ```
+      Authorization: "my-secret-token-123"
+      ```
+
+  @extractor @header @hash
+  Scenario: Extract header value with hash transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: Authorization
+          transform: hash
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      Authorization: Bearer my-secret-token-123
+      ```
+    Then cache key exists
+      ```
+      Authorization: "f5603935428bbcd5"
+      ```
+
+  @extractor @header @regex @hash
+  Scenario: Extract Bearer token with regex and hash
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: Authorization
+          value: "Bearer (.+)"
+          transform: hash
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      Authorization: Bearer my-secret-token-123
+      ```
+    Then cache key exists
+      ```
+      Authorization: "3e5358294ba0321e"
+      ```
+
+  @extractor @header @starts
+  Scenario: Extract headers by prefix
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name:
+            starts: x-custom-
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      x-custom-foo: value1
+      x-custom-bar: value2
+      x-other-header: ignored
+      ```
+    Then cache key exists
+      ```
+      x-custom-bar: "value2"
+      x-custom-foo: "value1"
+      ```
+
+  @extractor @header @explicit-eq
+  Scenario: Extract header with explicit eq operation
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name:
+            eq: X-Request-Id
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      X-Request-Id: req-12345
+      ```
+    Then cache key exists
+      ```
+      X-Request-Id: "req-12345"
+      ```

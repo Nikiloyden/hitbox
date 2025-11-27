@@ -189,21 +189,36 @@ async fn check_cache_record_count(
 
 #[then(expr = "cache key exists")]
 async fn check_cache_key_exists(world: &mut HitboxWorld, step: &Step) -> Result<(), Error> {
-    let key_pattern = step
-        .docstring
-        .as_ref()
-        .ok_or_else(|| anyhow!("Expected Debug format docstring for cache key"))?;
-
-    // Parse key pattern using debug format deserialize
-    let cache_key = crate::cache_key::deserialize_debug(key_pattern.as_bytes())
-        .map_err(|e| anyhow!("Failed to parse cache key pattern '{}': {}", key_pattern, e))?;
+    let cache_key = if let Some(table) = &step.table {
+        // Parse from table format (supports duplicate keys, no header row)
+        let parts: Vec<hitbox_core::KeyPart> = table
+            .rows
+            .iter()
+            .map(|row| {
+                let key = row.first().map(|s| s.as_str()).unwrap_or("");
+                let value = row.get(1).map(|s| s.as_str());
+                let value = match value {
+                    Some("null") | None => None,
+                    Some(v) => Some(v.to_string()),
+                };
+                hitbox_core::KeyPart::new(key, value)
+            })
+            .collect();
+        hitbox_core::CacheKey::new(String::new(), 0, parts)
+    } else if let Some(docstring) = &step.docstring {
+        // Parse from YAML docstring format
+        crate::cache_key::deserialize_debug(docstring.as_bytes())
+            .map_err(|e| anyhow!("Failed to parse cache key pattern '{}': {}", docstring, e))?
+    } else {
+        return Err(anyhow!("Expected table or docstring for cache key"));
+    };
 
     let exists = world.backend.cache.get(&cache_key).await.is_some();
 
     if !exists {
         return Err(anyhow!(
-            "Expected cache key '{}' to exist, but it was not found",
-            key_pattern
+            "Expected cache key '{:?}' to exist, but it was not found",
+            cache_key
         ));
     }
 

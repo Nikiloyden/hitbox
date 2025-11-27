@@ -2,7 +2,7 @@ use bytes::Bytes;
 use hitbox::predicate::PredicateResult;
 use hitbox_configuration::{
     ConfigEndpoint, RequestPredicate,
-    predicates::request::{Expression, MethodOperation, Operation, Predicate, Request},
+    predicates::request::{Expression, MethodOperation, Operation, PathOperation, Predicate, Request},
     types::MaybeUndefined,
 };
 use hitbox_http::predicates::NeutralRequestPredicate;
@@ -242,7 +242,7 @@ async fn test_or_with_mixed_predicate_types() {
     let inner = Box::new(NeutralRequestPredicate::new()) as RequestPredicate<_>;
     let method_post =
         Expression::Predicate(Predicate::Method(MethodOperation::Eq("POST".to_owned())));
-    let path_books = Expression::Predicate(Predicate::Path("/books".to_owned()));
+    let path_books = Expression::Predicate(Predicate::Path(PathOperation::Pattern("/books".to_owned())));
     let or_ = Expression::Operation(Operation::Or(vec![method_post, path_books]));
     let predicate_or = or_.into_predicates(inner).unwrap();
 

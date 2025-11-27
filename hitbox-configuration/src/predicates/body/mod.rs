@@ -1,3 +1,3 @@
 mod operation;
 
-pub use operation::{BodyPredicate, JqConfig, JqOperationConfig};
+pub use operation::{BodyOperationConfig, JqConfig, JqOperationConfig};

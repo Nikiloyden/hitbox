@@ -32,11 +32,11 @@ pub enum JqOperationConfig {
     In(Vec<JsonValue>),
 }
 
-/// Body predicate operation - supports both plain (byte-based) and jq (JSON-based) operations
+/// Body operation configuration - supports both plain (byte-based) and jq (JSON-based) operations
 /// This is shared between request and response body predicates
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum BodyPredicate {
+pub enum BodyOperationConfig {
     // Plain operations (byte-based)
     // Note: Stored as String in config, converted to Bytes when creating predicates
     // !!binary tags with non-UTF-8 data currently unsupported due to serde-saphyr limitation
@@ -51,7 +51,7 @@ pub enum BodyPredicate {
     Jq(JqConfig),
 }
 
-impl BodyPredicate {
+impl BodyOperationConfig {
     /// Convert configuration into predicates using the BodyPredicate trait
     /// Generic over any type P that implements hitbox_http's BodyPredicate trait
     pub fn into_predicates<P>(
@@ -69,25 +69,25 @@ impl BodyPredicate {
     fn into_body_operation(self) -> Result<BodyOperation, ConfigError> {
         match self {
             // Plain operations - convert String to Bytes
-            BodyPredicate::Contains(s) => Ok(BodyOperation::Plain(PlainOperation::Contains(
+            BodyOperationConfig::Contains(s) => Ok(BodyOperation::Plain(PlainOperation::Contains(
                 Bytes::from(s),
             ))),
-            BodyPredicate::Starts(s) => {
+            BodyOperationConfig::Starts(s) => {
                 Ok(BodyOperation::Plain(PlainOperation::Starts(Bytes::from(s))))
             }
-            BodyPredicate::Ends(s) => {
+            BodyOperationConfig::Ends(s) => {
                 Ok(BodyOperation::Plain(PlainOperation::Ends(Bytes::from(s))))
             }
-            BodyPredicate::Eq(s) => Ok(BodyOperation::Plain(PlainOperation::Eq(Bytes::from(s)))),
-            BodyPredicate::Regex(pattern) => {
+            BodyOperationConfig::Eq(s) => Ok(BodyOperation::Plain(PlainOperation::Eq(Bytes::from(s)))),
+            BodyOperationConfig::Regex(pattern) => {
                 let regex = regex::bytes::Regex::new(&pattern)
                     .map_err(|e| ConfigError::InvalidRegex { pattern, error: e })?;
                 Ok(BodyOperation::Plain(PlainOperation::RegExp(regex)))
             }
-            BodyPredicate::Limit(bytes) => Ok(BodyOperation::Limit { bytes }),
+            BodyOperationConfig::Limit(bytes) => Ok(BodyOperation::Limit { bytes }),
 
             // Jq operations
-            BodyPredicate::Jq(jq_config) => {
+            BodyOperationConfig::Jq(jq_config) => {
                 let (expression_str, operation) = match jq_config {
                     JqConfig::Implicit(expr) => {
                         // Implicit syntax: "expression" -> { expression: "...", eq: true }

@@ -21,7 +21,9 @@ impl Value {
 }
 
 pub fn parse(value: &str) -> HashMap<String, Value> {
-    serde_qs::from_str(value).expect("Unreachable branch reached")
+    serde_qs::Config::new(5, false)
+        .deserialize_str(value)
+        .expect("Query string parsing failed")
 }
 
 #[cfg(test)]
@@ -50,5 +52,14 @@ mod tests {
     fn test_parse_not_valid() {
         let hash_map = parse("   wrong   ");
         assert_eq!(hash_map.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_array_bracket_syntax() {
+        // Note: serde_qs only supports bracket syntax for arrays (color[]=a&color[]=b)
+        // Repeated keys without brackets (color=a&color=b) are not supported
+        let hash_map = parse("color[]=red&color[]=blue&color[]=green");
+        let value = hash_map.get("color").unwrap();
+        assert_eq!(value.inner(), vec!["red", "blue", "green"]);
     }
 }

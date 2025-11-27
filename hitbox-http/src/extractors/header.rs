@@ -1,13 +1,64 @@
+//! Header extractor with support for name selection, value extraction, and transformation.
+
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 use http::HeaderValue;
+use regex::Regex;
+use sha2::{Digest, Sha256};
 
 use crate::CacheableHttpRequest;
 
+/// Header name selector.
+#[derive(Debug, Clone)]
+pub enum NameSelector {
+    /// Exact header name match
+    Exact(String),
+    /// Headers starting with prefix
+    Starts(String),
+}
+
+/// Value extractor.
+#[derive(Debug, Clone)]
+pub enum ValueExtractor {
+    /// Extract full value
+    Full,
+    /// Extract using regex (first capture group)
+    Regex(Regex),
+}
+
+/// Value transformation.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum Transform {
+    /// No transformation
+    #[default]
+    None,
+    /// SHA256 hash (truncated to 16 chars)
+    Hash,
+}
+
+/// Header extractor.
 #[derive(Debug)]
 pub struct Header<E> {
     inner: E,
-    name: String,
+    name_selector: NameSelector,
+    value_extractor: ValueExtractor,
+    transform: Transform,
+}
+
+impl<E> Header<E> {
+    pub fn new(
+        inner: E,
+        name_selector: NameSelector,
+        value_extractor: ValueExtractor,
+        transform: Transform,
+    ) -> Self {
+        Self {
+            inner,
+            name_selector,
+            value_extractor,
+            transform,
+        }
+    }
 }
 
 pub trait HeaderExtractor: Sized {
@@ -19,7 +70,43 @@ where
     E: Extractor,
 {
     fn header(self, name: String) -> Header<Self> {
-        Header { inner: self, name }
+        Header {
+            inner: self,
+            name_selector: NameSelector::Exact(name),
+            value_extractor: ValueExtractor::Full,
+            transform: Transform::None,
+        }
+    }
+}
+
+/// Extract value from header using the value extractor.
+fn extract_value(value: &HeaderValue, extractor: &ValueExtractor) -> Option<String> {
+    let value_str = value.to_str().ok()?;
+
+    match extractor {
+        ValueExtractor::Full => Some(value_str.to_string()),
+        ValueExtractor::Regex(regex) => {
+            regex.captures(value_str).and_then(|caps| {
+                // Return first capture group if exists, otherwise full match
+                caps.get(1)
+                    .or_else(|| caps.get(0))
+                    .map(|m| m.as_str().to_string())
+            })
+        }
+    }
+}
+
+/// Apply transformation to value.
+fn apply_transform(value: String, transform: Transform) -> String {
+    match transform {
+        Transform::None => value,
+        Transform::Hash => {
+            let mut hasher = Sha256::new();
+            hasher.update(value.as_bytes());
+            let result = hasher.finalize();
+            // Truncate to 16 hex chars (8 bytes)
+            hex::encode(&result[..8])
+        }
     }
 }
 
@@ -33,17 +120,35 @@ where
     type Subject = E::Subject;
 
     async fn get(&self, subject: Self::Subject) -> KeyParts<Self::Subject> {
-        let value = subject
-            .parts()
-            .headers
-            .get(self.name.as_str())
-            .map(HeaderValue::to_str)
-            .transpose()
-            .ok()
-            .flatten()
-            .map(str::to_string);
+        let headers = &subject.parts().headers;
+        let mut extracted_parts = Vec::new();
+
+        match &self.name_selector {
+            NameSelector::Exact(name) => {
+                let value = headers
+                    .get(name.as_str())
+                    .and_then(|v| extract_value(v, &self.value_extractor))
+                    .map(|v| apply_transform(v, self.transform));
+
+                extracted_parts.push(KeyPart::new(name.clone(), value));
+            }
+            NameSelector::Starts(prefix) => {
+                for (name, value) in headers.iter() {
+                    let name_str = name.as_str();
+                    if name_str.starts_with(prefix.as_str()) {
+                        let extracted = extract_value(value, &self.value_extractor)
+                            .map(|v| apply_transform(v, self.transform));
+
+                        extracted_parts.push(KeyPart::new(name_str.to_string(), extracted));
+                    }
+                }
+                // Sort by header name for deterministic cache keys
+                extracted_parts.sort_by(|a, b| a.key().cmp(b.key()));
+            }
+        }
+
         let mut parts = self.inner.get(subject).await;
-        parts.push(KeyPart::new(self.name.clone(), value));
+        parts.append(&mut extracted_parts);
         parts
     }
 }

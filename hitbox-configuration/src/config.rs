@@ -30,19 +30,19 @@ pub struct ConfigEndpoint {
 }
 
 impl ConfigEndpoint {
-    pub fn extractors<ReqBody>(&self) -> RequestExtractor<ReqBody>
+    pub fn extractors<ReqBody>(&self) -> Result<RequestExtractor<ReqBody>, ConfigError>
     where
         ReqBody: hyper::body::Body + Send + Debug + 'static,
         ReqBody::Error: Debug + Send,
         ReqBody::Data: Send,
     {
         match &self.extractors {
-            MaybeUndefined::Null => Box::new(NeutralExtractor::<ReqBody>::new()),
+            MaybeUndefined::Null => Ok(Box::new(NeutralExtractor::<ReqBody>::new())),
             MaybeUndefined::Undefined => {
-                Box::new(NeutralExtractor::<ReqBody>::new().method().path("*"))
+                Ok(Box::new(NeutralExtractor::<ReqBody>::new().method().path("*")))
             }
-            MaybeUndefined::Value(extractors) => extractors.iter().cloned().rfold(
-                Box::new(NeutralExtractor::<ReqBody>::new()),
+            MaybeUndefined::Value(extractors) => extractors.iter().cloned().try_rfold(
+                Box::new(NeutralExtractor::<ReqBody>::new()) as RequestExtractor<ReqBody>,
                 |inner, item| item.into_extractors(inner),
             ),
         }
@@ -57,7 +57,7 @@ impl ConfigEndpoint {
         ResBody::Error: Debug + Send,
         ResBody::Data: Send,
     {
-        let extractors = Arc::new(self.extractors());
+        let extractors = Arc::new(self.extractors()?);
         let response_predicates = Arc::new(match self.response {
             MaybeUndefined::Value(response) => response.into_predicates()?,
             MaybeUndefined::Null => {
