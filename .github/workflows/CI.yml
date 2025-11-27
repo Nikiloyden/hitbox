@@ -97,7 +97,9 @@ jobs:
       - name: Generate coverage file
         if: matrix.rust == 'stable' && matrix.redis-version == 7
         run: |
-          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info --ignore-filename-regex 'hurl/'
+          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
+            --exclude hitbox-test \
+            --ignore-filename-regex 'hurl/'
 
       - name: Upload to Codecov
         if: matrix.rust == 'stable' && matrix.redis-version == 7
