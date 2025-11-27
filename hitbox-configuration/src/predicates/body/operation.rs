@@ -78,7 +78,9 @@ impl BodyOperationConfig {
             BodyOperationConfig::Ends(s) => {
                 Ok(BodyOperation::Plain(PlainOperation::Ends(Bytes::from(s))))
             }
-            BodyOperationConfig::Eq(s) => Ok(BodyOperation::Plain(PlainOperation::Eq(Bytes::from(s)))),
+            BodyOperationConfig::Eq(s) => {
+                Ok(BodyOperation::Plain(PlainOperation::Eq(Bytes::from(s))))
+            }
             BodyOperationConfig::Regex(pattern) => {
                 let regex = regex::bytes::Regex::new(&pattern)
                     .map_err(|e| ConfigError::InvalidRegex { pattern, error: e })?;

@@ -33,8 +33,8 @@ use hitbox_http::extractors::header::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::error::ConfigError;
 use crate::RequestExtractor;
+use crate::error::ConfigError;
 
 /// Header name selector configuration.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]

@@ -58,9 +58,8 @@ impl Operation {
                     None => Ok(inner),
                     Some(first) => {
                         let first_predicate = first
-                            .into_predicates(
-                                Box::new(NeutralResponsePredicate::new()) as ResponsePredicate<ReqBody>
-                            )?;
+                            .into_predicates(Box::new(NeutralResponsePredicate::new())
+                                as ResponsePredicate<ReqBody>)?;
                         iter.try_fold(first_predicate, |acc, expression| {
                             let predicate = expression
                                 .into_predicates(Box::new(NeutralResponsePredicate::new())

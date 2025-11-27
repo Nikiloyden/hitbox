@@ -1,8 +1,8 @@
 use hitbox_backend::format::FormatError;
 use hitbox_core::CacheKey;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
 /// Helper struct for YAML serialization supporting duplicate keys
@@ -69,7 +69,11 @@ impl<'de> Visitor<'de> for FlatCacheKeyVisitor {
             }
         }
 
-        Ok(FlatCacheKey { version, prefix, parts })
+        Ok(FlatCacheKey {
+            version,
+            prefix,
+            parts,
+        })
     }
 }
 

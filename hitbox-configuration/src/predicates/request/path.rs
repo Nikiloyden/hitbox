@@ -41,27 +41,23 @@ impl PathOperation {
         ReqBody::Data: Send,
     {
         match self {
-            PathOperation::Pattern(pattern) => {
-                Ok(Box::new(Path::new(inner, pattern.into())))
-            }
-            PathOperation::In { r#in: patterns } => {
-                patterns
-                    .into_iter()
-                    .map(|pattern| -> RequestPredicate<ReqBody> {
-                        Box::new(Path::new(
-                            Box::new(NeutralRequestPredicate::new()),
-                            pattern.into(),
-                        ))
-                    })
-                    .reduce(|acc, predicate| {
-                        Box::new(Or::new(
-                            predicate,
-                            acc,
-                            Box::new(NeutralRequestPredicate::new()),
-                        ))
-                    })
-                    .ok_or(ConfigError::EmptyPathList)
-            }
+            PathOperation::Pattern(pattern) => Ok(Box::new(Path::new(inner, pattern.into()))),
+            PathOperation::In { r#in: patterns } => patterns
+                .into_iter()
+                .map(|pattern| -> RequestPredicate<ReqBody> {
+                    Box::new(Path::new(
+                        Box::new(NeutralRequestPredicate::new()),
+                        pattern.into(),
+                    ))
+                })
+                .reduce(|acc, predicate| {
+                    Box::new(Or::new(
+                        predicate,
+                        acc,
+                        Box::new(NeutralRequestPredicate::new()),
+                    ))
+                })
+                .ok_or(ConfigError::EmptyPathList),
         }
     }
 }
