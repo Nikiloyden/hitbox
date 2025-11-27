@@ -322,9 +322,14 @@ where
                         CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
                             let backend = this.backend.clone();
                             let cache_key = key.clone();
+                            debug!(?cache_key, "FSM looking up cache key");
                             let _ = this.cache_key.insert(key);
                             let poll_cache = Box::pin(async move {
                                 let result = backend.get::<Res>(&cache_key, &mut ctx).await;
+                                debug!(
+                                    found = result.as_ref().map(|r| r.is_some()).unwrap_or(false),
+                                    "FSM cache lookup result"
+                                );
                                 (result, ctx)
                             });
                             State::PollCache {
@@ -395,6 +400,9 @@ where
                             match stale_policy {
                                 StalePolicy::Return => {
                                     // Just return stale data, no revalidation
+                                    ctx.as_mut()
+                                        .expect(CONTEXT_TAKEN_ERROR)
+                                        .set_status(CacheStatus::Stale);
                                     State::Response {
                                         response: Some(response),
                                         ctx: ctx.take(),

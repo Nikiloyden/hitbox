@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::core::{HitboxWorld, StepExt};
 use crate::time::{MockTime, MockTimeProvider};
+use hitbox::offload::OffloadManager;
 use hitbox_configuration::{Request, RequestExtractor, Response, extractors::Extractor};
 use hitbox_core::set_mock_time_provider;
 use hitbox_http::extractors::NeutralExtractor;
@@ -102,4 +103,10 @@ fn reset_mock_time(world: &mut HitboxWorld) -> Result<(), Error> {
     } else {
         Err(anyhow!("Mock time is not enabled"))
     }
+}
+
+#[given(expr = "offload revalidation is enabled")]
+fn enable_offload_revalidation(world: &mut HitboxWorld) -> Result<(), Error> {
+    world.offload_manager = Some(OffloadManager::with_defaults());
+    Ok(())
 }

@@ -97,7 +97,9 @@ jobs:
       - name: Generate coverage file
         if: matrix.rust == 'stable' && matrix.redis-version == 7
         run: |
-          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info --ignore-filename-regex 'hurl/'
+          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
+            --exclude hitbox-test \
+            --ignore-filename-regex 'hurl/'
 
       - name: Upload to Codecov
         if: matrix.rust == 'stable' && matrix.redis-version == 7
@@ -145,3 +147,15 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
+
+  spellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Spellcheck
+        uses: streetsidesoftware/cspell-action@v6
+        with:
+          files: "**/*.rs **/*.md **/*.toml"
+          config: cspell.json
+          inline: warning
+          suggestions: true

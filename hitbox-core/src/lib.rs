@@ -32,4 +32,4 @@ pub type Raw = bytes::Bytes;
 // Export test helpers when the test-helpers feature is enabled (for integration tests)
 // or when running unit tests
 #[cfg(any(test, feature = "test-helpers"))]
-pub use value::set_mock_time_provider;
+pub use value::{current_time, set_mock_time_provider};

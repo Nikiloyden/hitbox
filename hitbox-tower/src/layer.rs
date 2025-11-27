@@ -2,6 +2,7 @@ use crate::EndpointConfig;
 use std::sync::Arc;
 
 use hitbox::backend::CacheBackend;
+use hitbox::offload::OffloadManager;
 use hitbox_moka::MokaBackend;
 use tower::Layer;
 
@@ -11,6 +12,7 @@ use crate::service::CacheService;
 pub struct Cache<B, C> {
     pub backend: Arc<B>,
     pub configuration: C,
+    pub offload_manager: Option<OffloadManager>,
 }
 
 impl<B, C> Cache<B, C>
@@ -21,6 +23,7 @@ where
         Cache {
             backend: Arc::new(backend),
             configuration: Default::default(),
+            offload_manager: None,
         }
     }
 }
@@ -36,6 +39,7 @@ where
             upstream,
             Arc::clone(&self.backend),
             self.configuration.clone(),
+            self.offload_manager.clone(),
         )
     }
 }
@@ -49,6 +53,7 @@ impl Cache<MokaBackend, EndpointConfig> {
 pub struct CacheBuilder<B, C> {
     backend: Option<B>,
     configuration: C,
+    offload_manager: Option<OffloadManager>,
 }
 
 impl<B, C> CacheBuilder<B, C>
@@ -60,6 +65,7 @@ where
         CacheBuilder {
             backend: Some(backend),
             configuration: self.configuration,
+            offload_manager: self.offload_manager,
         }
     }
 
@@ -67,6 +73,14 @@ where
         CacheBuilder {
             backend: self.backend,
             configuration,
+            offload_manager: self.offload_manager,
+        }
+    }
+
+    pub fn offload_manager(self, manager: OffloadManager) -> Self {
+        CacheBuilder {
+            offload_manager: Some(manager),
+            ..self
         }
     }
 
@@ -74,6 +88,7 @@ where
         Cache {
             backend: Arc::new(self.backend.expect("Please add some cache backend")),
             configuration: self.configuration,
+            offload_manager: self.offload_manager,
         }
     }
 }
@@ -86,6 +101,7 @@ where
         Self {
             backend: None,
             configuration: Default::default(),
+            offload_manager: None,
         }
     }
 }
