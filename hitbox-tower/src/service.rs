@@ -99,6 +99,7 @@ where
             Arc::new(configuration.response_predicates()),
             Arc::new(configuration.extractors()),
             Arc::new(configuration.policy().clone()),
+            None, // TODO: Add OffloadManager support for SWR
         );
 
         // Wrap in CacheServiceFuture to add cache headers

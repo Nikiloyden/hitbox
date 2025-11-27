@@ -26,6 +26,9 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 pin-project = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+dashmap = { workspace = true }
+smol_str = { workspace = true }
 
 [features]
 default = []

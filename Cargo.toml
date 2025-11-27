@@ -53,6 +53,7 @@ futures = { version = "0.3", default-features = false }
 pin-project = "1"
 regex = "1"
 smol_str = "0.3"
+dashmap = "6"
 
 # Benchmarking (dev dependencies)
 criterion = "0.7"

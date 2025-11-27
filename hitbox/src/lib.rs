@@ -43,8 +43,6 @@
 pub mod backend;
 pub mod error;
 pub mod fsm;
-#[cfg(feature = "metrics")]
-#[cfg_attr(docsrs, doc(cfg(feature = "metrics")))]
 pub mod metrics;
 pub use error::CacheError;
 pub use hitbox_core::{
@@ -55,6 +53,7 @@ pub use hitbox_core::{
 
 pub mod config;
 pub mod context;
+pub mod offload;
 
 pub use context::{BoxContext, CacheContext, CacheStatus, Context, ResponseSource};
 pub mod policy;
