@@ -204,7 +204,7 @@ pub trait Context: Send + Sync {
     ///
     /// Default is no-op. `CacheContext` overrides this when `fsm-trace` feature is enabled.
     #[inline]
-    fn record_state(&mut self, _state: &str) {
+    fn record_state(&mut self, _state: DebugState) {
         // Default no-op
     }
 
@@ -247,6 +247,58 @@ pub trait Context: Send + Sync {
 /// Only one allocation at `CacheFuture` creation.
 pub type BoxContext = Box<dyn Context>;
 
+/// FSM state for debugging/tracing purposes.
+///
+/// This enum represents the states visited during cache FSM execution.
+/// Used with the `fsm-trace` feature to track state transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "fsm-trace", derive(serde::Serialize, serde::Deserialize))]
+pub enum DebugState {
+    /// Initial state before processing
+    Initial,
+    /// Checking if request should be cached
+    CheckRequestCachePolicy,
+    /// Polling the cache backend
+    PollCache,
+    /// Checking cache state (actual/stale/expired)
+    CheckCacheState,
+    /// Check concurrency policy
+    CheckConcurrency,
+    /// Concurrent upstream polling with concurrency control
+    ConcurrentPollUpstream,
+    /// Awaiting response from another concurrent request
+    AwaitResponse,
+    /// Polling upstream service
+    PollUpstream,
+    /// Upstream response received
+    UpstreamPolled,
+    /// Checking if response should be cached
+    CheckResponseCachePolicy,
+    /// Updating cache with response
+    UpdateCache,
+    /// Final state with response
+    Response,
+}
+
+impl std::fmt::Display for DebugState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DebugState::Initial => write!(f, "Initial"),
+            DebugState::CheckRequestCachePolicy => write!(f, "CheckRequestCachePolicy"),
+            DebugState::PollCache => write!(f, "PollCache"),
+            DebugState::CheckCacheState => write!(f, "CheckCacheState"),
+            DebugState::CheckConcurrency => write!(f, "CheckConcurrency"),
+            DebugState::ConcurrentPollUpstream => write!(f, "ConcurrentPollUpstream"),
+            DebugState::AwaitResponse => write!(f, "AwaitResponse"),
+            DebugState::PollUpstream => write!(f, "PollUpstream"),
+            DebugState::UpstreamPolled => write!(f, "UpstreamPolled"),
+            DebugState::CheckResponseCachePolicy => write!(f, "CheckResponseCachePolicy"),
+            DebugState::UpdateCache => write!(f, "UpdateCache"),
+            DebugState::Response => write!(f, "Response"),
+        }
+    }
+}
+
 /// Context information about a cache operation.
 #[derive(Debug, Clone, Default)]
 pub struct CacheContext {
@@ -258,7 +310,7 @@ pub struct CacheContext {
     pub metrics: Metrics,
     /// FSM states visited during the cache operation (only with `fsm-trace` feature).
     #[cfg(feature = "fsm-trace")]
-    pub states: Vec<String>,
+    pub states: Vec<DebugState>,
 }
 
 impl CacheContext {
@@ -308,7 +360,7 @@ impl Context for CacheContext {
     }
 
     #[cfg(feature = "fsm-trace")]
-    fn record_state(&mut self, state: &str) {
-        self.states.push(state.to_owned());
+    fn record_state(&mut self, state: DebugState) {
+        self.states.push(state);
     }
 }

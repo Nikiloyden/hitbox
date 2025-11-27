@@ -77,8 +77,8 @@ rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format", "h
 fsm-trace = ["hitbox-core/fsm-trace"]
 
 [[test]]
-name = "integration"
-path = "tests/integration/bdd.rs"
+name = "bdd"
+path = "tests/bdd.rs"
 harness = false
 
 [[bench]]
@@ -99,8 +99,3 @@ harness = false
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
-
-[[test]]
-name = "fsm"
-path = "tests/fsm/bdd.rs"
-harness = false

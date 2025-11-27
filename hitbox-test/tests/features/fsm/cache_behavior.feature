@@ -5,7 +5,7 @@ Feature: Cache FSM Behavior
     And request delay between concurrent requests is 10ms
 
   # =============================================================================
-  # Cache Disabled (Test Case 1)
+  # Cache Disabled
   # =============================================================================
 
   @fsm @disabled
@@ -15,12 +15,13 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
+      | Initial        |
       | PollUpstream   |
       | UpstreamPolled |
       | Response       |
 
   # =============================================================================
-  # Request Non-Cacheable (Test Case 4)
+  # Request Non-Cacheable
   # =============================================================================
 
   @fsm @request-noncacheable
@@ -32,13 +33,14 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states should be:
+      | Initial                 |
       | CheckRequestCachePolicy |
       | PollUpstream            |
       | UpstreamPolled          |
       | Response                |
 
   # =============================================================================
-  # Cache Miss - No Dogpile Prevention (Test Cases 8, 9)
+  # Cache Miss - No Dogpile Prevention
   # =============================================================================
 
   @fsm @miss @no-dogpile
@@ -53,6 +55,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckConcurrency         |
@@ -73,6 +76,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckConcurrency         |
@@ -83,7 +87,7 @@ Feature: Cache FSM Behavior
       | Response                 |
 
   # =============================================================================
-  # Cache Miss - Dogpile Prevention: Proceed with Permit (Test Cases 18, 19)
+  # Cache Miss - Dogpile Prevention: Proceed with Permit
   # =============================================================================
 
   @fsm @miss @dogpile @proceed
@@ -98,6 +102,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckConcurrency         |
@@ -119,6 +124,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckConcurrency         |
@@ -130,7 +136,7 @@ Feature: Cache FSM Behavior
       | Response                 |
 
   # =============================================================================
-  # Cache Miss - Dogpile Prevention: Await Broadcast OK (Test Case 16)
+  # Cache Miss - Dogpile Prevention: Await Broadcast OK
   # =============================================================================
 
   @fsm @miss @dogpile @await @broadcast-ok
@@ -146,6 +152,7 @@ Feature: Cache FSM Behavior
     And cache should contain value 100
     And FSM states for each request should be:
       | Request 1                | Request 2                | Request 3                |
+      | Initial                  | Initial                  | Initial                  |
       | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
       | PollCache                | PollCache                | PollCache                |
       | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
@@ -173,6 +180,7 @@ Feature: Cache FSM Behavior
     And cache should be empty
     And FSM states for each request should be:
       | Request 1                | Request 2                | Request 3                |
+      | Initial                  | Initial                  | Initial                  |
       | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
       | PollCache                | PollCache                | PollCache                |
       | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
@@ -184,7 +192,7 @@ Feature: Cache FSM Behavior
       |                          | Response                 | Response                 |
 
   # =============================================================================
-  # Cache Miss - Dogpile Prevention: Await Broadcast Closed (Test Cases 11, 12)
+  # Cache Miss - Dogpile Prevention: Await Broadcast Closed
   # Note: These scenarios require special setup to force channel closed
   # =============================================================================
 
@@ -213,7 +221,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
 
   # =============================================================================
-  # Cache Miss - Dogpile Prevention: Await Broadcast Lagged (Test Cases 14, 15)
+  # Cache Miss - Dogpile Prevention: Await Broadcast Lagged
   # Note: These scenarios require special setup to force channel lagged
   # =============================================================================
 
@@ -242,7 +250,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
 
   # =============================================================================
-  # Cache Hit - Actual/Fresh (Test Case 34)
+  # Cache Hit - Actual/Fresh
   # =============================================================================
 
   @fsm @hit @actual
@@ -255,13 +263,14 @@ Feature: Cache FSM Behavior
     And all responses should equal 200
     And cache status should be "Hit"
     And FSM states should be:
+      | Initial                 |
       | CheckRequestCachePolicy |
       | PollCache               |
       | CheckCacheState         |
       | Response                |
 
   # =============================================================================
-  # Cache Hit - Stale (Test Case 33)
+  # Cache Hit - Stale
   # =============================================================================
 
   @fsm @hit @stale
@@ -272,15 +281,16 @@ Feature: Cache FSM Behavior
     When 1 request is made with value 100
     Then upstream should be called 0 times
     And all responses should equal 200
-    And cache status should be "Hit"
+    And cache status should be "Stale"
     And FSM states should be:
+      | Initial                 |
       | CheckRequestCachePolicy |
       | PollCache               |
       | CheckCacheState         |
       | Response                |
 
   # =============================================================================
-  # Cache Hit - Expired, No Dogpile Prevention (Test Cases 21, 22)
+  # Cache Hit - Expired, No Dogpile Prevention
   # =============================================================================
 
   @fsm @hit @expired @no-dogpile
@@ -294,6 +304,7 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckCacheState          |
@@ -315,6 +326,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckCacheState          |
@@ -326,7 +338,7 @@ Feature: Cache FSM Behavior
       | Response                 |
 
   # =============================================================================
-  # Cache Hit - Expired, Dogpile Prevention: Proceed (Test Cases 31, 32)
+  # Cache Hit - Expired, Dogpile Prevention: Proceed
   # =============================================================================
 
   @fsm @hit @expired @dogpile @proceed
@@ -340,6 +352,7 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckCacheState          |
@@ -362,6 +375,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
+      | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
       | CheckCacheState          |
@@ -374,7 +388,7 @@ Feature: Cache FSM Behavior
       | Response                 |
 
   # =============================================================================
-  # Cache Hit - Expired, Dogpile Prevention: Await OK (Test Case 29)
+  # Cache Hit - Expired, Dogpile Prevention: Await OK
   # =============================================================================
 
   @fsm @hit @expired @dogpile @await @broadcast-ok
@@ -390,6 +404,7 @@ Feature: Cache FSM Behavior
     And cache should contain value 100
     And FSM states for each request should be:
       | Request 1                | Request 2                | Request 3                |
+      | Initial                  | Initial                  | Initial                  |
       | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
       | PollCache                | PollCache                | PollCache                |
       | CheckCacheState          | CheckCacheState          | CheckCacheState          |
@@ -402,7 +417,7 @@ Feature: Cache FSM Behavior
       | Response                 |                          |                          |
 
   # =============================================================================
-  # Cache Hit - Expired, Dogpile Prevention: Await Closed (Test Cases 24, 25)
+  # Cache Hit - Expired, Dogpile Prevention: Await Closed
   # =============================================================================
 
   @fsm @hit @expired @dogpile @await @broadcast-closed @allow.failed
@@ -430,7 +445,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
 
   # =============================================================================
-  # Cache Hit - Expired, Dogpile Prevention: Await Lagged (Test Cases 27, 28)
+  # Cache Hit - Expired, Dogpile Prevention: Await Lagged
   # =============================================================================
 
   @fsm @hit @expired @dogpile @await @broadcast-lagged @allow.failed
@@ -473,6 +488,7 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And FSM states for each request should be:
       | Request 1                | Request 2                | Request 3                |
+      | Initial                  | Initial                  | Initial                  |
       | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
       | PollCache                | PollCache                | PollCache                |
       | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |

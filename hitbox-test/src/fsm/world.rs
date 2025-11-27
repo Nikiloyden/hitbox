@@ -217,21 +217,23 @@ impl TestResults {
         self.responses.iter().all(|(r, _)| r.0 == expected)
     }
 
-    /// Get FSM states from the first response context.
+    /// Get FSM states from the first response context as strings.
     /// Only available when `fsm-trace` feature is enabled.
     #[cfg(feature = "fsm-trace")]
-    pub fn fsm_states(&self) -> Option<&[String]> {
-        self.responses.first().map(|(_, ctx)| ctx.states.as_slice())
+    pub fn fsm_states(&self) -> Option<Vec<String>> {
+        self.responses
+            .first()
+            .map(|(_, ctx)| ctx.states.iter().map(|s| s.to_string()).collect())
     }
 
-    /// Get FSM states for all responses.
-    /// Returns a vector of state slices, one per response.
+    /// Get FSM states for all responses as strings.
+    /// Returns a vector of string vectors, one per response.
     /// Only available when `fsm-trace` feature is enabled.
     #[cfg(feature = "fsm-trace")]
-    pub fn all_fsm_states(&self) -> Vec<&[String]> {
+    pub fn all_fsm_states(&self) -> Vec<Vec<String>> {
         self.responses
             .iter()
-            .map(|(_, ctx)| ctx.states.as_slice())
+            .map(|(_, ctx)| ctx.states.iter().map(|s| s.to_string()).collect())
             .collect()
     }
 }
@@ -288,6 +290,7 @@ impl FsmWorld {
                 ttl: self.config.ttl,
                 stale: self.config.stale,
                 concurrency: self.config.concurrency,
+                policy: Default::default(),
             })
         } else {
             PolicyConfig::Disabled
@@ -324,6 +327,7 @@ impl FsmWorld {
                     response_pred,
                     extractor,
                     policy,
+                    None, // No offload manager for tests
                     concurrency_manager,
                 );
 

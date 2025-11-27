@@ -14,6 +14,11 @@ use crate::CacheKey;
 /// Type alias for the in-flight request entry: (broadcast sender, semaphore)
 type InFlightEntry<T> = (broadcast::Sender<Arc<CacheValue<T>>>, Arc<Semaphore>);
 
+/// Broadcast channel capacity per cache key.
+/// Only one message is ever sent per channel (the cached result from the permit holder),
+/// so capacity of 1 is sufficient.
+const CHANNEL_CAPACITY: usize = 1;
+
 /// Errors that can occur when waiting for a concurrent request
 #[derive(Debug, Clone)]
 pub enum ConcurrencyError {
@@ -148,7 +153,7 @@ where
             Entry::Vacant(entry) => {
                 // No in-flight request for this key - atomically create and insert entry
                 // Create a broadcast channel and semaphore with the specified concurrency limit
-                let (sender, _receiver) = broadcast::channel(16);
+                let (sender, _receiver) = broadcast::channel(CHANNEL_CAPACITY);
                 let semaphore = Arc::new(Semaphore::new(concurrency));
 
                 // Acquire the first permit

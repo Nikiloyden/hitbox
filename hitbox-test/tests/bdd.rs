@@ -1,6 +1,7 @@
 use cucumber::writer::{Basic, JUnit};
 use cucumber::writer::{Verbosity, basic::Coloring};
 use cucumber::{World, WriterExt};
+use hitbox_test::core::HitboxWorld;
 use hitbox_test::fsm::FsmWorld;
 use std::fs::{File, create_dir_all};
 use std::io::stdout;
@@ -17,6 +18,31 @@ pub async fn main() {
 
     create_dir_all(&target_dir).expect("Failed to create target directory");
 
+    // Run integration tests (predicates, extractors, logical)
+    println!("\n========== Running Integration Tests ==========\n");
+    let junit_path = target_dir.join("cucumber-integration-junit.xml");
+    let file = File::create(&junit_path).expect("Failed to create JUnit XML file");
+
+    HitboxWorld::cucumber()
+        .max_concurrent_scenarios(None)
+        .with_writer(
+            Basic::new(stdout(), Coloring::Auto, Verbosity::Default)
+                .summarized()
+                .tee(JUnit::for_tee(file, 0))
+                .normalized(),
+        )
+        .filter_run("tests/features", |feature, _rule, scenario| {
+            // Skip FSM features (handled by FsmWorld) and failed-allowed scenarios
+            !feature
+                .path
+                .as_ref()
+                .map_or(false, |p| p.to_string_lossy().contains("/fsm/"))
+                && !scenario.tags.iter().any(|tag| tag == "allow.failed")
+        })
+        .await;
+
+    // Run FSM tests
+    println!("\n========== Running FSM Tests ==========\n");
     let junit_path = target_dir.join("cucumber-fsm-junit.xml");
     let file = File::create(&junit_path).expect("Failed to create JUnit XML file");
 
@@ -32,4 +58,6 @@ pub async fn main() {
             !scenario.tags.iter().any(|tag| tag == "allow.failed")
         })
         .await;
+
+    println!("\n========== All BDD Tests Complete ==========\n");
 }
