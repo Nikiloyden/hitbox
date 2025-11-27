@@ -2,14 +2,14 @@
 
 use std::future::Future;
 use std::hash::Hash;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use dashmap::DashMap;
 use smol_str::SmolStr;
 use tokio::task::JoinHandle;
-use tracing::{debug, info_span, warn, Instrument};
+use tracing::{Instrument, debug, info_span, warn};
 
 use crate::CacheKey;
 
@@ -17,8 +17,8 @@ use super::policy::{OffloadConfig, TimeoutPolicy};
 
 #[cfg(feature = "metrics")]
 use crate::metrics::{
-    OFFLOAD_TASKS_ACTIVE, OFFLOAD_TASKS_COMPLETED, OFFLOAD_TASKS_DEDUPLICATED,
-    OFFLOAD_TASKS_SPAWNED, OFFLOAD_TASKS_TIMEOUT, OFFLOAD_TASK_DURATION,
+    OFFLOAD_TASK_DURATION, OFFLOAD_TASKS_ACTIVE, OFFLOAD_TASKS_COMPLETED,
+    OFFLOAD_TASKS_DEDUPLICATED, OFFLOAD_TASKS_SPAWNED, OFFLOAD_TASKS_TIMEOUT,
 };
 
 /// Key for identifying offloaded tasks.
@@ -106,7 +106,10 @@ impl OffloadManager {
     /// Generate next auto-incrementing key with the given kind.
     fn next_key(&self, kind: impl Into<SmolStr>) -> OffloadKey {
         let id = self.inner.key_counter.fetch_add(1, Ordering::Relaxed);
-        OffloadKey::Generated { kind: kind.into(), id }
+        OffloadKey::Generated {
+            kind: kind.into(),
+            id,
+        }
     }
 
     /// Spawn a task with auto-generated key and specified kind.
@@ -141,15 +144,15 @@ impl OffloadManager {
         let key = key.into();
 
         // Check for deduplication (only for Cache keys)
-        if self.inner.config.deduplicate {
-            if let OffloadKey::Cache(_) = &key {
-                if self.inner.tasks.contains_key(&key) {
-                    debug!(?key, "Task deduplicated - already in flight");
-                    #[cfg(feature = "metrics")]
-                    metrics::counter!(*OFFLOAD_TASKS_DEDUPLICATED, "key_type" => key.key_type().to_string()).increment(1);
-                    return false;
-                }
-            }
+        if self.inner.config.deduplicate
+            && matches!(&key, OffloadKey::Cache(_))
+            && self.inner.tasks.contains_key(&key)
+        {
+            debug!(?key, "Task deduplicated - already in flight");
+            #[cfg(feature = "metrics")]
+            metrics::counter!(*OFFLOAD_TASKS_DEDUPLICATED, "key_type" => key.key_type().to_string())
+                .increment(1);
+            return false;
         }
 
         #[cfg(feature = "metrics")]
@@ -160,8 +163,10 @@ impl OffloadManager {
 
         #[cfg(feature = "metrics")]
         {
-            metrics::counter!(*OFFLOAD_TASKS_SPAWNED, "key_type" => key_type.to_string()).increment(1);
-            metrics::gauge!(*OFFLOAD_TASKS_ACTIVE, "key_type" => key_type.to_string()).increment(1.0);
+            metrics::counter!(*OFFLOAD_TASKS_SPAWNED, "key_type" => key_type.to_string())
+                .increment(1);
+            metrics::gauge!(*OFFLOAD_TASKS_ACTIVE, "key_type" => key_type.to_string())
+                .increment(1.0);
         }
 
         true
@@ -201,10 +206,7 @@ impl OffloadManager {
 
     /// Check if a task with the given key is in flight.
     pub fn is_in_flight(&self, key: &OffloadKey) -> bool {
-        self.inner
-            .tasks
-            .get(key)
-            .is_some_and(|h| !h.is_finished())
+        self.inner.tasks.get(key).is_some_and(|h| !h.is_finished())
     }
 
     fn spawn_inner<F>(&self, task: F, key: OffloadKey) -> OffloadHandle
@@ -222,61 +224,55 @@ impl OffloadManager {
         );
 
         let handle = match timeout_policy {
-            TimeoutPolicy::None => {
-                tokio::spawn(
-                    async move {
-                        #[cfg(feature = "metrics")]
-                        let start = Instant::now();
-                        task.await;
-                        inner.tasks.remove(&key);
-                        #[cfg(feature = "metrics")]
-                        Self::record_completion(start, &key_type);
-                    }
-                    .instrument(span),
-                )
-            }
-            TimeoutPolicy::Cancel(duration) => {
-                tokio::spawn(
-                    async move {
-                        #[cfg(feature = "metrics")]
-                        let start = Instant::now();
-                        match tokio::time::timeout(duration, task).await {
-                            Ok(()) => {
-                                #[cfg(feature = "metrics")]
-                                Self::record_completion(start, &key_type);
-                            }
-                            Err(_) => {
-                                warn!(?key, "Offload task cancelled due to timeout");
-                                #[cfg(feature = "metrics")]
-                                Self::record_timeout(start, &key_type);
-                            }
+            TimeoutPolicy::None => tokio::spawn(
+                async move {
+                    #[cfg(feature = "metrics")]
+                    let start = Instant::now();
+                    task.await;
+                    inner.tasks.remove(&key);
+                    #[cfg(feature = "metrics")]
+                    Self::record_completion(start, &key_type);
+                }
+                .instrument(span),
+            ),
+            TimeoutPolicy::Cancel(duration) => tokio::spawn(
+                async move {
+                    #[cfg(feature = "metrics")]
+                    let start = Instant::now();
+                    match tokio::time::timeout(duration, task).await {
+                        Ok(()) => {
+                            #[cfg(feature = "metrics")]
+                            Self::record_completion(start, &key_type);
                         }
-                        inner.tasks.remove(&key);
-                    }
-                    .instrument(span),
-                )
-            }
-            TimeoutPolicy::Warn(duration) => {
-                tokio::spawn(
-                    async move {
-                        let start = Instant::now();
-                        task.await;
-                        let elapsed = start.elapsed();
-                        if elapsed > duration {
-                            warn!(
-                                ?key,
-                                elapsed_ms = elapsed.as_millis(),
-                                threshold_ms = duration.as_millis(),
-                                "Offload task exceeded timeout threshold"
-                            );
+                        Err(_) => {
+                            warn!(?key, "Offload task cancelled due to timeout");
+                            #[cfg(feature = "metrics")]
+                            Self::record_timeout(start, &key_type);
                         }
-                        inner.tasks.remove(&key);
-                        #[cfg(feature = "metrics")]
-                        Self::record_completion(start, &key_type);
                     }
-                    .instrument(span),
-                )
-            }
+                    inner.tasks.remove(&key);
+                }
+                .instrument(span),
+            ),
+            TimeoutPolicy::Warn(duration) => tokio::spawn(
+                async move {
+                    let start = Instant::now();
+                    task.await;
+                    let elapsed = start.elapsed();
+                    if elapsed > duration {
+                        warn!(
+                            ?key,
+                            elapsed_ms = elapsed.as_millis(),
+                            threshold_ms = duration.as_millis(),
+                            "Offload task exceeded timeout threshold"
+                        );
+                    }
+                    inner.tasks.remove(&key);
+                    #[cfg(feature = "metrics")]
+                    Self::record_completion(start, &key_type);
+                }
+                .instrument(span),
+            ),
         };
 
         OffloadHandle { handle }
@@ -285,9 +281,11 @@ impl OffloadManager {
     #[cfg(feature = "metrics")]
     fn record_completion(start: Instant, key_type: &SmolStr) {
         let duration = start.elapsed().as_secs_f64();
-        metrics::counter!(*OFFLOAD_TASKS_COMPLETED, "key_type" => key_type.to_string()).increment(1);
+        metrics::counter!(*OFFLOAD_TASKS_COMPLETED, "key_type" => key_type.to_string())
+            .increment(1);
         metrics::gauge!(*OFFLOAD_TASKS_ACTIVE, "key_type" => key_type.to_string()).decrement(1.0);
-        metrics::histogram!(*OFFLOAD_TASK_DURATION, "key_type" => key_type.to_string()).record(duration);
+        metrics::histogram!(*OFFLOAD_TASK_DURATION, "key_type" => key_type.to_string())
+            .record(duration);
     }
 
     #[cfg(feature = "metrics")]
@@ -295,7 +293,8 @@ impl OffloadManager {
         let duration = start.elapsed().as_secs_f64();
         metrics::counter!(*OFFLOAD_TASKS_TIMEOUT, "key_type" => key_type.to_string()).increment(1);
         metrics::gauge!(*OFFLOAD_TASKS_ACTIVE, "key_type" => key_type.to_string()).decrement(1.0);
-        metrics::histogram!(*OFFLOAD_TASK_DURATION, "key_type" => key_type.to_string()).record(duration);
+        metrics::histogram!(*OFFLOAD_TASK_DURATION, "key_type" => key_type.to_string())
+            .record(duration);
     }
 }
 

@@ -436,7 +436,8 @@ where
                                                 offload_manager.spawn_with_key(
                                                     cache_key,
                                                     async move {
-                                                        let (_response, ctx) = revalidation_future.await;
+                                                        let (_response, ctx) =
+                                                            revalidation_future.await;
                                                         debug!(
                                                             status = ?ctx.status,
                                                             source = ?ctx.source,

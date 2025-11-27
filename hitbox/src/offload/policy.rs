@@ -3,20 +3,15 @@
 use std::time::Duration;
 
 /// Policy for handling task timeouts.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum TimeoutPolicy {
     /// No timeout - task runs until completion.
+    #[default]
     None,
     /// Cancel task after specified duration.
     Cancel(Duration),
     /// Log warning after duration but let task continue.
     Warn(Duration),
-}
-
-impl Default for TimeoutPolicy {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Configuration for the OffloadManager.
