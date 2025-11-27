@@ -55,6 +55,7 @@ impl From<CacheKey> for OffloadKey {
 }
 
 /// Handle to a spawned offload task.
+#[derive(Debug)]
 pub struct OffloadHandle {
     handle: JoinHandle<()>,
 }
@@ -72,6 +73,7 @@ impl OffloadHandle {
 }
 
 /// Internal state shared across clones.
+#[derive(Debug)]
 struct OffloadManagerInner {
     config: OffloadConfig,
     tasks: DashMap<OffloadKey, OffloadHandle>,
@@ -81,7 +83,7 @@ struct OffloadManagerInner {
 /// Manager for offloading tasks to background execution.
 ///
 /// Supports task deduplication, timeout policies, and metrics collection.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OffloadManager {
     inner: Arc<OffloadManagerInner>,
 }
@@ -207,6 +209,36 @@ impl OffloadManager {
     /// Check if a task with the given key is in flight.
     pub fn is_in_flight(&self, key: &OffloadKey) -> bool {
         self.inner.tasks.get(key).is_some_and(|h| !h.is_finished())
+    }
+
+    /// Wait for all currently tracked tasks to complete.
+    ///
+    /// This polls active tasks until all are finished, with a small yield
+    /// between checks to avoid busy-waiting.
+    pub async fn wait_all(&self) {
+        loop {
+            // Clean up finished tasks
+            self.cleanup_finished();
+
+            // Check if any tasks are still active
+            if self.inner.tasks.is_empty() {
+                break;
+            }
+
+            // Yield to allow tasks to make progress
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Wait for all tasks with a timeout.
+    ///
+    /// Returns `true` if all tasks completed within the timeout,
+    /// `false` if the timeout was reached.
+    pub async fn wait_all_timeout(&self, timeout: std::time::Duration) -> bool {
+        match tokio::time::timeout(timeout, self.wait_all()).await {
+            Ok(()) => true,
+            Err(_) => false,
+        }
     }
 
     fn spawn_inner<F>(&self, task: F, key: OffloadKey) -> OffloadHandle

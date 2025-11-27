@@ -42,7 +42,7 @@ pub fn set_mock_time_provider(provider: Option<Box<dyn TimeProvider>>) {
 
 /// Get the current time, using mock time provider if set (test/test-helpers only).
 #[cfg(any(test, feature = "test-helpers"))]
-fn current_time() -> DateTime<Utc> {
+pub fn current_time() -> DateTime<Utc> {
     let mock = MOCK_TIME_PROVIDER.read().unwrap();
     if let Some(provider) = mock.as_ref() {
         provider.now()
@@ -54,7 +54,7 @@ fn current_time() -> DateTime<Utc> {
 /// Get the current time (production version).
 #[cfg(not(any(test, feature = "test-helpers")))]
 #[inline]
-fn current_time() -> DateTime<Utc> {
+pub(crate) fn current_time() -> DateTime<Utc> {
     Utc::now()
 }
 

@@ -1,4 +1,5 @@
 use hitbox::config::CacheConfig;
+use hitbox::offload::OffloadManager;
 use std::{fmt::Debug, sync::Arc};
 
 use hitbox::{backend::CacheBackend, fsm::CacheFuture};
@@ -14,14 +15,21 @@ pub struct CacheService<S, B, C> {
     upstream: S,
     backend: Arc<B>,
     configuration: C,
+    offload_manager: Option<OffloadManager>,
 }
 
 impl<S, B, C> CacheService<S, B, C> {
-    pub fn new(upstream: S, backend: Arc<B>, configuration: C) -> Self {
+    pub fn new(
+        upstream: S,
+        backend: Arc<B>,
+        configuration: C,
+        offload_manager: Option<OffloadManager>,
+    ) -> Self {
         CacheService {
             upstream,
             backend,
             configuration,
+            offload_manager,
         }
     }
 }
@@ -37,6 +45,7 @@ where
             upstream: self.upstream.clone(),
             backend: self.backend.clone(),
             configuration: self.configuration.clone(),
+            offload_manager: self.offload_manager.clone(),
         }
     }
 }
@@ -99,7 +108,7 @@ where
             Arc::new(configuration.response_predicates()),
             Arc::new(configuration.extractors()),
             Arc::new(configuration.policy().clone()),
-            None, // TODO: Add OffloadManager support for SWR
+            self.offload_manager.clone(),
         );
 
         // Wrap in CacheServiceFuture to add cache headers

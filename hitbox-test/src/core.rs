@@ -1,5 +1,6 @@
 use crate::app::app;
 use crate::time::{MockTime, MockTimeProvider, clear_mock_time_provider};
+use hitbox::offload::OffloadManager;
 use hitbox_configuration::Endpoint;
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
@@ -29,6 +30,8 @@ pub struct HitboxWorld {
     pub state: State,
     pub backend: MokaBackend,
     pub time_state: TimeState,
+    #[world(default)]
+    pub offload_manager: Option<OffloadManager>,
 }
 
 impl Default for HitboxWorld {
@@ -38,6 +41,7 @@ impl Default for HitboxWorld {
             state: Default::default(),
             backend: MokaBackend::builder(100).build(),
             time_state: Default::default(),
+            offload_manager: None,
         }
     }
 }
@@ -54,10 +58,15 @@ impl Drop for HitboxWorld {
 
 impl HitboxWorld {
     pub async fn execute_request(&mut self, request_spec: &RequestSpec) -> Result<(), Error> {
-        let cache = Cache::builder()
+        let mut cache_builder = Cache::builder()
             .backend(self.backend.clone())
-            .config(self.config.clone())
-            .build();
+            .config(self.config.clone());
+
+        if let Some(manager) = &self.offload_manager {
+            cache_builder = cache_builder.offload_manager(manager.clone());
+        }
+
+        let cache = cache_builder.build();
 
         let router = app().layer(cache);
 

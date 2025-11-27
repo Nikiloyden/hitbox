@@ -1,12 +1,11 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use chrono::Utc;
 
 use crate::{
     CachePolicy, EntityPolicyConfig,
     predicate::{Predicate, PredicateResult},
-    value::CacheValue,
+    value::{CacheValue, current_time},
 };
 
 /// This trait determines which types should be cached or not.
@@ -73,8 +72,8 @@ where
                 PredicateResult::Cacheable(cacheable) => match cacheable.into_cached().await {
                     CachePolicy::Cacheable(res) => CachePolicy::Cacheable(CacheValue::new(
                         res,
-                        config.ttl.map(|duration| Utc::now() + duration),
-                        config.stale_ttl.map(|duration| Utc::now() + duration),
+                        config.ttl.map(|duration| current_time() + duration),
+                        config.stale_ttl.map(|duration| current_time() + duration),
                     )),
                     CachePolicy::NonCacheable(res) => CachePolicy::NonCacheable(Ok(res)),
                 },
