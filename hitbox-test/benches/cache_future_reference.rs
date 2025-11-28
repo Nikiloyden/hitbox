@@ -33,7 +33,9 @@ use hitbox_http::extractors::query::{
     NameSelector as QueryNameSelector, Query, ValueExtractor as QueryValueExtractor,
 };
 use hitbox_http::extractors::transform::Transform;
-use hitbox_http::predicates::body::{BodyPredicate, JqExpression, JqOperation, Operation as BodyOperation};
+use hitbox_http::predicates::body::{
+    BodyPredicate, JqExpression, JqOperation, Operation as BodyOperation,
+};
 use hitbox_http::predicates::header::HeaderPredicate;
 use hitbox_http::predicates::request::header::Operation as HeaderOperation;
 use hitbox_http::predicates::request::method::MethodPredicate;
@@ -214,8 +216,8 @@ fn create_request_predicates_with_body() -> impl Predicate<Subject = BenchReques
 }
 
 /// Extend response predicates with body jq predicate
-fn create_response_predicates_with_body(
-) -> impl Predicate<Subject = <BenchResponse as CacheableResponse>::Subject> + Send + Sync {
+fn create_response_predicates_with_body()
+-> impl Predicate<Subject = <BenchResponse as CacheableResponse>::Subject> + Send + Sync {
     let jq_filter = JqExpression::compile(".data | type").unwrap();
     create_response_predicates().body(BodyOperation::Jq {
         filter: jq_filter,
@@ -225,9 +227,10 @@ fn create_response_predicates_with_body(
 
 /// Extend extractors with body jq extractor
 fn create_extractors_with_body() -> impl hitbox::Extractor<Subject = BenchRequest> + Send + Sync {
-    let jq_extraction =
-        JqExtraction::compile("{customer_id: .order.customer_id, shipping: .order.shipping_method}")
-            .unwrap();
+    let jq_extraction = JqExtraction::compile(
+        "{customer_id: .order.customer_id, shipping: .order.shipping_method}",
+    )
+    .unwrap();
     BodyExtractor::new(create_extractors(), BodyExtraction::Jq(jq_extraction))
 }
 
@@ -630,8 +633,7 @@ fn bench_body_cache_future(c: &mut Criterion) {
                 let upstream = MockUpstream;
 
                 let cache_future = CacheFuture::new(
-                    backend, request, upstream, req_pred, res_pred, ext, policy,
-                    None,
+                    backend, request, upstream, req_pred, res_pred, ext, policy, None,
                 );
 
                 std::hint::black_box(cache_future.await)
