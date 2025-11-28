@@ -49,7 +49,7 @@ where
         self.resource.capture_match_info(&mut path);
         let mut matched_parts = path
             .iter()
-            .map(|(key, value)| KeyPart::new(key.to_owned(), Some(value.to_owned())))
+            .map(|(key, value)| KeyPart::new(key, Some(value)))
             .collect::<Vec<_>>();
         let mut parts = self.inner.get(subject).await;
         parts.append(&mut matched_parts);

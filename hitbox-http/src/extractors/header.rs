@@ -116,7 +116,7 @@ where
                         let extracted = extract_value(value, &self.value_extractor)
                             .map(|v| apply_transform_chain(v, &self.transforms));
 
-                        extracted_parts.push(KeyPart::new(name_str.to_string(), extracted));
+                        extracted_parts.push(KeyPart::new(name_str, extracted));
                     }
                 }
                 // Sort by header name for deterministic cache keys

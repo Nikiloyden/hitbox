@@ -118,25 +118,18 @@ impl BodyOperation {
                 })?;
                 let transforms = match regex_op.transforms {
                     Transforms::None => extractors::body::Transforms::None,
-                    Transforms::FullBody(chain) => {
-                        extractors::body::Transforms::FullBody(
-                            chain.into_iter().map(Transform::into_http).collect(),
-                        )
-                    }
-                    Transforms::PerKey(map) => {
-                        extractors::body::Transforms::PerKey(
-                            map.into_iter()
-                                .map(|(k, v)| {
-                                    let chain = v
-                                        .into_vec()
-                                        .into_iter()
-                                        .map(Transform::into_http)
-                                        .collect();
-                                    (k, chain)
-                                })
-                                .collect(),
-                        )
-                    }
+                    Transforms::FullBody(chain) => extractors::body::Transforms::FullBody(
+                        chain.into_iter().map(Transform::into_http).collect(),
+                    ),
+                    Transforms::PerKey(map) => extractors::body::Transforms::PerKey(
+                        map.into_iter()
+                            .map(|(k, v)| {
+                                let chain =
+                                    v.into_vec().into_iter().map(Transform::into_http).collect();
+                                (k, chain)
+                            })
+                            .collect(),
+                    ),
                 };
                 Ok(Box::new(extractors::body::Body::new(
                     inner,

@@ -15,13 +15,14 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
+use hitbox::CacheableResponse;
 use hitbox::fsm::CacheFuture;
 use hitbox::policy::{EnabledCacheConfig, PolicyConfig};
 use hitbox::predicate::Predicate;
-use hitbox::CacheableResponse;
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{CacheBackend, PassthroughCompressor};
 use hitbox_core::Upstream;
+use hitbox_http::extractors::NeutralExtractor;
 use hitbox_http::extractors::header::{
     Header, NameSelector as HeaderNameSelector, ValueExtractor as HeaderValueExtractor,
 };
@@ -31,13 +32,12 @@ use hitbox_http::extractors::query::{
     NameSelector as QueryNameSelector, Query, ValueExtractor as QueryValueExtractor,
 };
 use hitbox_http::extractors::transform::Transform;
-use hitbox_http::extractors::NeutralExtractor;
 use hitbox_http::predicates::header::HeaderPredicate;
 use hitbox_http::predicates::request::header::Operation as HeaderOperation;
 use hitbox_http::predicates::request::method::MethodPredicate;
 use hitbox_http::predicates::request::path::PathPredicate;
-use hitbox_http::predicates::response::status::{StatusClass, StatusCodePredicate};
 use hitbox_http::predicates::response::header::Operation as ResponseHeaderOperation;
+use hitbox_http::predicates::response::status::{StatusClass, StatusCodePredicate};
 use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
@@ -72,7 +72,9 @@ impl Upstream<BenchRequest> for MockUpstream {
 
     fn call(&mut self, _req: BenchRequest) -> Self::Future {
         // Create a fresh response each time (no Clone needed)
-        std::future::ready(CacheableHttpResponse::from_response(create_reference_response()))
+        std::future::ready(CacheableHttpResponse::from_response(
+            create_reference_response(),
+        ))
     }
 }
 
@@ -126,15 +128,19 @@ fn create_request_predicates() -> impl Predicate<Subject = BenchRequest> + Send 
 }
 
 /// Create reference response predicates (cache successful 2xx responses) - static dispatch
-fn create_response_predicates(
-) -> impl Predicate<Subject = <BenchResponse as CacheableResponse>::Subject> + Send + Sync {
+fn create_response_predicates()
+-> impl Predicate<Subject = <BenchResponse as CacheableResponse>::Subject> + Send + Sync {
     NeutralResponsePredicate::<InnerBody>::new()
         // Only cache 2xx successful responses
         .status_code_class(StatusClass::Success)
         // Require content-type header
-        .header(ResponseHeaderOperation::Exist("content-type".parse().unwrap()))
+        .header(ResponseHeaderOperation::Exist(
+            "content-type".parse().unwrap(),
+        ))
         // Require cache-control header (indicates response is cacheable)
-        .header(ResponseHeaderOperation::Exist("cache-control".parse().unwrap()))
+        .header(ResponseHeaderOperation::Exist(
+            "cache-control".parse().unwrap(),
+        ))
 }
 
 /// Create reference extractors (method + path + query + headers with transforms) - static dispatch
@@ -404,13 +410,7 @@ fn bench_cache_future(c: &mut Criterion) {
                 let upstream = MockUpstream;
 
                 let cache_future = CacheFuture::new(
-                    backend,
-                    request,
-                    upstream,
-                    req_pred,
-                    res_pred,
-                    ext,
-                    policy,
+                    backend, request, upstream, req_pred, res_pred, ext, policy,
                     None, // no offload manager
                 );
 

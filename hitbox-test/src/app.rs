@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use axum::{Router, routing::{any, get}};
+use axum::{
+    Router,
+    routing::{any, get},
+};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 

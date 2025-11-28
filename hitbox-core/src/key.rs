@@ -1,4 +1,6 @@
-use bitcode::__private::{Buffer, Decoder, Encoder, Result, VariantDecoder, VariantEncoder, Vec, View};
+use bitcode::__private::{
+    Buffer, Decoder, Encoder, Result, VariantDecoder, VariantEncoder, Vec, View,
+};
 use bitcode::{Decode, Encode};
 use core::num::NonZeroUsize;
 use smol_str::SmolStr;
@@ -47,20 +49,11 @@ impl Buffer for CacheKeyEncoder {
     }
 }
 
+#[derive(Default)]
 pub struct CacheKeyDecoder<'de> {
     parts: <Vec<KeyPart> as Decode<'de>>::Decoder,
     version: <u32 as Decode<'de>>::Decoder,
     prefix: <&'de str as Decode<'de>>::Decoder,
-}
-
-impl Default for CacheKeyDecoder<'_> {
-    fn default() -> Self {
-        Self {
-            parts: Default::default(),
-            version: Default::default(),
-            prefix: Default::default(),
-        }
-    }
 }
 
 impl<'de> View<'de> for CacheKeyDecoder<'de> {
@@ -173,20 +166,11 @@ impl Buffer for KeyPartEncoder {
     }
 }
 
+#[derive(Default)]
 pub struct KeyPartDecoder<'de> {
     key: <&'de str as Decode<'de>>::Decoder,
     value_variant: VariantDecoder<'de, 2, false>,
     value_str: <&'de str as Decode<'de>>::Decoder,
-}
-
-impl Default for KeyPartDecoder<'_> {
-    fn default() -> Self {
-        Self {
-            key: Default::default(),
-            value_variant: Default::default(),
-            value_str: Default::default(),
-        }
-    }
 }
 
 impl<'de> View<'de> for KeyPartDecoder<'de> {

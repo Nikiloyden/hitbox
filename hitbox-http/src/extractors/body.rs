@@ -50,42 +50,46 @@ fn custom_jq_funs() -> impl Iterator<Item = (&'static str, Box<[Bind]>, Native<V
 
     [
         // hash: SHA256 hash of the string value (truncated to 16 hex chars)
-        ("hash", v0, Native::new(|_, cv| {
-            let val = cv.1;
-            let result: JqResult = match &val {
-                Val::Str(s) => {
-                    let hash = apply_hash(s);
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Int(n) => {
-                    let hash = apply_hash(&n.to_string());
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Float(f) => {
-                    let hash = apply_hash(&f.to_string());
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Bool(b) => {
-                    let hash = apply_hash(&b.to_string());
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Null => {
-                    let hash = apply_hash("null");
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Num(n) => {
-                    let hash = apply_hash(n);
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-                Val::Arr(_) | Val::Obj(_) => {
-                    // For arrays and objects, serialize to JSON string first
-                    let json: Value = val.clone().into();
-                    let hash = apply_hash(&json.to_string());
-                    Ok(Val::Str(Rc::new(hash)))
-                }
-            };
-            box_once(result.map_err(Exn::from))
-        })),
+        (
+            "hash",
+            v0,
+            Native::new(|_, cv| {
+                let val = cv.1;
+                let result: JqResult = match &val {
+                    Val::Str(s) => {
+                        let hash = apply_hash(s);
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Int(n) => {
+                        let hash = apply_hash(&n.to_string());
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Float(f) => {
+                        let hash = apply_hash(&f.to_string());
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Bool(b) => {
+                        let hash = apply_hash(&b.to_string());
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Null => {
+                        let hash = apply_hash("null");
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Num(n) => {
+                        let hash = apply_hash(n);
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                    Val::Arr(_) | Val::Obj(_) => {
+                        // For arrays and objects, serialize to JSON string first
+                        let json: Value = val.clone().into();
+                        let hash = apply_hash(&json.to_string());
+                        Ok(Val::Str(Rc::new(hash)))
+                    }
+                };
+                box_once(result.map_err(Exn::from))
+            }),
+        ),
     ]
     .into_iter()
 }
@@ -102,7 +106,11 @@ impl JqExtraction {
             .load(&arena, program)
             .map_err(|e| format!("jq parse error: {:?}", e))?;
         let filter = jaq_core::Compiler::default()
-            .with_funs(jaq_std::funs().chain(jaq_json::funs()).chain(custom_jq_funs()))
+            .with_funs(
+                jaq_std::funs()
+                    .chain(jaq_json::funs())
+                    .chain(custom_jq_funs()),
+            )
             .compile(modules)
             .map_err(|e| format!("jq compile error: {:?}", e))?;
         Ok(Self { filter })
@@ -111,9 +119,7 @@ impl JqExtraction {
     fn apply(&self, input: Value) -> Vec<Value> {
         let inputs = RcIter::new(core::iter::empty());
         let out = self.filter.run((Ctx::new([], &inputs), Val::from(input)));
-        out.filter_map(|r| r.ok())
-            .map(|v| v.into())
-            .collect()
+        out.filter_map(|r| r.ok()).map(|v| v.into()).collect()
     }
 }
 
@@ -299,15 +305,13 @@ where
                 let results = jq.apply(json_value);
                 extract_jq_parts(results)
             }
-            BodyExtraction::Regex(regex_ext) => {
-                extract_regex_parts(
-                    &body_str,
-                    &regex_ext.regex,
-                    &regex_ext.key,
-                    regex_ext.global,
-                    &regex_ext.transforms,
-                )
-            }
+            BodyExtraction::Regex(regex_ext) => extract_regex_parts(
+                &body_str,
+                &regex_ext.regex,
+                &regex_ext.key,
+                regex_ext.global,
+                &regex_ext.transforms,
+            ),
         };
 
         let body = crate::BufferedBody::Complete(Some(payload));
