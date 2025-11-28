@@ -2,6 +2,7 @@ use hitbox_http::extractors;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use super::transform::{Transform, into_http_transforms};
 use crate::{ConfigError, RequestExtractor};
 
 /// Name selector for query parameter matching.
@@ -68,6 +69,9 @@ pub struct QueryConfig {
     /// Optional value extractor (regex pattern)
     #[serde(default)]
     pub value: Option<ValueExtractor>,
+    /// Value transformations (optional)
+    #[serde(default)]
+    pub transforms: Vec<Transform>,
 }
 
 impl QueryConfig {
@@ -86,11 +90,13 @@ impl QueryConfig {
             .map(ValueExtractor::try_into_extractor)
             .transpose()?
             .unwrap_or(extractors::query::ValueExtractor::Full);
+        let transforms = into_http_transforms(self.transforms);
 
         Ok(Box::new(extractors::query::Query::new(
             inner,
             name_selector,
             value_extractor,
+            transforms,
         )))
     }
 }
@@ -120,6 +126,7 @@ impl QueryOperation {
                 inner,
                 extractors::query::NameSelector::Exact(name),
                 extractors::query::ValueExtractor::Full,
+                Vec::new(),
             ))),
             QueryOperation::Extended(config) => config.into_extractors(inner),
         }

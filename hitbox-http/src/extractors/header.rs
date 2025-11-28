@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 use http::HeaderValue;
 use regex::Regex;
-use sha2::{Digest, Sha256};
 
+pub use super::transform::Transform;
+use super::transform::apply_transform_chain;
 use crate::CacheableHttpRequest;
 
 /// Header name selector.
@@ -26,23 +27,13 @@ pub enum ValueExtractor {
     Regex(Regex),
 }
 
-/// Value transformation.
-#[derive(Debug, Clone, Copy, Default)]
-pub enum Transform {
-    /// No transformation
-    #[default]
-    None,
-    /// SHA256 hash (truncated to 16 chars)
-    Hash,
-}
-
 /// Header extractor.
 #[derive(Debug)]
 pub struct Header<E> {
     inner: E,
     name_selector: NameSelector,
     value_extractor: ValueExtractor,
-    transform: Transform,
+    transforms: Vec<Transform>,
 }
 
 impl<E> Header<E> {
@@ -50,13 +41,13 @@ impl<E> Header<E> {
         inner: E,
         name_selector: NameSelector,
         value_extractor: ValueExtractor,
-        transform: Transform,
+        transforms: Vec<Transform>,
     ) -> Self {
         Self {
             inner,
             name_selector,
             value_extractor,
-            transform,
+            transforms,
         }
     }
 }
@@ -74,7 +65,7 @@ where
             inner: self,
             name_selector: NameSelector::Exact(name),
             value_extractor: ValueExtractor::Full,
-            transform: Transform::None,
+            transforms: Vec::new(),
         }
     }
 }
@@ -92,20 +83,6 @@ fn extract_value(value: &HeaderValue, extractor: &ValueExtractor) -> Option<Stri
                     .or_else(|| caps.get(0))
                     .map(|m| m.as_str().to_string())
             })
-        }
-    }
-}
-
-/// Apply transformation to value.
-fn apply_transform(value: String, transform: Transform) -> String {
-    match transform {
-        Transform::None => value,
-        Transform::Hash => {
-            let mut hasher = Sha256::new();
-            hasher.update(value.as_bytes());
-            let result = hasher.finalize();
-            // Truncate to 16 hex chars (8 bytes)
-            hex::encode(&result[..8])
         }
     }
 }
@@ -128,7 +105,7 @@ where
                 let value = headers
                     .get(name.as_str())
                     .and_then(|v| extract_value(v, &self.value_extractor))
-                    .map(|v| apply_transform(v, self.transform));
+                    .map(|v| apply_transform_chain(v, &self.transforms));
 
                 extracted_parts.push(KeyPart::new(name.clone(), value));
             }
@@ -137,7 +114,7 @@ where
                     let name_str = name.as_str();
                     if name_str.starts_with(prefix.as_str()) {
                         let extracted = extract_value(value, &self.value_extractor)
-                            .map(|v| apply_transform(v, self.transform));
+                            .map(|v| apply_transform_chain(v, &self.transforms));
 
                         extracted_parts.push(KeyPart::new(name_str.to_string(), extracted));
                     }

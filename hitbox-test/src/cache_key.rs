@@ -81,7 +81,7 @@ impl From<&CacheKey> for FlatCacheKey {
     fn from(key: &CacheKey) -> Self {
         let parts = key
             .parts()
-            .map(|part| (part.key().clone(), part.value().clone()))
+            .map(|part| (part.key().to_string(), part.value().map(str::to_string)))
             .collect();
 
         FlatCacheKey {

@@ -11,6 +11,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{AppState, AuthorId, Book, BookId};
 
+/// Echo handler that accepts any body and returns 200 with the body echoed back.
+/// Useful for testing body extractors.
+#[axum::debug_handler]
+pub(crate) async fn echo_body(body: Bytes) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/octet-stream")
+        .body(axum::body::Body::from(body))
+        .unwrap()
+}
+
 const DEFAULT_PER_PAGE: usize = 3;
 
 #[derive(Deserialize, Debug)]

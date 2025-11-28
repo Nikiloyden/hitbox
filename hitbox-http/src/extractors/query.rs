@@ -1,9 +1,11 @@
-//! Query parameter extractor with support for name selection and value extraction.
+//! Query parameter extractor with support for name selection, value extraction, and transformation.
 
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 use regex::Regex;
 
+pub use super::transform::Transform;
+use super::transform::apply_transform_chain;
 use crate::CacheableHttpRequest;
 
 /// Query parameter name selector.
@@ -30,14 +32,21 @@ pub struct Query<E> {
     inner: E,
     name_selector: NameSelector,
     value_extractor: ValueExtractor,
+    transforms: Vec<Transform>,
 }
 
 impl<E> Query<E> {
-    pub fn new(inner: E, name_selector: NameSelector, value_extractor: ValueExtractor) -> Self {
+    pub fn new(
+        inner: E,
+        name_selector: NameSelector,
+        value_extractor: ValueExtractor,
+        transforms: Vec<Transform>,
+    ) -> Self {
         Self {
             inner,
             name_selector,
             value_extractor,
+            transforms,
         }
     }
 }
@@ -55,6 +64,7 @@ where
             inner: self,
             name_selector: NameSelector::Exact(name),
             value_extractor: ValueExtractor::Full,
+            transforms: Vec::new(),
         }
     }
 }
@@ -95,6 +105,7 @@ where
                 .into_iter()
                 .filter_map(|value| {
                     extract_value(&value, &self.value_extractor)
+                        .map(|v| apply_transform_chain(v, &self.transforms))
                         .map(|v| KeyPart::new(name.clone(), Some(v)))
                 })
                 .collect(),
@@ -106,6 +117,7 @@ where
                     .flat_map(|(name, value)| {
                         value.inner().into_iter().filter_map(|v| {
                             extract_value(&v, &self.value_extractor)
+                                .map(|extracted| apply_transform_chain(extracted, &self.transforms))
                                 .map(|extracted| KeyPart::new(name.clone(), Some(extracted)))
                         })
                     })

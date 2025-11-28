@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{Router, routing::{any, get}};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::handlers::{get_book, get_book_cover, get_books, post_book};
+use crate::handlers::{echo_body, get_book, get_book_cover, get_books, post_book};
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Ord, PartialOrd)]
 pub(crate) struct AuthorId(String);
@@ -147,5 +147,6 @@ pub(crate) fn app() -> Router {
             get(get_book).post(post_book),
         )
         .route("/v1/books/{book_id}/covers", get(get_book_cover))
+        .route("/echo", any(echo_body))
         .with_state(AppState::new())
 }

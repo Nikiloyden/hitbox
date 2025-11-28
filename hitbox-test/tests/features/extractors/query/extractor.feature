@@ -170,3 +170,87 @@ Feature: Request Query Cache Key Extractor
       | color | red   |
       | color | blue  |
       | color | green |
+
+  @extractor @query @hash
+  Scenario: Extract query parameter with hash transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Query:
+          name: token
+          transforms: [hash]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books
+      [Query]
+      token: secret-token-value
+      ```
+    Then cache key exists
+      | token | e578add6b8420b29 |
+
+  @extractor @query @transforms
+  Scenario: Extract query parameter with transform chain
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Query:
+          name: email
+          transforms: [lowercase, hash]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books
+      [Query]
+      email: User@Example.COM
+      ```
+    Then cache key exists
+      | email | b4c9a289323b21a0 |
+
+  @extractor @query @transforms
+  Scenario: Extract query parameter with lowercase transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Query:
+          name: status
+          transforms: [lowercase]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books
+      [Query]
+      status: ACTIVE
+      ```
+    Then cache key exists
+      | status | active |
+
+  @extractor @query @transforms
+  Scenario: Extract query parameter with uppercase transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Query:
+          name: code
+          transforms: [uppercase]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books
+      [Query]
+      code: abc123
+      ```
+    Then cache key exists
+      | code | ABC123 |

@@ -103,7 +103,7 @@ Feature: Request Header Cache Key Extractor
       ```yaml
       - Header:
           name: Authorization
-          transform: hash
+          transforms: [hash]
       ```
     When execute request
       ```hurl
@@ -126,7 +126,7 @@ Feature: Request Header Cache Key Extractor
       - Header:
           name: Authorization
           value: "Bearer (.+)"
-          transform: hash
+          transforms: [hash]
       ```
     When execute request
       ```hurl
@@ -184,3 +184,63 @@ Feature: Request Header Cache Key Extractor
       ```
       X-Request-Id: "req-12345"
       ```
+
+  @extractor @header @transforms
+  Scenario: Extract header value with transform chain
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: X-User-Email
+          transforms: [lowercase, hash]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      X-User-Email: User@Example.COM
+      ```
+    Then cache key exists
+      | X-User-Email | b4c9a289323b21a0 |
+
+  @extractor @header @transforms
+  Scenario: Extract header value with lowercase transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: X-Status
+          transforms: [lowercase]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      X-Status: ACTIVE
+      ```
+    Then cache key exists
+      | X-Status | active |
+
+  @extractor @header @transforms
+  Scenario: Extract header value with uppercase transform
+    Given request predicates
+      ```yaml
+      - Method: GET
+      ```
+    And key extractors
+      ```yaml
+      - Header:
+          name: X-Code
+          transforms: [uppercase]
+      ```
+    When execute request
+      ```hurl
+      GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
+      X-Code: abc123
+      ```
+    Then cache key exists
+      | X-Code | ABC123 |

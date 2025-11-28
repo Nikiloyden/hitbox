@@ -4,7 +4,7 @@
 //!
 //! ```yaml
 //! extractors:
-//!   # Simple (backwards compatible)
+//!   # Simple
 //!   - Header: "Authorization"
 //!
 //!   # With value regex extraction
@@ -12,27 +12,32 @@
 //!       name: "Authorization"
 //!       value: "Bearer (.+)"
 //!
-//!   # With hash transform
+//!   # With transforms
 //!   - Header:
 //!       name: "Authorization"
-//!       transform: hash
+//!       transforms: [hash]
 //!
-//!   # Prefix match + regex + hash
+//!   # With transform chain
+//!   - Header:
+//!       name: "Authorization"
+//!       transforms: [lowercase, hash]
+//!
+//!   # Prefix match + regex + transforms
 //!   - Header:
 //!       name:
 //!         starts: "X-API-"
 //!       value:
 //!         regex: "key=(.+)"
-//!       transform: hash
+//!       transforms: [hash]
 //! ```
 
 use hitbox_http::extractors::header::{
-    Header as HttpHeader, NameSelector as HttpNameSelector, Transform as HttpTransform,
-    ValueExtractor as HttpValueExtractor,
+    Header as HttpHeader, NameSelector as HttpNameSelector, ValueExtractor as HttpValueExtractor,
 };
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use super::transform::{Transform, into_http_transforms};
 use crate::RequestExtractor;
 use crate::error::ConfigError;
 
@@ -74,17 +79,6 @@ pub enum ValueOperation {
     Regex(String),
 }
 
-/// Value transformation.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum Transform {
-    /// No transformation (default)
-    #[default]
-    None,
-    /// SHA256 hash (truncated)
-    Hash,
-}
-
 /// Extended header configuration.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct HeaderConfig {
@@ -93,9 +87,9 @@ pub struct HeaderConfig {
     /// Value extractor (optional, defaults to full value)
     #[serde(default)]
     pub value: Option<ValueExtractor>,
-    /// Value transformation (optional, defaults to none)
+    /// Value transformations (optional)
     #[serde(default)]
-    pub transform: Transform,
+    pub transforms: Vec<Transform>,
 }
 
 /// Header extractor operation.
@@ -120,11 +114,11 @@ impl HeaderOperation {
         ReqBody::Error: Send,
         ReqBody::Data: Send,
     {
-        let (name_selector, value_extractor, transform) = match self {
+        let (name_selector, value_extractor, transforms) = match self {
             HeaderOperation::Simple(name) => (
                 HttpNameSelector::Exact(name),
                 HttpValueExtractor::Full,
-                HttpTransform::None,
+                Vec::new(),
             ),
             HeaderOperation::Extended(config) => {
                 let name_selector = match config.name {
@@ -147,12 +141,9 @@ impl HeaderOperation {
                     }
                 };
 
-                let transform = match config.transform {
-                    Transform::None => HttpTransform::None,
-                    Transform::Hash => HttpTransform::Hash,
-                };
+                let transforms = into_http_transforms(config.transforms);
 
-                (name_selector, value_extractor, transform)
+                (name_selector, value_extractor, transforms)
             }
         };
 
@@ -160,7 +151,7 @@ impl HeaderOperation {
             inner,
             name_selector,
             value_extractor,
-            transform,
+            transforms,
         )))
     }
 }

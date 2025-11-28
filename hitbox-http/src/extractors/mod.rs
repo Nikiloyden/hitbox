@@ -13,6 +13,7 @@ pub mod header;
 pub mod method;
 pub mod path;
 pub mod query;
+pub mod transform;
 
 #[derive(Debug)]
 pub struct NeutralExtractor<ReqBody> {

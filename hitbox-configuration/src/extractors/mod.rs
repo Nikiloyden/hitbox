@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::RequestExtractor;
 use crate::error::ConfigError;
 use crate::extractors::{
-    body::Body, header::HeaderOperation, method::Method, path::Path, query::QueryOperation,
+    body::BodyOperation, header::HeaderOperation, method::Method, path::Path, query::QueryOperation,
 };
 
 pub mod body;
@@ -12,13 +12,14 @@ pub mod header;
 pub mod method;
 pub mod path;
 pub mod query;
+pub mod transform;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 pub enum Extractor {
     Path(Path),
     Method(Method),
     Query(QueryOperation),
-    Body(Body),
+    Body(BodyOperation),
     Header(HeaderOperation),
 }
 
@@ -36,7 +37,7 @@ impl Extractor {
             Extractor::Method(method) => Ok(method.into_extractors(inner)),
             Extractor::Path(path) => Ok(path.into_extractors(inner)),
             Extractor::Query(query) => query.into_extractors(inner),
-            Extractor::Body(body) => Ok(body.into_extractors(inner)),
+            Extractor::Body(body) => body.into_extractors(inner),
             Extractor::Header(header) => header.into_extractors(inner),
         }
     }

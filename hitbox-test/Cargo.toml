@@ -96,5 +96,9 @@ harness = false
 name = "composition_overhead"
 harness = false
 
+[[bench]]
+name = "cache_future_reference"
+harness = false
+
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
