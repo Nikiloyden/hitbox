@@ -40,7 +40,7 @@ use crate::composition::CompositionError;
 /// - Write-heavy workloads where L2 persistence is less critical
 ///
 /// # Note
-/// If you need both layers to be written, use [`OptimisticParallelWritePolicy`] instead,
+/// If you need both layers to be written, use [`super::OptimisticParallelWritePolicy`] instead,
 /// which waits for both writes to complete.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RaceWritePolicy;
