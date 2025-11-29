@@ -65,7 +65,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cucumber-junit-${{ matrix.rust }}-redis${{ matrix.redis-version }}
-          path: target/cucumber-junit.xml
+          path: |
+            target/cucumber-integration-junit.xml
+            target/cucumber-fsm-junit.xml
           if-no-files-found: ignore
 
       - name: Publish unit test report
@@ -82,7 +84,7 @@ jobs:
         if: always()
         uses: mikepenz/action-junit-report@v4
         with:
-          report_paths: "target/cucumber-junit.xml"
+          report_paths: "target/cucumber-*-junit.xml"
           check_name: "BDD Test Report (${{ matrix.rust }}, Redis ${{ matrix.redis-version }})"
           fail_on_failure: true
           include_passed: true
@@ -111,7 +113,7 @@ jobs:
         if: ${{ !cancelled() && matrix.rust == 'stable' && matrix.redis-version == 7 }}
         uses: codecov/test-results-action@v1
         with:
-          files: target/nextest/ci/junit.xml,target/cucumber-junit.xml
+          files: target/nextest/ci/junit.xml,target/cucumber-integration-junit.xml,target/cucumber-fsm-junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
   clippy:
