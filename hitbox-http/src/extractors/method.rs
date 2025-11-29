@@ -39,7 +39,7 @@ where
     async fn get(&self, subject: Self::Subject) -> KeyParts<Self::Subject> {
         let method = subject.parts().method.to_string();
         let mut parts = self.inner.get(subject).await;
-        parts.push(KeyPart::new("method".to_owned(), Some(method)));
+        parts.push(KeyPart::new("method", Some(method)));
         parts
     }
 }

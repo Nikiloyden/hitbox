@@ -38,6 +38,10 @@ pub enum ConfigError {
     /// Backend not available (feature not enabled)
     #[error("Backend '{0}' is not available. Enable the corresponding feature flag.")]
     BackendNotAvailable(String),
+
+    /// Empty path list in 'in' operation
+    #[error("Path 'in' operation requires at least one pattern")]
+    EmptyPathList,
 }
 
 impl From<http::method::InvalidMethod> for ConfigError {

@@ -8,6 +8,7 @@ mod expression;
 mod header;
 mod method;
 mod operation;
+mod path;
 mod predicate;
 mod query;
 
@@ -15,6 +16,7 @@ pub use expression::Expression;
 pub use header::HeaderOperation;
 pub use method::MethodOperation;
 pub use operation::Operation;
+pub use path::PathOperation;
 pub use predicate::Predicate;
 pub use query::QueryOperation;
 

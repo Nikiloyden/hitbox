@@ -78,6 +78,14 @@ async fn run_comprehensive_backend_tests<B>(
         (KeySerialization::Bitcode, ValueSerialization::Bincode) => {
             test_bitcode_key_bincode_value(backend).await
         }
+        #[cfg(feature = "rkyv_format")]
+        (KeySerialization::UrlEncoded, ValueSerialization::Rkyv) => {
+            // Rkyv with UrlEncoded keys - basic tests already cover this
+        }
+        #[cfg(feature = "rkyv_format")]
+        (KeySerialization::Bitcode, ValueSerialization::Rkyv) => {
+            // Rkyv with Bitcode keys - basic tests already cover this
+        }
     }
 
     // Run compression verification test if compression is enabled

@@ -1,0 +1,181 @@
+{
+  "data": [
+    {
+      "id": "order_001",
+      "type": "order",
+      "attributes": {
+        "order_number": "ORD-2024-001234",
+        "status": "processing",
+        "created_at": "2024-01-15T10:30:00Z",
+        "updated_at": "2024-01-15T14:45:00Z",
+        "total": 234.95,
+        "subtotal": 199.96,
+        "tax": 19.99,
+        "shipping": 15.00,
+        "discount": 15.00,
+        "currency": "USD",
+        "customer": {
+          "id": "cust_550e8400",
+          "email": "john.doe@example.com",
+          "name": "John Doe"
+        },
+        "items_count": 4,
+        "shipping_method": "express",
+        "estimated_delivery": "2024-01-18"
+      }
+    },
+    {
+      "id": "order_002",
+      "type": "order",
+      "attributes": {
+        "order_number": "ORD-2024-001235",
+        "status": "shipped",
+        "created_at": "2024-01-14T09:15:00Z",
+        "updated_at": "2024-01-15T08:30:00Z",
+        "total": 156.50,
+        "subtotal": 139.99,
+        "tax": 11.51,
+        "shipping": 5.00,
+        "discount": 0.00,
+        "currency": "USD",
+        "customer": {
+          "id": "cust_660e8401",
+          "email": "jane.smith@example.com",
+          "name": "Jane Smith"
+        },
+        "items_count": 2,
+        "shipping_method": "standard",
+        "estimated_delivery": "2024-01-20",
+        "tracking": {
+          "carrier": "USPS",
+          "tracking_number": "9400111899223456789012",
+          "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111899223456789012"
+        }
+      }
+    },
+    {
+      "id": "order_003",
+      "type": "order",
+      "attributes": {
+        "order_number": "ORD-2024-001236",
+        "status": "delivered",
+        "created_at": "2024-01-10T16:45:00Z",
+        "updated_at": "2024-01-13T11:20:00Z",
+        "total": 89.99,
+        "subtotal": 79.99,
+        "tax": 6.40,
+        "shipping": 3.60,
+        "discount": 0.00,
+        "currency": "USD",
+        "customer": {
+          "id": "cust_770e8402",
+          "email": "bob.wilson@example.com",
+          "name": "Bob Wilson"
+        },
+        "items_count": 1,
+        "shipping_method": "economy",
+        "delivered_at": "2024-01-13T11:20:00Z"
+      }
+    },
+    {
+      "id": "order_004",
+      "type": "order",
+      "attributes": {
+        "order_number": "ORD-2024-001237",
+        "status": "pending_payment",
+        "created_at": "2024-01-15T15:00:00Z",
+        "updated_at": "2024-01-15T15:00:00Z",
+        "total": 445.00,
+        "subtotal": 399.99,
+        "tax": 32.01,
+        "shipping": 12.99,
+        "discount": 0.00,
+        "currency": "USD",
+        "customer": {
+          "id": "cust_880e8403",
+          "email": "alice.johnson@example.com",
+          "name": "Alice Johnson"
+        },
+        "items_count": 3,
+        "shipping_method": "express",
+        "payment_due": "2024-01-16T15:00:00Z"
+      }
+    },
+    {
+      "id": "order_005",
+      "type": "order",
+      "attributes": {
+        "order_number": "ORD-2024-001238",
+        "status": "cancelled",
+        "created_at": "2024-01-12T08:30:00Z",
+        "updated_at": "2024-01-12T10:15:00Z",
+        "total": 0.00,
+        "subtotal": 299.99,
+        "tax": 24.00,
+        "shipping": 8.99,
+        "discount": 0.00,
+        "currency": "USD",
+        "customer": {
+          "id": "cust_990e8404",
+          "email": "charlie.brown@example.com",
+          "name": "Charlie Brown"
+        },
+        "items_count": 2,
+        "cancellation_reason": "customer_request",
+        "cancelled_at": "2024-01-12T10:15:00Z"
+      }
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "current_page": 1,
+      "per_page": 20,
+      "total_pages": 15,
+      "total_count": 294
+    },
+    "filters_applied": {
+      "status": null,
+      "date_from": "2024-01-01",
+      "date_to": "2024-01-31"
+    },
+    "sort": {
+      "field": "created_at",
+      "direction": "desc"
+    },
+    "request_id": "req-550e8400-e29b-41d4-a716-446655440000",
+    "processing_time_ms": 42,
+    "cache_status": "miss",
+    "api_version": "2024-01-01"
+  },
+  "links": {
+    "self": "/v1/orders?page=1&per_page=20",
+    "first": "/v1/orders?page=1&per_page=20",
+    "prev": null,
+    "next": "/v1/orders?page=2&per_page=20",
+    "last": "/v1/orders?page=15&per_page=20"
+  },
+  "included": [
+    {
+      "id": "cust_550e8400",
+      "type": "customer",
+      "attributes": {
+        "email": "john.doe@example.com",
+        "name": "John Doe",
+        "created_at": "2023-06-15T00:00:00Z",
+        "orders_count": 12,
+        "total_spent": 1542.50
+      }
+    },
+    {
+      "id": "cust_660e8401",
+      "type": "customer",
+      "attributes": {
+        "email": "jane.smith@example.com",
+        "name": "Jane Smith",
+        "created_at": "2023-08-20T00:00:00Z",
+        "orders_count": 5,
+        "total_spent": 678.25
+      }
+    }
+  ]
+}

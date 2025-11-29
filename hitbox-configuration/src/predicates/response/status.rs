@@ -1,16 +1,12 @@
 use std::num::NonZeroU16;
 
-use hitbox_core::Predicate;
-use hitbox_http::CacheableHttpResponse;
 use hitbox_http::predicates::response::{StatusClass, StatusCode};
 use http::StatusCode as HttpStatusCode;
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
+use crate::ResponsePredicate;
 use crate::error::ConfigError;
-
-type CorePredicate<ReqBody> =
-    Box<dyn Predicate<Subject = CacheableHttpResponse<ReqBody>> + Send + Sync>;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(untagged)]
@@ -110,8 +106,8 @@ pub enum Operation {
 impl Operation {
     pub fn into_predicates<ReqBody>(
         &self,
-        inner: CorePredicate<ReqBody>,
-    ) -> Result<CorePredicate<ReqBody>, ConfigError>
+        inner: ResponsePredicate<ReqBody>,
+    ) -> Result<ResponsePredicate<ReqBody>, ConfigError>
     where
         ReqBody: HttpBody + Send + 'static,
         ReqBody::Error: std::fmt::Debug + Send,

@@ -64,7 +64,8 @@ Feature: Cache Key Extractor Combinations
     And key extractors
       ```yaml
       - Header: X-Tenant-Id
-      - Body: '.userId'
+      - Body:
+          jq: ".userId"
       ```
     When execute request
       ```hurl
@@ -75,7 +76,7 @@ Feature: Cache Key Extractor Combinations
     Then cache key exists
       ```
       X-Tenant-Id: "tenant-123"
-      .userId: "user-456"
+      body: "user-456"
       ```
 
   @extractor @combinations
@@ -90,7 +91,8 @@ Feature: Cache Key Extractor Combinations
       - Path: "/v1/authors/{author_id}/books/{book_id}"
       - Query: "includeDeleted"
       - Header: X-Api-Version
-      - Body: '.role'
+      - Body:
+          jq: ".role"
       ```
     When execute request
       ```hurl
@@ -107,5 +109,5 @@ Feature: Cache Key Extractor Combinations
       book_id: "victim-prime"
       includeDeleted: "false"
       X-Api-Version: "v2"
-      .role: "admin"
+      body: "admin"
       ```

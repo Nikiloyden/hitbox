@@ -1,0 +1,91 @@
+{
+  "order": {
+    "customer_id": "cust_550e8400-e29b-41d4-a716-446655440000",
+    "shipping_address": {
+      "first_name": "John",
+      "last_name": "Doe",
+      "company": "Acme Corporation",
+      "address_line_1": "123 Main Street",
+      "address_line_2": "Suite 456",
+      "city": "San Francisco",
+      "state": "CA",
+      "postal_code": "94102",
+      "country": "US",
+      "phone": "+1-555-123-4567",
+      "email": "john.doe@example.com"
+    },
+    "billing_address": {
+      "first_name": "John",
+      "last_name": "Doe",
+      "company": "Acme Corporation",
+      "address_line_1": "123 Main Street",
+      "address_line_2": "Suite 456",
+      "city": "San Francisco",
+      "state": "CA",
+      "postal_code": "94102",
+      "country": "US",
+      "phone": "+1-555-123-4567",
+      "email": "john.doe@example.com"
+    },
+    "items": [
+      {
+        "sku": "PROD-001-BLK-L",
+        "product_id": "prod_12345",
+        "name": "Premium Cotton T-Shirt - Black - Large",
+        "quantity": 2,
+        "unit_price": 29.99,
+        "discount": 5.00,
+        "metadata": {
+          "color": "black",
+          "size": "L",
+          "material": "100% organic cotton"
+        }
+      },
+      {
+        "sku": "PROD-002-WHT-M",
+        "product_id": "prod_12346",
+        "name": "Classic Polo Shirt - White - Medium",
+        "quantity": 1,
+        "unit_price": 49.99,
+        "discount": 0.00,
+        "metadata": {
+          "color": "white",
+          "size": "M",
+          "material": "pique cotton blend"
+        }
+      },
+      {
+        "sku": "PROD-003-NVY-XL",
+        "product_id": "prod_12347",
+        "name": "Slim Fit Jeans - Navy - Extra Large",
+        "quantity": 1,
+        "unit_price": 89.99,
+        "discount": 10.00,
+        "metadata": {
+          "color": "navy",
+          "size": "XL",
+          "material": "stretch denim"
+        }
+      }
+    ],
+    "payment": {
+      "method": "credit_card",
+      "card_token": "tok_visa_4242424242424242",
+      "billing_descriptor": "ACME STORE"
+    },
+    "shipping_method": "express",
+    "notes": "Please leave package at the front door if no one is home. Ring doorbell twice.",
+    "gift_options": {
+      "is_gift": true,
+      "gift_message": "Happy Birthday! Hope you enjoy these items.",
+      "gift_wrap": true
+    },
+    "coupon_codes": ["SUMMER2024", "LOYALTY10"],
+    "metadata": {
+      "source": "web",
+      "campaign": "summer_sale_2024",
+      "referrer": "https://google.com/search?q=premium+clothing",
+      "session_id": "sess_abc123def456"
+    }
+  }
+}

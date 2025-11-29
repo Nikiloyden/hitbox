@@ -122,6 +122,8 @@ impl KeySerialization {
 pub enum ValueSerialization {
     Json,
     Bincode,
+    #[cfg(feature = "rkyv_format")]
+    Rkyv,
 }
 
 impl ValueSerialization {
@@ -129,6 +131,11 @@ impl ValueSerialization {
         match self {
             ValueSerialization::Json => Arc::new(JsonFormat),
             ValueSerialization::Bincode => Arc::new(BincodeFormat),
+            #[cfg(feature = "rkyv_format")]
+            ValueSerialization::Rkyv => {
+                use hitbox_backend::format::RkyvFormat;
+                Arc::new(RkyvFormat::new())
+            }
         }
     }
 }

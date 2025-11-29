@@ -1,30 +1,27 @@
 pub mod header;
 pub mod status;
 
-use hitbox_http::CacheableHttpResponse;
 use hitbox_http::predicates::NeutralResponsePredicate;
 use hitbox_http::predicates::conditions::Or;
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
+use crate::ResponsePredicate;
 use crate::error::ConfigError;
-use crate::predicates::body::BodyPredicate;
-
-type CorePredicate<ReqBody> =
-    Box<dyn hitbox_core::Predicate<Subject = CacheableHttpResponse<ReqBody>> + Send + Sync>;
+use crate::predicates::body::BodyOperationConfig;
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub enum Predicate {
     Status(status::Operation),
-    Body(BodyPredicate),
+    Body(BodyOperationConfig),
     Header(header::HeaderOperation),
 }
 
 impl Predicate {
     pub fn into_predicates<ReqBody>(
         self,
-        inner: CorePredicate<ReqBody>,
-    ) -> Result<CorePredicate<ReqBody>, ConfigError>
+        inner: ResponsePredicate<ReqBody>,
+    ) -> Result<ResponsePredicate<ReqBody>, ConfigError>
     where
         ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
@@ -47,8 +44,8 @@ pub enum Operation {
 impl Operation {
     pub fn into_predicates<ReqBody>(
         self,
-        inner: CorePredicate<ReqBody>,
-    ) -> Result<CorePredicate<ReqBody>, ConfigError>
+        inner: ResponsePredicate<ReqBody>,
+    ) -> Result<ResponsePredicate<ReqBody>, ConfigError>
     where
         ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
@@ -61,18 +58,17 @@ impl Operation {
                     None => Ok(inner),
                     Some(first) => {
                         let first_predicate = first
-                            .into_predicates(
-                                Box::new(NeutralResponsePredicate::new()) as CorePredicate<ReqBody>
-                            )?;
+                            .into_predicates(Box::new(NeutralResponsePredicate::new())
+                                as ResponsePredicate<ReqBody>)?;
                         iter.try_fold(first_predicate, |acc, expression| {
                             let predicate = expression
                                 .into_predicates(Box::new(NeutralResponsePredicate::new())
-                                    as CorePredicate<ReqBody>)?;
+                                    as ResponsePredicate<ReqBody>)?;
                             Ok(Box::new(Or::new(
                                 predicate,
                                 acc,
                                 Box::new(NeutralResponsePredicate::new()),
-                            )) as CorePredicate<ReqBody>)
+                            )) as ResponsePredicate<ReqBody>)
                         })
                     }
                 }
@@ -94,8 +90,8 @@ pub enum Expression {
 impl Expression {
     pub fn into_predicates<ReqBody>(
         self,
-        inner: CorePredicate<ReqBody>,
-    ) -> Result<CorePredicate<ReqBody>, ConfigError>
+        inner: ResponsePredicate<ReqBody>,
+    ) -> Result<ResponsePredicate<ReqBody>, ConfigError>
     where
         ReqBody: HttpBody + Send + Unpin + 'static,
         ReqBody::Error: std::fmt::Debug + Send,
@@ -122,18 +118,18 @@ impl Default for Response {
 }
 
 impl Response {
-    pub fn into_predicates<Req>(self) -> Result<CorePredicate<Req>, ConfigError>
+    pub fn into_predicates<Req>(self) -> Result<ResponsePredicate<Req>, ConfigError>
     where
         Req: HttpBody + Send + Unpin + 'static,
         Req::Error: std::fmt::Debug + Send,
         Req::Data: Send,
     {
-        let neutral_predicate: CorePredicate<Req> =
+        let neutral_predicate: ResponsePredicate<Req> =
             Box::new(NeutralResponsePredicate::<Req>::new());
         match self {
             Response::Flat(predicates) => predicates.into_iter().try_rfold(
                 neutral_predicate,
-                |inner, predicate| -> Result<CorePredicate<Req>, ConfigError> {
+                |inner, predicate| -> Result<ResponsePredicate<Req>, ConfigError> {
                     predicate.into_predicates(inner)
                 },
             ),

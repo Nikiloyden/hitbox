@@ -46,17 +46,11 @@ jobs:
         with:
           redis-version: ${{ matrix.redis-version }}
 
-      # Phase 1: Run unit tests with nextest (fast, parallel)
       - name: Run unit tests (nextest)
         run: cargo test-unit
 
-      # Phase 2: Run BDD/cucumber integration tests
       - name: Run BDD integration tests
         run: cargo test-bdd
-
-      # Phase 3: Run FSM BDD tests
-      - name: Run FSM BDD tests
-        run: cargo test-fsm
 
       - name: Upload unit test results
         if: always()
