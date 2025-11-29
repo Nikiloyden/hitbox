@@ -28,7 +28,6 @@ jobs:
     strategy:
       matrix:
         rust: [1.89.0, stable]
-        redis-version: [7]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -40,12 +39,6 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
 
-      # Starts Redis server needed by hitbox-redis for integration tests.
-      - name: Start Redis
-        uses: supercharge/redis-github-action@1.8.0
-        with:
-          redis-version: ${{ matrix.redis-version }}
-
       - name: Run unit tests (nextest)
         run: cargo test-unit
 
@@ -56,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nextest-junit-${{ matrix.rust }}-redis${{ matrix.redis-version }}
+          name: nextest-junit-${{ matrix.rust }}
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
 
@@ -64,7 +57,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cucumber-junit-${{ matrix.rust }}-redis${{ matrix.redis-version }}
+          name: cucumber-junit-${{ matrix.rust }}
           path: |
             target/cucumber-integration-junit.xml
             target/cucumber-fsm-junit.xml
@@ -75,7 +68,7 @@ jobs:
         uses: mikepenz/action-junit-report@v4
         with:
           report_paths: "target/nextest/ci/junit.xml"
-          check_name: "Unit Test Report (${{ matrix.rust }}, Redis ${{ matrix.redis-version }})"
+          check_name: "Unit Test Report (${{ matrix.rust }})"
           fail_on_failure: true
           include_passed: true
           detailed_summary: true
@@ -85,24 +78,35 @@ jobs:
         uses: mikepenz/action-junit-report@v4
         with:
           report_paths: "target/cucumber-*-junit.xml"
-          check_name: "BDD Test Report (${{ matrix.rust }}, Redis ${{ matrix.redis-version }})"
+          check_name: "BDD Test Report (${{ matrix.rust }})"
           fail_on_failure: true
           include_passed: true
           detailed_summary: true
 
+  coverage:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
       - name: Install llvm-cov
-        if: matrix.rust == 'stable' && matrix.redis-version == 7
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Generate coverage file
-        if: matrix.rust == 'stable' && matrix.redis-version == 7
         run: |
           cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
             --exclude hitbox-test \
             --ignore-filename-regex 'hurl/'
 
+      - name: Run BDD tests for coverage results
+        run: cargo test-bdd
+
       - name: Upload to Codecov
-        if: matrix.rust == 'stable' && matrix.redis-version == 7
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info
@@ -110,10 +114,10 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && matrix.rust == 'stable' && matrix.redis-version == 7 }}
+        if: ${{ !cancelled() }}
         uses: codecov/test-results-action@v1
         with:
-          files: target/nextest/ci/junit.xml,target/cucumber-integration-junit.xml,target/cucumber-fsm-junit.xml
+          files: target/cucumber-integration-junit.xml,target/cucumber-fsm-junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
   clippy:
