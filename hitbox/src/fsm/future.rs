@@ -151,12 +151,15 @@ const UPSTREAM_TAKEN_ERROR: &str = "Upstream already taken (used for offload rev
 // }
 
 #[pin_project(project = CacheFutureProj)]
-pub struct CacheFuture<B, Req, Res, U>
+pub struct CacheFuture<B, Req, Res, U, ReqP, ResP, E>
 where
     U: Upstream<Req, Response = Res>,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
+    ReqP: Predicate<Subject = Req> + Send + Sync,
+    ResP: Predicate<Subject = Res::Subject> + Send + Sync,
+    E: Extractor<Subject = Req> + Send + Sync,
 {
     upstream: Option<U>,
     backend: Arc<B>,
@@ -166,9 +169,9 @@ where
     state: State<Res, Req>,
     #[pin]
     poll_cache: Option<PollCacheFuture<Res>>,
-    request_predicates: Arc<dyn Predicate<Subject = Req> + Send + Sync>,
-    response_predicates: Arc<dyn Predicate<Subject = Res::Subject> + Send + Sync>,
-    key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
+    request_predicates: Option<ReqP>,
+    response_predicates: Option<ResP>,
+    key_extractors: Option<E>,
     policy: Arc<crate::policy::PolicyConfig>,
     /// Optional offload manager for background revalidation (SWR).
     offload_manager: Option<OffloadManager>,
@@ -176,20 +179,23 @@ where
     is_revalidation: bool,
 }
 
-impl<B, Req, Res, U> CacheFuture<B, Req, Res, U>
+impl<B, Req, Res, U, ReqP, ResP, E> CacheFuture<B, Req, Res, U, ReqP, ResP, E>
 where
     U: Upstream<Req, Response = Res>,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
+    ReqP: Predicate<Subject = Req> + Send + Sync,
+    ResP: Predicate<Subject = Res::Subject> + Send + Sync,
+    E: Extractor<Subject = Req> + Send + Sync,
 {
     pub fn new(
         backend: Arc<B>,
         request: Req,
         upstream: U,
-        request_predicates: Arc<dyn Predicate<Subject = Req> + Send + Sync>,
-        response_predicates: Arc<dyn Predicate<Subject = Res::Subject> + Send + Sync>,
-        key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
+        request_predicates: ReqP,
+        response_predicates: ResP,
+        key_extractors: E,
         policy: Arc<crate::policy::PolicyConfig>,
         offload_manager: Option<OffloadManager>,
     ) -> Self {
@@ -202,9 +208,9 @@ where
                 ctx: Some(CacheContext::default().boxed()),
             },
             poll_cache: None,
-            request_predicates,
-            response_predicates,
-            key_extractors,
+            request_predicates: Some(request_predicates),
+            response_predicates: Some(response_predicates),
+            key_extractors: Some(key_extractors),
             policy,
             offload_manager,
             is_revalidation: false,
@@ -212,13 +218,16 @@ where
     }
 }
 
-impl<B, Req, Res, U> CacheFuture<B, Req, Res, U>
+impl<B, Req, Res, U, ReqP, ResP, E> CacheFuture<B, Req, Res, U, ReqP, ResP, E>
 where
     U: Upstream<Req, Response = Res>,
     U::Future: Send + 'static,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
+    ReqP: Predicate<Subject = Req> + Send + Sync,
+    ResP: Predicate<Subject = Res::Subject> + Send + Sync,
+    E: Extractor<Subject = Req> + Send + Sync,
 {
     /// Create a CacheFuture for background revalidation (Stale-While-Revalidate).
     ///
@@ -231,18 +240,17 @@ where
     /// * `cache_key` - Key to update in the cache
     /// * `request` - Request to send to upstream
     /// * `upstream` - Upstream service to call
-    /// * `request_predicates` - Request predicates (not used, required for type consistency)
     /// * `response_predicates` - Predicates to check if response should be cached
-    /// * `key_extractors` - Key extractors (not used, required for type consistency)
     /// * `policy` - Cache policy configuration (TTL, stale TTL)
+    ///
+    /// Note: `request_predicates` and `key_extractors` are not needed for revalidation
+    /// since the FSM starts at `PollUpstream` state, skipping the initial request check.
     pub fn revalidate(
         backend: Arc<B>,
         cache_key: CacheKey,
         request: Req,
         mut upstream: U,
-        request_predicates: Arc<dyn Predicate<Subject = Req> + Send + Sync>,
-        response_predicates: Arc<dyn Predicate<Subject = Res::Subject> + Send + Sync>,
-        key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
+        response_predicates: ResP,
         policy: Arc<crate::policy::PolicyConfig>,
     ) -> Self {
         let upstream_future = Box::pin(upstream.call(request));
@@ -257,9 +265,9 @@ where
                 ctx: Some(CacheContext::default().boxed()),
             },
             poll_cache: None,
-            request_predicates,
-            response_predicates,
-            key_extractors,
+            request_predicates: None,
+            response_predicates: Some(response_predicates),
+            key_extractors: None,
             policy,
             // Revalidation tasks don't spawn further revalidations
             offload_manager: None,
@@ -268,7 +276,7 @@ where
     }
 }
 
-impl<B, Req, Res, U> Future for CacheFuture<B, Req, Res, U>
+impl<B, Req, Res, U, ReqP, ResP, E> Future for CacheFuture<B, Req, Res, U, ReqP, ResP, E>
 where
     U: Upstream<Req, Response = Res> + Send + 'static,
     U::Future: Send + 'static,
@@ -276,6 +284,9 @@ where
     Res: CacheableResponse + Send,
     Res::Cached: Cacheable + Send,
     Req: CacheableRequest + Send + 'static,
+    ReqP: Predicate<Subject = Req> + Send + Sync + 'static,
+    ResP: Predicate<Subject = Res::Subject> + Send + Sync + 'static,
+    E: Extractor<Subject = Req> + Send + Sync + 'static,
     // Debug bounds
     Req: Debug,
     Res::Cached: Debug,
@@ -288,8 +299,14 @@ where
         loop {
             let state = match this.state.as_mut().project() {
                 StateProj::Initial { ctx } => {
-                    let predicates = this.request_predicates.clone();
-                    let extractors = this.key_extractors.clone();
+                    let predicates = this
+                        .request_predicates
+                        .take()
+                        .expect("Request predicates already taken");
+                    let extractors = this
+                        .key_extractors
+                        .take()
+                        .expect("Key extractors already taken");
                     let request = this.request.take().expect(POLL_AFTER_READY_ERROR);
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.policy.as_ref() {
@@ -427,17 +444,29 @@ where
                                     // Return stale data immediately, spawn background revalidation
                                     match (this.offload_manager.as_ref(), this.cache_key.clone()) {
                                         (Some(offload_manager), Some(cache_key)) => {
-                                            if let (Some(req), Some(upstream)) =
-                                                (request.take(), this.upstream.take())
-                                            {
-                                                let revalidation_future = CacheFuture::revalidate(
+                                            if let (
+                                                Some(req),
+                                                Some(upstream),
+                                                Some(response_predicates),
+                                            ) = (
+                                                request.take(),
+                                                this.upstream.take(),
+                                                this.response_predicates.take(),
+                                            ) {
+                                                let revalidation_future = CacheFuture::<
+                                                    B,
+                                                    Req,
+                                                    Res,
+                                                    U,
+                                                    ReqP,
+                                                    ResP,
+                                                    E,
+                                                >::revalidate(
                                                     this.backend.clone(),
                                                     cache_key.clone(),
                                                     req,
                                                     upstream,
-                                                    this.request_predicates.clone(),
-                                                    this.response_predicates.clone(),
-                                                    this.key_extractors.clone(),
+                                                    response_predicates,
                                                     this.policy.clone(),
                                                 );
 
@@ -511,7 +540,10 @@ where
                     ctx,
                 } => {
                     let upstream_result = upstream_result.take().expect(POLL_AFTER_READY_ERROR);
-                    let predicates = this.response_predicates.clone();
+                    let predicates = this
+                        .response_predicates
+                        .take()
+                        .expect("Response predicates already taken");
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
                     match this.cache_key {
                         Some(_cache_key) => {

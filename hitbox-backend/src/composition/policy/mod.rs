@@ -9,11 +9,12 @@
 //! ## Read Policies
 //! - [`SequentialReadPolicy`] - Try L1 first, then L2 on miss (default)
 //! - [`RaceReadPolicy`] - Race L1 and L2, return first hit
-//! - [`ParallelReadPolicy`] - Query both in parallel, prefer L1
+//! - [`ParallelReadPolicy`] - Query both in parallel, prefer fresher by TTL
 //!
 //! ## Write Policies
 //! - [`SequentialWritePolicy`] - Write to L1, then L2 (write-through)
-//! - [`OptimisticParallelWritePolicy`] - Write to both in parallel, succeed if ≥1 succeeds
+//! - [`OptimisticParallelWritePolicy`] - Write to both in parallel (join), succeed if ≥1 succeeds
+//! - [`RaceWritePolicy`] - Race both writes, return on first success, background the other
 //!
 //! ## Refill Policies
 //! - [`AlwaysRefill`] - Always populate L1 after L2 hit (default)
@@ -40,4 +41,6 @@ pub use read::{
 pub use refill::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
 
 // Re-export write policies
-pub use write::{CompositionWritePolicy, OptimisticParallelWritePolicy, SequentialWritePolicy};
+pub use write::{
+    CompositionWritePolicy, OptimisticParallelWritePolicy, RaceWritePolicy, SequentialWritePolicy,
+};

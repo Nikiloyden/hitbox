@@ -1,0 +1,52 @@
+# Reference benchmark configuration (dynamic dispatch version)
+# This configuration mirrors the static dispatch reference benchmark
+
+backend:
+  type: Moka
+  max_capacity: 10000
+  key:
+    format: Bitcode
+  value:
+    format: Bincode
+    compression:
+      type: Disabled
+
+endpoint:
+  request:
+    - Method: POST
+    - Path: "/v1/users/{user_id}/orders"
+    - Header:
+        authorization:
+          exist: true
+    - Header:
+        x-tenant-id:
+          exist: true
+    - Header:
+        x-idempotency-key:
+          exist: true
+
+  response:
+    - Status:
+        class: Success
+    - Header:
+        content-type:
+          exist: true
+    - Header:
+        cache-control:
+          exist: true
+
+  extractors:
+    - Method:
+    - Path: "/v1/users/{user_id}/orders"
+    - Query: include
+    - Query: fields
+    - Header: x-tenant-id
+    - Header:
+        name: authorization
+        transform:
+          - Hash
+    - Header: x-idempotency-key
+
+  policy:
+    Enabled:
+      ttl: 300
