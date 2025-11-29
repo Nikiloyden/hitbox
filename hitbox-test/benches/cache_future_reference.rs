@@ -894,7 +894,15 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(create_reference_request());
                 let upstream = MockUpstream;
                 let cache_future = CacheFuture::new(
-                    backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager,
+                    backend,
+                    request,
+                    upstream,
+                    req_pred,
+                    res_pred,
+                    ext,
+                    policy,
+                    None,
+                    NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
             }
@@ -919,7 +927,15 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(create_reference_request());
                 let upstream = MockUpstream;
                 let cache_future = CacheFuture::new(
-                    backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager,
+                    backend,
+                    request,
+                    upstream,
+                    req_pred,
+                    res_pred,
+                    ext,
+                    policy,
+                    None,
+                    NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
             }
@@ -1269,7 +1285,15 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(create_reference_request());
                 let upstream = MockUpstream;
                 let cache_future = CacheFuture::new(
-                    backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager,
+                    backend,
+                    request,
+                    upstream,
+                    req_pred,
+                    res_pred,
+                    ext,
+                    policy,
+                    None,
+                    NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
             }
@@ -1294,7 +1318,15 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(create_reference_request());
                 let upstream = MockUpstream;
                 let cache_future = CacheFuture::new(
-                    backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager,
+                    backend,
+                    request,
+                    upstream,
+                    req_pred,
+                    res_pred,
+                    ext,
+                    policy,
+                    None,
+                    NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
             }

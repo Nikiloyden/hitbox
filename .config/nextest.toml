@@ -20,12 +20,12 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 
 # Exclude cucumber test binary (has harness = false)
 # This is applied by default to all test runs
-default-filter = 'not binary(integration)'
+default-filter = 'not binary(bdd)'
 
 [profile.ci]
 # CI-specific profile with more retries and verbose output
-retries = 2
-success-output = "immediate-final"
+retries = 0
+success-output = "never"
 failure-output = "immediate-final"
 
 # Fail fast in CI to save time
