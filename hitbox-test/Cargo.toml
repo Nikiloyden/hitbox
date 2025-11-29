@@ -74,10 +74,11 @@ default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
 rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
+fsm-trace = ["hitbox-core/fsm-trace"]
 
 [[test]]
-name = "integration"
-path = "tests/integration/bdd.rs"
+name = "bdd"
+path = "tests/bdd.rs"
 harness = false
 
 [[bench]]

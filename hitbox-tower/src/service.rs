@@ -1,3 +1,4 @@
+use hitbox::concurrency::ConcurrencyManager;
 use hitbox::config::CacheConfig;
 use hitbox::offload::OffloadManager;
 use std::{fmt::Debug, sync::Arc};
@@ -11,34 +12,38 @@ use tower::Service;
 use crate::future::CacheServiceFuture;
 use crate::upstream::TowerUpstream;
 
-pub struct CacheService<S, B, C> {
+pub struct CacheService<S, B, C, CM> {
     upstream: S,
     backend: Arc<B>,
     configuration: C,
     offload_manager: Option<OffloadManager>,
+    concurrency_manager: CM,
 }
 
-impl<S, B, C> CacheService<S, B, C> {
+impl<S, B, C, CM> CacheService<S, B, C, CM> {
     pub fn new(
         upstream: S,
         backend: Arc<B>,
         configuration: C,
         offload_manager: Option<OffloadManager>,
+        concurrency_manager: CM,
     ) -> Self {
         CacheService {
             upstream,
             backend,
             configuration,
             offload_manager,
+            concurrency_manager,
         }
     }
 }
 
-impl<S, B, C> Clone for CacheService<S, B, C>
+impl<S, B, C, CM> Clone for CacheService<S, B, C, CM>
 where
     S: Clone,
     B: Clone,
     C: Clone,
+    CM: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -46,11 +51,12 @@ where
             backend: self.backend.clone(),
             configuration: self.configuration.clone(),
             offload_manager: self.offload_manager.clone(),
+            concurrency_manager: self.concurrency_manager.clone(),
         }
     }
 }
 
-impl<S, B, C, ReqBody, ResBody> Service<Request<ReqBody>> for CacheService<S, B, C>
+impl<S, B, C, CM, ReqBody, ResBody> Service<Request<ReqBody>> for CacheService<S, B, C, CM>
 where
     S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>>
         + Clone
@@ -59,6 +65,7 @@ where
     B: CacheBackend + Clone + Send + Sync + 'static,
     S::Future: Send,
     C: CacheConfig<CacheableHttpRequest<ReqBody>, CacheableHttpResponse<ResBody>>,
+    CM: ConcurrencyManager<Result<CacheableHttpResponse<ResBody>, S::Error>> + Clone + 'static,
     // debug bounds
     ReqBody: Debug + HttpBody + Send + 'static,
     ReqBody::Error: Send,
@@ -76,6 +83,7 @@ where
             CacheableHttpRequest<ReqBody>,
             Result<CacheableHttpResponse<ResBody>, S::Error>,
             TowerUpstream<S, ReqBody, ResBody>,
+            CM,
         >,
         ResBody,
         S::Error,
@@ -109,6 +117,7 @@ where
             Arc::new(configuration.extractors()),
             Arc::new(configuration.policy().clone()),
             self.offload_manager.clone(),
+            self.concurrency_manager.clone(),
         );
 
         // Wrap in CacheServiceFuture to add cache headers

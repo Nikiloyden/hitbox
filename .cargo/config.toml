@@ -1,5 +1,9 @@
 [alias]
-bdd = "test -p hitbox-test --test integration -- --fail-fast"
+# Unit tests with nextest (fast, parallel)
+test-unit = "nextest run --all --all-features --profile ci"
+
+# BDD/Cucumber tests (integration + FSM, all features including fsm-trace)
+test-bdd = "test --test bdd --all-features"
 
 # Local development: use path dependencies for hurl when available
 # This overrides the git dependencies defined in Cargo.toml
