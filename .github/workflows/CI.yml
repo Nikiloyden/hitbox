@@ -98,10 +98,7 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       - name: Generate coverage file
-        run: |
-          cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
-            --exclude hitbox-test \
-            --ignore-filename-regex 'hurl/'
+        run: cargo cov
 
       - name: Run BDD tests for coverage results
         run: cargo test-bdd
