@@ -54,7 +54,7 @@ where
     offload_manager: Option<OffloadManager>,
     /// Whether this is a background revalidation task.
     is_revalidation: bool,
-    concurrency_manager: Arc<C>,
+    concurrency_manager: C,
 }
 
 impl<B, Req, Res, U, C> CacheFuture<B, Req, Res, U, C>
@@ -75,7 +75,7 @@ where
         key_extractors: Arc<dyn Extractor<Subject = Req> + Send + Sync>,
         policy: Arc<crate::policy::PolicyConfig>,
         offload_manager: Option<OffloadManager>,
-        concurrency_manager: Arc<C>,
+        concurrency_manager: C,
     ) -> Self {
         CacheFuture {
             upstream: Some(upstream),
@@ -151,7 +151,7 @@ where
             offload_manager: None,
             is_revalidation: true,
             // Revalidation tasks don't need concurrency control
-            concurrency_manager: Arc::new(NoopConcurrencyManager),
+            concurrency_manager: NoopConcurrencyManager,
         }
     }
 }

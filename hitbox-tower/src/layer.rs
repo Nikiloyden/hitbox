@@ -2,6 +2,7 @@ use crate::EndpointConfig;
 use std::sync::Arc;
 
 use hitbox::backend::CacheBackend;
+use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox::offload::OffloadManager;
 use hitbox_moka::MokaBackend;
 use tower::Layer;
@@ -9,30 +10,33 @@ use tower::Layer;
 use crate::service::CacheService;
 
 #[derive(Clone)]
-pub struct Cache<B, C> {
+pub struct Cache<B, C, CM> {
     pub backend: Arc<B>,
     pub configuration: C,
     pub offload_manager: Option<OffloadManager>,
+    pub concurrency_manager: CM,
 }
 
-impl<B, C> Cache<B, C>
+impl<B, C, CM> Cache<B, C, CM>
 where
     C: Default,
 {
-    pub fn new(backend: B) -> Cache<B, C> {
+    pub fn new(backend: B) -> Cache<B, C, NoopConcurrencyManager> {
         Cache {
             backend: Arc::new(backend),
             configuration: Default::default(),
             offload_manager: None,
+            concurrency_manager: NoopConcurrencyManager,
         }
     }
 }
 
-impl<S, B, C> Layer<S> for Cache<B, C>
+impl<S, B, C, CM> Layer<S> for Cache<B, C, CM>
 where
     C: Clone,
+    CM: Clone,
 {
-    type Service = CacheService<S, B, C>;
+    type Service = CacheService<S, B, C, CM>;
 
     fn layer(&self, upstream: S) -> Self::Service {
         CacheService::new(
@@ -40,40 +44,53 @@ where
             Arc::clone(&self.backend),
             self.configuration.clone(),
             self.offload_manager.clone(),
+            self.concurrency_manager.clone(),
         )
     }
 }
 
-impl Cache<MokaBackend, EndpointConfig> {
-    pub fn builder() -> CacheBuilder<MokaBackend, EndpointConfig> {
+impl Cache<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
+    pub fn builder() -> CacheBuilder<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
         CacheBuilder::default()
     }
 }
 
-pub struct CacheBuilder<B, C> {
+pub struct CacheBuilder<B, C, CM> {
     backend: Option<B>,
     configuration: C,
     offload_manager: Option<OffloadManager>,
+    concurrency_manager: CM,
 }
 
-impl<B, C> CacheBuilder<B, C>
+impl<B, C, CM> CacheBuilder<B, C, CM>
 where
     B: CacheBackend,
     C: Default,
 {
-    pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C> {
+    pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C, CM> {
         CacheBuilder {
             backend: Some(backend),
             configuration: self.configuration,
             offload_manager: self.offload_manager,
+            concurrency_manager: self.concurrency_manager,
         }
     }
 
-    pub fn config<NC>(self, configuration: NC) -> CacheBuilder<B, NC> {
+    pub fn config<NC>(self, configuration: NC) -> CacheBuilder<B, NC, CM> {
         CacheBuilder {
             backend: self.backend,
             configuration,
             offload_manager: self.offload_manager,
+            concurrency_manager: self.concurrency_manager,
+        }
+    }
+
+    pub fn concurrency_manager<NCM>(self, concurrency_manager: NCM) -> CacheBuilder<B, C, NCM> {
+        CacheBuilder {
+            backend: self.backend,
+            configuration: self.configuration,
+            offload_manager: self.offload_manager,
+            concurrency_manager: concurrency_manager,
         }
     }
 
@@ -84,16 +101,17 @@ where
         }
     }
 
-    pub fn build(self) -> Cache<B, C> {
+    pub fn build(self) -> Cache<B, C, CM> {
         Cache {
             backend: Arc::new(self.backend.expect("Please add some cache backend")),
             configuration: self.configuration,
             offload_manager: self.offload_manager,
+            concurrency_manager: self.concurrency_manager,
         }
     }
 }
 
-impl<B, C> Default for CacheBuilder<B, C>
+impl<B, C> Default for CacheBuilder<B, C, NoopConcurrencyManager>
 where
     C: Default,
 {
@@ -102,6 +120,7 @@ where
             backend: None,
             configuration: Default::default(),
             offload_manager: None,
+            concurrency_manager: NoopConcurrencyManager,
         }
     }
 }

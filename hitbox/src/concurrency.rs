@@ -53,7 +53,26 @@ where
     fn cleanup(&self, cache_key: &CacheKey);
 }
 
+impl<Res, T> ConcurrencyManager<Res> for Arc<T>
+where
+    T: ConcurrencyManager<Res>,
+    Res: CacheableResponse,
+{
+    fn check(&self, cache_key: &CacheKey, concurrency: usize) -> ConcurrencyDecision<Res> {
+        self.as_ref().check(cache_key, concurrency)
+    }
+
+    fn resolve(&self, cache_key: &CacheKey, cache_value: &CacheValue<Res::Cached>) {
+        self.as_ref().resolve(cache_key, cache_value);
+    }
+
+    fn cleanup(&self, cache_key: &CacheKey) {
+        self.as_ref().cleanup(cache_key);
+    }
+}
+
 /// No-op implementation that always allows requests to proceed without concurrency control
+#[derive(Clone)]
 pub struct NoopConcurrencyManager;
 
 impl<Res> ConcurrencyManager<Res> for NoopConcurrencyManager
@@ -80,12 +99,13 @@ where
 /// - Subsequent requests subscribe to the broadcast channel and wait
 /// - First request to complete broadcasts the result to all waiters
 /// - Waiters reconstruct the response using CacheableResponse::from_cached
+#[derive(Clone)]
 pub struct BroadcastConcurrencyManager<Res>
 where
     Res: CacheableResponse,
 {
     /// Maps cache keys to (broadcast sender, semaphore) for in-flight requests
-    in_flight: DashMap<CacheKey, InFlightEntry<Res::Cached>>,
+    in_flight: Arc<DashMap<CacheKey, InFlightEntry<Res::Cached>>>,
 }
 
 impl<Res> Default for BroadcastConcurrencyManager<Res>
@@ -103,7 +123,7 @@ where
 {
     pub fn new() -> Self {
         Self {
-            in_flight: DashMap::new(),
+            in_flight: Arc::new(DashMap::new()),
         }
     }
 }
