@@ -89,10 +89,11 @@ rkyv_format = [
     "hitbox-http/rkyv_format",
     "hitbox-configuration/rkyv_format",
 ]
+fsm-trace = ["hitbox-core/fsm-trace"]
 
 [[test]]
-name = "integration"
-path = "tests/integration/bdd.rs"
+name = "bdd"
+path = "tests/bdd.rs"
 harness = false
 
 [[bench]]
