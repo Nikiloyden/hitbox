@@ -36,7 +36,7 @@ pub async fn main() {
             !feature
                 .path
                 .as_ref()
-                .map_or(false, |p| p.to_string_lossy().contains("/fsm/"))
+                .is_some_and(|p| p.to_string_lossy().contains("/fsm/"))
                 && !scenario.tags.iter().any(|tag| tag == "allow.failed")
         })
         .await;

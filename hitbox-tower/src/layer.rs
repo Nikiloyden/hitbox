@@ -90,7 +90,7 @@ where
             backend: self.backend,
             configuration: self.configuration,
             offload_manager: self.offload_manager,
-            concurrency_manager: concurrency_manager,
+            concurrency_manager,
         }
     }
 

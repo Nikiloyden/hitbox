@@ -71,7 +71,6 @@ where
     E: Extractor<Subject = Req> + Send + Sync,
     C: ConcurrencyManager<Res>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         backend: Arc<B>,
         request: Req,
@@ -103,7 +102,8 @@ where
     }
 }
 
-impl<B, Req, Res, U, ReqP, ResP, E> CacheFuture<B, Req, Res, U, ReqP, ResP, E, NoopConcurrencyManager>
+impl<B, Req, Res, U, ReqP, ResP, E>
+    CacheFuture<B, Req, Res, U, ReqP, ResP, E, NoopConcurrencyManager>
 where
     U: Upstream<Req, Response = Res>,
     U::Future: Send + 'static,
