@@ -11,9 +11,11 @@ use std::future::Future;
 use crate::BackendError;
 
 pub mod optimistic_parallel;
+pub mod race;
 pub mod sequential;
 
 pub use optimistic_parallel::OptimisticParallelWritePolicy;
+pub use race::RaceWritePolicy;
 pub use sequential::SequentialWritePolicy;
 
 /// Policy trait for controlling write operations across cache layers.

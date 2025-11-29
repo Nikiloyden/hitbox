@@ -73,24 +73,19 @@ where
     ResBody::Error: Send,
     ResBody::Data: Send,
 {
-    fn request_predicates(
-        &self,
-    ) -> impl hitbox::Predicate<Subject = CacheableHttpRequest<ReqBody>> + Send + Sync + 'static
-    {
+    type RequestPredicate = ArcRequestPredicate<ReqBody>;
+    type ResponsePredicate = ArcResponsePredicate<ResBody>;
+    type Extractor = ArcRequestExtractor<ReqBody>;
+
+    fn request_predicates(&self) -> Self::RequestPredicate {
         Arc::clone(&self.request_predicates)
     }
 
-    fn response_predicates(
-        &self,
-    ) -> impl hitbox::Predicate<Subject = CacheableHttpResponse<ResBody>> + Send + Sync + 'static
-    {
+    fn response_predicates(&self) -> Self::ResponsePredicate {
         Arc::clone(&self.response_predicates)
     }
 
-    fn extractors(
-        &self,
-    ) -> impl hitbox::Extractor<Subject = CacheableHttpRequest<ReqBody>> + Send + Sync + 'static
-    {
+    fn extractors(&self) -> Self::Extractor {
         Arc::clone(&self.extractors)
     }
 
