@@ -8,7 +8,7 @@ backend:
   key:
     format: Bitcode
   value:
-    format: Bincode
+    format: Rkyv
     compression:
       type: Disabled
 

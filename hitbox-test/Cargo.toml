@@ -27,7 +27,9 @@ hitbox-moka = { path = "../hitbox-moka", version = "0.1" }
 hitbox-feoxdb = { path = "../hitbox-feoxdb", version = "0.1" }
 hitbox-redis = { path = "../hitbox-redis", version = "0.1" }
 hitbox-tower = { path = "../hitbox-tower", version = "0.1" }
-hitbox-configuration = { path = "../hitbox-configuration", version = "0.1", features = ["moka"] }
+hitbox-configuration = { path = "../hitbox-configuration", version = "0.1", features = [
+    "moka",
+] }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 
@@ -51,7 +53,12 @@ http-body = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["time", "rt-multi-thread"] }
 hyper = { workspace = true, features = ["http2", "server"] }
-hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "http2"] }
+hyper-util = { version = "0.1", features = [
+    "tokio",
+    "server",
+    "server-auto",
+    "http2",
+] }
 dashmap = { version = "6.1", features = ["serde"] }
 pretty_assertions = "1.4"
 assert-json-diff = "2.0"
@@ -75,7 +82,13 @@ optional = true
 default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
-rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format", "hitbox-http/rkyv_format"]
+rkyv_format = [
+    "dep:rkyv",
+    "dep:rkyv_typename",
+    "hitbox-backend/rkyv_format",
+    "hitbox-http/rkyv_format",
+    "hitbox-configuration/rkyv_format",
+]
 
 [[test]]
 name = "integration"

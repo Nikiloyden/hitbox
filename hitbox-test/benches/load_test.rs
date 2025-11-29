@@ -676,7 +676,8 @@ fn run_oha(addr: SocketAddr, args: &Args) -> anyhow::Result<OhaResult> {
     // Run oha - with TUI we use -o flag to write JSON to file while TUI renders normally
     let output = if args.tui {
         // Create temp file path for JSON output
-        let temp_path = std::env::temp_dir().join(format!("oha_result_{}.json", std::process::id()));
+        let temp_path =
+            std::env::temp_dir().join(format!("oha_result_{}.json", std::process::id()));
 
         // Use oha's -o flag to write JSON to file, TUI renders to terminal
         cmd.arg("-o").arg(&temp_path);
