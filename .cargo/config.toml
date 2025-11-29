@@ -5,6 +5,12 @@ test-unit = "nextest run --all --all-features --profile ci"
 # BDD/Cucumber tests (integration + FSM, all features including fsm-trace)
 test-bdd = "test --test bdd --all-features"
 
+# Coverage generation (runs all tests including BDD)
+cov = "llvm-cov --workspace --all-features --lcov --output-path lcov.info --ignore-filename-regex 'hurl/|hitbox-test/'"
+
+# Coverage report (summary only)
+cov-report = "llvm-cov report --summary-only --ignore-filename-regex 'hurl/|hitbox-test/'"
+
 # Local development: use path dependencies for hurl when available
 # This overrides the git dependencies defined in Cargo.toml
 # In CI (where ../hurl doesn't exist), these patches are simply ignored
