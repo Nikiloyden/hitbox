@@ -46,7 +46,7 @@ where
     request: Option<Req>,
     cache_key: Option<CacheKey>,
     #[pin]
-    state: State<Res, Req>,
+    state: State<Res, Req, U>,
     #[pin]
     poll_cache: Option<PollCacheFuture<Res>>,
     request_predicates: Option<ReqP>,
@@ -138,7 +138,7 @@ where
         response_predicates: ResP,
         policy: Arc<crate::policy::PolicyConfig>,
     ) -> Self {
-        let upstream_future = Box::pin(upstream.call(request));
+        let upstream_future = upstream.call(request);
 
         CacheFuture {
             upstream: Some(upstream),
@@ -211,7 +211,7 @@ where
                         }
                         PolicyConfig::Disabled => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -248,7 +248,7 @@ where
                         }
                         CachePolicy::NonCacheable(request) => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -294,7 +294,7 @@ where
                         },
                         _ => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -319,7 +319,7 @@ where
                     match this.concurrency_manager.check(cache_key, concurrency) {
                         ConcurrencyDecision::Proceed(permit) => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: Some(permit),
@@ -328,7 +328,7 @@ where
                         }
                         ConcurrencyDecision::ProceedWithoutPermit => {
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -381,7 +381,7 @@ where
 
                             let request = request.take().expect(POLL_AFTER_READY_ERROR);
                             let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = Box::pin(upstream.call(request));
+                            let upstream_future = upstream.call(request);
                             State::PollUpstream {
                                 upstream_future,
                                 permit: None,
@@ -426,10 +426,8 @@ where
                                     ctx.set_status(CacheStatus::Miss);
                                     let upstream =
                                         this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                                    let upstream_future = Box::pin(
-                                        upstream
-                                            .call(request.take().expect(POLL_AFTER_READY_ERROR)),
-                                    );
+                                    let upstream_future = upstream
+                                        .call(request.take().expect(POLL_AFTER_READY_ERROR));
                                     State::PollUpstream {
                                         upstream_future,
                                         permit: None,
@@ -515,7 +513,7 @@ where
                     }
                 }
                 StateProj::PollUpstream {
-                    upstream_future,
+                    mut upstream_future,
                     permit,
                     ctx,
                 } => {

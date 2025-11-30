@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use futures::future::BoxFuture;
 use hitbox_backend::BackendError;
-use hitbox_core::{BoxContext, RequestCachePolicy, ResponseCachePolicy};
+use hitbox_core::{BoxContext, RequestCachePolicy, ResponseCachePolicy, Upstream};
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
 
@@ -15,15 +15,15 @@ pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
 pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 pub type CacheStateFuture<T> = BoxFuture<'static, CacheState<T>>;
-pub type UpstreamFuture<T> = BoxFuture<'static, T>;
 pub type AwaitResponseFuture<T> =
     BoxFuture<'static, Result<T, crate::concurrency::ConcurrencyError>>;
 
 #[allow(missing_docs)]
 #[pin_project(project = StateProj)]
-pub enum State<Res, Req>
+pub enum State<Res, Req, U>
 where
     Res: CacheableResponse,
+    U: Upstream<Req, Response = Res>,
 {
     /// Initial state - context is created here
     Initial { ctx: Option<BoxContext> },
@@ -66,7 +66,8 @@ where
     },
     /// Polling upstream service
     PollUpstream {
-        upstream_future: UpstreamFuture<Res>,
+        #[pin]
+        upstream_future: U::Future,
         permit: Option<OwnedSemaphorePermit>,
         ctx: Option<BoxContext>,
     },
@@ -96,9 +97,10 @@ where
     },
 }
 
-impl<Res, Req> Debug for State<Res, Req>
+impl<Res, Req, U> Debug for State<Res, Req, U>
 where
     Res: CacheableResponse,
+    U: Upstream<Req, Response = Res>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
