@@ -155,7 +155,7 @@ where
             response_predicates: Some(response_predicates),
             key_extractors: None,
             policy,
-            // Revalidation tasks don't spawn further revalidations
+            // Revalidation tasks don't spawn further revalidation
             offload_manager: None,
             is_revalidation: true,
             // Revalidation tasks don't need concurrency control
