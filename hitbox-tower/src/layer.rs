@@ -1,9 +1,9 @@
-use crate::EndpointConfig;
 use std::sync::Arc;
 
 use hitbox::backend::CacheBackend;
 use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox::offload::OffloadManager;
+use hitbox_http::HttpEndpoint;
 use hitbox_moka::MokaBackend;
 use tower::Layer;
 
@@ -49,9 +49,9 @@ where
     }
 }
 
-impl Cache<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
-    pub fn builder() -> CacheBuilder<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
-        CacheBuilder::default()
+impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
+    pub fn builder() -> CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
+        CacheBuilder::new()
     }
 }
 
@@ -62,10 +62,26 @@ pub struct CacheBuilder<B, C, CM> {
     concurrency_manager: CM,
 }
 
+impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
+    pub fn new() -> Self {
+        Self {
+            backend: None,
+            configuration: HttpEndpoint::default(),
+            offload_manager: None,
+            concurrency_manager: NoopConcurrencyManager,
+        }
+    }
+}
+
+impl Default for CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<B, C, CM> CacheBuilder<B, C, CM>
 where
     B: CacheBackend,
-    C: Default,
 {
     pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C, CM> {
         CacheBuilder {
@@ -103,24 +119,10 @@ where
 
     pub fn build(self) -> Cache<B, C, CM> {
         Cache {
-            backend: Arc::new(self.backend.expect("Please add some cache backend")),
+            backend: Arc::new(self.backend.expect("Please add a cache backend")),
             configuration: self.configuration,
             offload_manager: self.offload_manager,
             concurrency_manager: self.concurrency_manager,
-        }
-    }
-}
-
-impl<B, C> Default for CacheBuilder<B, C, NoopConcurrencyManager>
-where
-    C: Default,
-{
-    fn default() -> Self {
-        Self {
-            backend: None,
-            configuration: Default::default(),
-            offload_manager: None,
-            concurrency_manager: NoopConcurrencyManager,
         }
     }
 }
