@@ -1,4 +1,3 @@
-use crate::EndpointConfig;
 use std::sync::Arc;
 
 use hitbox::backend::CacheBackend;
@@ -49,23 +48,39 @@ where
     }
 }
 
-impl Cache<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
-    pub fn builder() -> CacheBuilder<MokaBackend, EndpointConfig, NoopConcurrencyManager> {
-        CacheBuilder::default()
+impl Cache<MokaBackend, (), NoopConcurrencyManager> {
+    pub fn builder() -> CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+        CacheBuilder::new()
     }
 }
 
 pub struct CacheBuilder<B, C, CM> {
     backend: Option<B>,
-    configuration: C,
+    configuration: Option<C>,
     offload_manager: Option<OffloadManager>,
     concurrency_manager: CM,
+}
+
+impl CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+    pub fn new() -> Self {
+        Self {
+            backend: None,
+            configuration: None,
+            offload_manager: None,
+            concurrency_manager: NoopConcurrencyManager,
+        }
+    }
+}
+
+impl Default for CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<B, C, CM> CacheBuilder<B, C, CM>
 where
     B: CacheBackend,
-    C: Default,
 {
     pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C, CM> {
         CacheBuilder {
@@ -79,7 +94,7 @@ where
     pub fn config<NC>(self, configuration: NC) -> CacheBuilder<B, NC, CM> {
         CacheBuilder {
             backend: self.backend,
-            configuration,
+            configuration: Some(configuration),
             offload_manager: self.offload_manager,
             concurrency_manager: self.concurrency_manager,
         }
@@ -103,24 +118,10 @@ where
 
     pub fn build(self) -> Cache<B, C, CM> {
         Cache {
-            backend: Arc::new(self.backend.expect("Please add some cache backend")),
-            configuration: self.configuration,
+            backend: Arc::new(self.backend.expect("Please add a cache backend")),
+            configuration: self.configuration.expect("Please add a configuration"),
             offload_manager: self.offload_manager,
             concurrency_manager: self.concurrency_manager,
-        }
-    }
-}
-
-impl<B, C> Default for CacheBuilder<B, C, NoopConcurrencyManager>
-where
-    C: Default,
-{
-    fn default() -> Self {
-        Self {
-            backend: None,
-            configuration: Default::default(),
-            offload_manager: None,
-            concurrency_manager: NoopConcurrencyManager,
         }
     }
 }
