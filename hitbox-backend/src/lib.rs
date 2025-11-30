@@ -9,7 +9,7 @@ pub mod context;
 pub mod format;
 mod key;
 
-pub use backend::{Backend, BackendResult, CacheBackend};
+pub use backend::{Backend, BackendResult, CacheBackend, SyncBackend, UnsyncBackend};
 pub use composition::{Compose, CompositionBackend};
 #[cfg(feature = "gzip")]
 pub use compressor::GzipCompressor;

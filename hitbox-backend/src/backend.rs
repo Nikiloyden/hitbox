@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -14,16 +14,17 @@ use crate::{
 
 pub type BackendResult<T> = Result<T, BackendError>;
 
+/// Type alias for a dynamically dispatched Backend that is Send but not Sync.
+pub type UnsyncBackend = dyn Backend + Send;
+
+/// Type alias for a dynamically dispatched Backend that is Send + Sync.
+pub type SyncBackend = dyn Backend + Send + Sync;
+
 #[async_trait]
 pub trait Backend: Sync + Send {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>>;
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()>;
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()>;
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus>;
 
@@ -54,13 +55,8 @@ impl Backend for &dyn Backend {
         (*self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (*self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (*self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
@@ -90,13 +86,8 @@ impl Backend for Box<dyn Backend> {
         (**self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (**self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
@@ -121,18 +112,44 @@ impl Backend for Box<dyn Backend> {
 }
 
 #[async_trait]
-impl Backend for Arc<dyn Backend + Send + 'static> {
+impl Backend for Arc<UnsyncBackend> {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         (**self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (**self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
+    }
+
+    async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
+        (**self).remove(key).await
+    }
+
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
+    fn value_format(&self) -> &dyn Format {
+        (**self).value_format()
+    }
+
+    fn key_format(&self) -> &CacheKeyFormat {
+        (**self).key_format()
+    }
+
+    fn compressor(&self) -> &dyn Compressor {
+        (**self).compressor()
+    }
+}
+
+#[async_trait]
+impl Backend for Arc<SyncBackend> {
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+        (**self).read(key).await
+    }
+
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
@@ -206,9 +223,7 @@ pub trait CacheBackend: Backend {
                     // Refill L1 if read mode is Refill (data came from L2).
                     // CompositionFormat will create L1-only envelope, so only L1 gets populated.
                     if ctx.read_mode() == ReadMode::Refill {
-                        let _ = self
-                            .set::<T>(key, &cached_value, cached_value.ttl(), ctx)
-                            .await;
+                        let _ = self.set::<T>(key, &cached_value, ctx).await;
                     }
 
                     // Record read metrics
@@ -236,7 +251,6 @@ pub trait CacheBackend: Backend {
         &self,
         key: &CacheKey,
         value: &CacheValue<T::Cached>,
-        ttl: Option<Duration>,
         ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<()>> + Send
     where
@@ -254,7 +268,6 @@ pub trait CacheBackend: Backend {
                 .write(
                     key,
                     CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
-                    ttl,
                 )
                 .await;
             // Record write metrics
@@ -286,4 +299,5 @@ impl CacheBackend for &dyn Backend {}
 
 impl CacheBackend for Box<dyn Backend> {}
 
-impl CacheBackend for Arc<dyn Backend + Send + 'static> {}
+impl CacheBackend for Arc<UnsyncBackend> {}
+impl CacheBackend for Arc<SyncBackend> {}

@@ -74,12 +74,7 @@ where
         self.cache.get(key).await.map(Ok).transpose()
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.cache.insert(key.clone(), value).await;
         Ok(())
     }

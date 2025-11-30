@@ -12,7 +12,6 @@ use hitbox_core::{CacheContext, CacheValue};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
 use http::Response;
-use std::time::Duration;
 
 type BenchBody = http_body_util::Empty<Bytes>;
 type BenchResponse = CacheableHttpResponse<BenchBody>;
@@ -49,7 +48,7 @@ async fn bench_write_single<B>(
     let value = CacheValue::new(serialized.clone(), None, None);
     let mut ctx = CacheContext::default().boxed();
     backend
-        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<BenchResponse>(&key, &value, &mut ctx)
         .await
         .unwrap();
 }
@@ -179,7 +178,7 @@ fn format_read_benchmark(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }
@@ -206,7 +205,7 @@ fn format_read_benchmark(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }
@@ -237,7 +236,7 @@ fn format_read_benchmark(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }
@@ -266,12 +265,7 @@ fn format_read_benchmark(c: &mut Criterion) {
                     let value = CacheValue::new(response.clone(), None, None);
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(
-                            &key,
-                            &value,
-                            Some(Duration::from_secs(3600)),
-                            &mut ctx,
-                        )
+                        .set::<BenchResponse>(&key, &value, &mut ctx)
                         .await
                         .unwrap();
                 }

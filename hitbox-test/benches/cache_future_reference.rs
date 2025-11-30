@@ -10,10 +10,24 @@
 //!
 //! Run with: cargo bench -p hitbox-test --bench cache_future_reference
 
-use std::future::Ready;
+use std::future::{Future, Ready};
 use std::sync::Arc;
 
 use bytes::Bytes;
+use hitbox_core::{Offload, SmolStr};
+
+/// Offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct BenchOffload;
+
+impl Offload for BenchOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 use criterion::{Criterion, criterion_group, criterion_main};
 use hitbox::CacheableResponse;
 use hitbox::concurrency::NoopConcurrencyManager;
@@ -250,7 +264,6 @@ fn create_extractors_with_body() -> impl hitbox::Extractor<Subject = BenchReques
 fn bench_compare_cache_write(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_cache_write");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -291,12 +304,7 @@ fn bench_compare_cache_write(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let mut ctx = CacheContext::default().boxed();
             backend_write
-                .set::<BenchResponse>(
-                    &key_write,
-                    &value_write,
-                    Some(Duration::from_secs(300)),
-                    &mut ctx,
-                )
+                .set::<BenchResponse>(&key_write, &value_write, &mut ctx)
                 .await
                 .unwrap();
         });
@@ -309,12 +317,7 @@ fn bench_compare_cache_write(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let mut ctx = CacheContext::default().boxed();
             dyn_backend
-                .set::<BenchResponse>(
-                    &key_write,
-                    &value_write,
-                    Some(Duration::from_secs(300)),
-                    &mut ctx,
-                )
+                .set::<BenchResponse>(&key_write, &value_write, &mut ctx)
                 .await
                 .unwrap();
         });
@@ -327,7 +330,6 @@ fn bench_compare_cache_write(c: &mut Criterion) {
 fn bench_compare_cache_read(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_cache_read");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -357,12 +359,7 @@ fn bench_compare_cache_read(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         static_backend
-            .set::<BenchResponse>(
-                &cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -378,12 +375,7 @@ fn bench_compare_cache_read(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         dyn_backend
-            .set::<BenchResponse>(
-                &cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -425,7 +417,6 @@ fn bench_compare_composition_read(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_backend::Backend;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_composition_read");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -440,11 +431,12 @@ fn bench_compare_composition_read(c: &mut Criterion) {
         .compressor(PassthroughCompressor)
         .build();
     // Use RaceReadPolicy for read benchmarks
-    let static_composition = CompositionBackend::new(static_l1, static_l2).with_policy(
-        CompositionPolicy::new()
-            .read(RaceReadPolicy::new())
-            .refill(NeverRefill::new()),
-    );
+    let static_composition = CompositionBackend::new(static_l1, static_l2, BenchOffload)
+        .with_policy(
+            CompositionPolicy::new()
+                .read(RaceReadPolicy::new())
+                .refill(NeverRefill::new()),
+        );
 
     // Generate cache key using extractors
     let extractors = create_extractors();
@@ -465,12 +457,7 @@ fn bench_compare_composition_read(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         static_composition
-            .set::<BenchResponse>(
-                &cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -491,7 +478,7 @@ fn bench_compare_composition_read(c: &mut Criterion) {
     // CompositionBackend with dyn Backend inner layers, wrapped as dyn Backend
     // Use RaceReadPolicy for read benchmarks
     let dyn_composition: Arc<dyn Backend + Send> = Arc::new(
-        CompositionBackend::new(dyn_l1, dyn_l2).with_policy(
+        CompositionBackend::new(dyn_l1, dyn_l2, BenchOffload).with_policy(
             CompositionPolicy::new()
                 .read(RaceReadPolicy::new())
                 .refill(NeverRefill::new()),
@@ -502,12 +489,7 @@ fn bench_compare_composition_read(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         dyn_composition
-            .set::<BenchResponse>(
-                &cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -548,7 +530,6 @@ fn bench_compare_composition_write(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_backend::Backend;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_composition_write");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -563,11 +544,12 @@ fn bench_compare_composition_write(c: &mut Criterion) {
         .compressor(PassthroughCompressor)
         .build();
     // Use OptimisticParallelWritePolicy for write benchmarks
-    let static_composition = CompositionBackend::new(static_l1, static_l2).with_policy(
-        CompositionPolicy::new()
-            .write(OptimisticParallelWritePolicy::new())
-            .refill(NeverRefill::new()),
-    );
+    let static_composition = CompositionBackend::new(static_l1, static_l2, BenchOffload)
+        .with_policy(
+            CompositionPolicy::new()
+                .write(OptimisticParallelWritePolicy::new())
+                .refill(NeverRefill::new()),
+        );
 
     // Generate cache key using extractors
     let extractors = create_extractors();
@@ -600,7 +582,7 @@ fn bench_compare_composition_write(c: &mut Criterion) {
     // CompositionBackend with dyn Backend inner layers, wrapped as dyn Backend
     // Use OptimisticParallelWritePolicy for write benchmarks
     let dyn_composition: Arc<dyn Backend + Send> = Arc::new(
-        CompositionBackend::new(dyn_l1, dyn_l2).with_policy(
+        CompositionBackend::new(dyn_l1, dyn_l2, BenchOffload).with_policy(
             CompositionPolicy::new()
                 .write(OptimisticParallelWritePolicy::new())
                 .refill(NeverRefill::new()),
@@ -614,12 +596,7 @@ fn bench_compare_composition_write(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let mut ctx = CacheContext::default().boxed();
             static_composition
-                .set::<BenchResponse>(
-                    &key_write,
-                    &value_write,
-                    Some(Duration::from_secs(300)),
-                    &mut ctx,
-                )
+                .set::<BenchResponse>(&key_write, &value_write, &mut ctx)
                 .await
                 .unwrap();
         });
@@ -632,12 +609,7 @@ fn bench_compare_composition_write(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let mut ctx = CacheContext::default().boxed();
             dyn_composition
-                .set::<BenchResponse>(
-                    &key_write,
-                    &value_write,
-                    Some(Duration::from_secs(300)),
-                    &mut ctx,
-                )
+                .set::<BenchResponse>(&key_write, &value_write, &mut ctx)
                 .await
                 .unwrap();
         });
@@ -784,7 +756,6 @@ fn bench_compare_extractors(c: &mut Criterion) {
 fn bench_compare_cache_future_hit(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_cache_future_hit");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -823,12 +794,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         static_backend
-            .set::<BenchResponse>(
-                &static_cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&static_cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -862,12 +828,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         dyn_backend
-            .set::<BenchResponse>(
-                &dyn_cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&dyn_cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -1176,7 +1137,6 @@ fn bench_compare_body_extractors(c: &mut Criterion) {
 fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
     use hitbox::Extractor;
     use hitbox_core::{CacheContext, CacheValue};
-    use std::time::Duration;
 
     let mut group = c.benchmark_group("compare_body_cache_future_hit");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1215,12 +1175,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         static_backend
-            .set::<BenchResponse>(
-                &static_cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&static_cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });
@@ -1254,12 +1209,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
     rt.block_on(async {
         let mut ctx = CacheContext::default().boxed();
         dyn_backend
-            .set::<BenchResponse>(
-                &dyn_cache_key,
-                &cache_value,
-                Some(Duration::from_secs(300)),
-                &mut ctx,
-            )
+            .set::<BenchResponse>(&dyn_cache_key, &cache_value, &mut ctx)
             .await
             .unwrap();
     });

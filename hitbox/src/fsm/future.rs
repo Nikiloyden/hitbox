@@ -585,9 +585,8 @@ where
                                 this.concurrency_manager.resolve(&cache_key, &cache_value);
                             }
                             let update_cache_future = Box::pin(async move {
-                                let update_cache_result = backend
-                                    .set::<Res>(&cache_key, &cache_value, None, &mut ctx)
-                                    .await;
+                                let update_cache_result =
+                                    backend.set::<Res>(&cache_key, &cache_value, &mut ctx).await;
                                 let upstream_result =
                                     Res::from_cached(cache_value.into_inner()).await;
                                 (update_cache_result, upstream_result, ctx)

@@ -1,18 +1,34 @@
 //! Tests for context-based refill with dynamic dispatch (trait objects).
 //!
 //! This test verifies that the BackendContext implementation correctly enables
-//! refill operations when CompositionBackend is used through `Box<dyn Backend>`.
+//! refill operations when CompositionBackend is used through `Arc<dyn Backend>`.
+
+use std::future::Future;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionBackend;
-use hitbox_backend::{Backend, CacheBackend};
+use hitbox_backend::{CacheBackend, SyncBackend, UnsyncBackend};
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
     Predicate,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use smol_str::SmolStr;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -55,10 +71,10 @@ impl CacheableResponse for TestValue {
 }
 
 #[tokio::test]
-async fn test_refill_with_boxed_composition_backend() {
+async fn test_refill_with_arc_composition_backend() {
     // Create L1 and L2 as trait objects
-    let l1: Box<dyn Backend> = Box::new(TestBackend::new());
-    let l2: Box<dyn Backend> = Box::new(TestBackend::new());
+    let l1: Arc<SyncBackend> = Arc::new(TestBackend::new());
+    let l2: Arc<SyncBackend> = Arc::new(TestBackend::new());
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -71,13 +87,11 @@ async fn test_refill_with_boxed_composition_backend() {
 
     // Populate only L2
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l2.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Create composition backend and use it as trait object
-    let composition = CompositionBackend::new(l1, l2);
-    let backend: Box<dyn Backend> = Box::new(composition);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
+    let backend: Arc<SyncBackend> = Arc::new(composition);
 
     // Read through trait object - should trigger refill
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -110,16 +124,14 @@ async fn test_refill_with_trait_object_verifies_l1_populated() {
 
     // Populate only L2
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l2.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Verify initial state
     assert!(!l1_inspect.has(&key), "L1 should be empty initially");
 
     // Create composition and use as trait object
-    let composition = CompositionBackend::new(l1, l2);
-    let backend: Box<dyn Backend> = Box::new(composition);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
+    let backend: Arc<SyncBackend> = Arc::new(composition);
 
     // Trigger refill through trait object
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -160,13 +172,13 @@ async fn test_direct_write_through_trait_object() {
     );
 
     // Create composition as trait object
-    let composition = CompositionBackend::new(l1, l2);
-    let backend: Box<dyn Backend> = Box::new(composition);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
+    let backend: Arc<SyncBackend> = Arc::new(composition);
 
     // Direct write through trait object
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -204,16 +216,14 @@ async fn test_nested_composition_with_trait_objects() {
 
     // Populate only L3
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l3.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l3.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Verify L1 and L2 are empty initially
     assert!(!l1_inspect.has(&key), "L1 should be empty initially");
     assert!(!l2_inspect.has(&key), "L2 should be empty initially");
 
     // Create nested composition: L2+L3 first
-    let l2_l3_composition = CompositionBackend::new(l2, l3);
+    let l2_l3_composition = CompositionBackend::new(l2, l3, TestOffload);
 
     // First, trigger refill at the inner level by reading through L2+L3
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -230,11 +240,11 @@ async fn test_nested_composition_with_trait_objects() {
     );
 
     // Wrap inner composition as trait object
-    let l2_l3_boxed: Box<dyn Backend> = Box::new(l2_l3_composition);
+    let l2_l3_arc: Arc<SyncBackend> = Arc::new(l2_l3_composition);
 
     // Compose L1 with the nested backend
-    let full_composition = CompositionBackend::new(l1, l2_l3_boxed);
-    let backend: Box<dyn Backend> = Box::new(full_composition);
+    let full_composition = CompositionBackend::new(l1, l2_l3_arc, TestOffload);
+    let backend: Arc<SyncBackend> = Arc::new(full_composition);
 
     // Clear L1 to test outer refill
     l1_inspect.clear();
@@ -254,9 +264,7 @@ async fn test_nested_composition_with_trait_objects() {
 
 #[tokio::test]
 async fn test_arc_wrapped_composition_refill() {
-    use std::sync::Arc;
-
-    // Test with Arc<dyn Backend + Send> instead of Box
+    // Test with Arc<UnsyncBackend> instead of Box
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
 
@@ -264,8 +272,8 @@ async fn test_arc_wrapped_composition_refill() {
     let l1_inspect = l1.clone();
 
     // Wrap in Arc with Send bound
-    let l1_arc: Arc<dyn Backend + Send> = Arc::new(l1);
-    let l2_arc: Arc<dyn Backend + Send> = Arc::new(l2);
+    let l1_arc: Arc<UnsyncBackend> = Arc::new(l1);
+    let l2_arc: Arc<UnsyncBackend> = Arc::new(l2);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -279,7 +287,7 @@ async fn test_arc_wrapped_composition_refill() {
     // Populate only L2 directly before wrapping
     let mut ctx: BoxContext = CacheContext::default().boxed();
     l2_arc
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -287,7 +295,7 @@ async fn test_arc_wrapped_composition_refill() {
     assert!(!l1_inspect.has(&key), "L1 should be empty initially");
 
     // Create composition with Arc backends
-    let composition = CompositionBackend::new(l1_arc, l2_arc);
+    let composition = CompositionBackend::new(l1_arc, l2_arc, TestOffload);
 
     // Trigger refill
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -325,13 +333,13 @@ async fn test_multiple_refills_through_trait_object() {
 
         let mut ctx: BoxContext = CacheContext::default().boxed();
         l2_ref
-            .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+            .set::<TestValue>(&key, &value, &mut ctx)
             .await
             .unwrap();
     }
 
-    let composition = CompositionBackend::new(l1, l2);
-    let backend: Box<dyn Backend> = Box::new(composition);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
+    let backend: Arc<SyncBackend> = Arc::new(composition);
 
     // Trigger refills through trait object
     for i in 0..5 {

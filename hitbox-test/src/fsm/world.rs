@@ -359,12 +359,7 @@ impl FsmWorld {
                 let expire = Some(Utc::now() + chrono::Duration::hours(1));
                 let cache_value = CacheValue::new(*value, expire, None);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
                     .await;
             }
             CacheState::Stale(value) => {
@@ -375,12 +370,7 @@ impl FsmWorld {
                 let stale = Some(Utc::now() - chrono::Duration::seconds(1));
                 let cache_value = CacheValue::new(*value, expire, stale);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
                     .await;
             }
             CacheState::Expired(value) => {
@@ -390,12 +380,7 @@ impl FsmWorld {
                 let stale = Some(Utc::now() - chrono::Duration::minutes(30));
                 let cache_value = CacheValue::new(*value, expire, stale);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
                     .await;
             }
         }

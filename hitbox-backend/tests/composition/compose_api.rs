@@ -2,17 +2,32 @@
 //!
 //! These tests demonstrate the fluent API for building CompositionBackend hierarchies.
 
+use std::future::Future;
+
 use chrono::Utc;
 use hitbox_backend::composition::CompositionPolicy;
 use hitbox_backend::composition::policy::{NeverRefill, RaceReadPolicy};
 use hitbox_backend::{CacheBackend, Compose};
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue};
-use std::time::Duration;
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, Offload};
+use smol_str::SmolStr;
 
 use crate::common::TestBackend;
 
 // Reuse TestValue from nested tests
 use super::nested::TestValue;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[tokio::test]
 async fn test_compose_trait_basic_usage() {
@@ -20,7 +35,7 @@ async fn test_compose_trait_basic_usage() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
 
-    let cache = l1.clone().compose(l2.clone());
+    let cache = l1.clone().compose(l2.clone(), TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -34,7 +49,7 @@ async fn test_compose_trait_basic_usage() {
     // Write through composition
     let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -61,10 +76,10 @@ async fn test_compose_with_custom_policy() {
     let l2 = TestBackend::new();
 
     let policy = CompositionPolicy::new()
-        .read(RaceReadPolicy)
+        .read(RaceReadPolicy::new())
         .refill(NeverRefill);
 
-    let cache = l1.clone().compose_with(l2.clone(), policy);
+    let cache = l1.clone().compose_with(l2.clone(), TestOffload, policy);
 
     let key = CacheKey::from_str("test", "custom_policy");
     let value = CacheValue::new(
@@ -77,9 +92,7 @@ async fn test_compose_with_custom_policy() {
 
     // Populate only L2
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l2.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Read through composition (uses RaceReadPolicy)
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -104,7 +117,9 @@ async fn test_compose_nested_3_levels() {
     let l3 = TestBackend::new();
 
     // Build: L1 + (L2 + L3)
-    let cache = l1.clone().compose(l2.clone().compose(l3.clone()));
+    let cache = l1
+        .clone()
+        .compose(l2.clone().compose(l3.clone(), TestOffload), TestOffload);
 
     let key = CacheKey::from_str("test", "nested_compose");
     let value = CacheValue::new(
@@ -118,7 +133,7 @@ async fn test_compose_nested_3_levels() {
     // Write cascades to all 3 levels
     let mut ctx: BoxContext = CacheContext::default().boxed();
     cache
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -146,7 +161,7 @@ async fn test_compose_with_builder_chaining() {
 
     let cache = l1
         .clone()
-        .compose(l2.clone())
+        .compose(l2.clone(), TestOffload)
         .read(RaceReadPolicy::new())
         .refill(NeverRefill::new());
 
@@ -161,9 +176,7 @@ async fn test_compose_with_builder_chaining() {
 
     // Populate only L2
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l2.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l2.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Read through composition
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -187,9 +200,11 @@ async fn test_compose_4_levels_cascade() {
     let l3 = TestBackend::new();
     let l4 = TestBackend::new();
 
-    let cache = l1
-        .clone()
-        .compose(l2.clone().compose(l3.clone().compose(l4.clone())));
+    let cache = l1.clone().compose(
+        l2.clone()
+            .compose(l3.clone().compose(l4.clone(), TestOffload), TestOffload),
+        TestOffload,
+    );
 
     let key = CacheKey::from_str("test", "deep");
     let value = CacheValue::new(
@@ -202,9 +217,7 @@ async fn test_compose_4_levels_cascade() {
 
     // Populate only L4 (deepest level)
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    l4.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    l4.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     // Read cascades through all 4 levels
     let mut ctx: BoxContext = CacheContext::default().boxed();

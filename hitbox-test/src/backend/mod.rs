@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use hitbox_backend::format::FormatExt;
 use hitbox_backend::{Backend, CacheBackend, CacheKeyFormat, DeleteStatus};
 use hitbox_core::{
@@ -74,6 +72,7 @@ impl CacheableResponse for TestResponse {
 /// - TTL expiration
 /// - Delete operations
 /// - Missing key handling
+/// - Metadata (expire/stale) preservation
 pub async fn run_backend_tests<B: CacheBackend + Send + Sync>(backend: &B) {
     test_write_and_read(backend).await;
     test_write_and_read_with_metadata(backend).await;
@@ -83,6 +82,10 @@ pub async fn run_backend_tests<B: CacheBackend + Send + Sync>(backend: &B) {
     test_overwrite(backend).await;
     test_multiple_keys(backend).await;
     test_binary_data(backend).await;
+    test_expire_metadata_exact_match(backend).await;
+    test_stale_metadata_exact_match(backend).await;
+    test_expire_and_stale_combined(backend).await;
+    test_no_metadata(backend).await;
 }
 
 async fn test_write_and_read<B: CacheBackend>(backend: &B) {
@@ -93,7 +96,7 @@ async fn test_write_and_read<B: CacheBackend>(backend: &B) {
     // Write
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -120,7 +123,7 @@ async fn test_write_and_read_with_metadata<B: CacheBackend>(backend: &B) {
     // Write
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -146,7 +149,7 @@ async fn test_delete_existing<B: CacheBackend>(backend: &B) {
     // Write
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -197,7 +200,7 @@ async fn test_overwrite<B: CacheBackend>(backend: &B) {
     let value1 = CacheValue::new(response1, None, None);
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value1, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value1, &mut ctx)
         .await
         .expect("failed to write first value");
 
@@ -206,7 +209,7 @@ async fn test_overwrite<B: CacheBackend>(backend: &B) {
     let value2 = CacheValue::new(response2.clone(), None, None);
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value2, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value2, &mut ctx)
         .await
         .expect("failed to overwrite");
 
@@ -241,7 +244,7 @@ async fn test_multiple_keys<B: CacheBackend>(backend: &B) {
         let value = CacheValue::new(response.clone(), None, None);
         let mut ctx: BoxContext = CacheContext::default().boxed();
         backend
-            .set::<TestResponse>(key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+            .set::<TestResponse>(key, &value, &mut ctx)
             .await
             .expect("failed to write");
     }
@@ -273,7 +276,7 @@ async fn test_binary_data<B: CacheBackend>(backend: &B) {
     // Write
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write binary data");
 
@@ -292,6 +295,182 @@ async fn test_binary_data<B: CacheBackend>(backend: &B) {
     );
 }
 
+// =============================================================================
+// TTL/Stale Metadata Tests
+// =============================================================================
+
+/// Maximum allowed drift for expire time comparisons (1 second).
+/// Some backends (like Redis) derive expire from TTL, causing small drift.
+const EXPIRE_DRIFT_TOLERANCE_MS: i64 = 1000;
+
+/// Check if two DateTimes are within tolerance (for expire comparisons)
+fn expire_times_match(actual: Option<DateTime<Utc>>, expected: Option<DateTime<Utc>>) -> bool {
+    match (actual, expected) {
+        (Some(a), Some(e)) => (a - e).num_milliseconds().abs() <= EXPIRE_DRIFT_TOLERANCE_MS,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Check if two DateTimes match at millisecond precision.
+/// Some backends store timestamps at millisecond precision, losing sub-ms data.
+fn stale_times_match(actual: Option<DateTime<Utc>>, expected: Option<DateTime<Utc>>) -> bool {
+    match (actual, expected) {
+        (Some(a), Some(e)) => a.timestamp_millis() == e.timestamp_millis(),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+async fn test_expire_metadata_exact_match<B: CacheBackend>(backend: &B) {
+    let key = CacheKey::from_str("test", "expire-exact");
+    let response = TestResponse::new(200, "expire-test", vec![1, 2, 3]);
+
+    // Use a specific expire time
+    let expire_time = Utc::now() + chrono::Duration::seconds(3600);
+    let value = CacheValue::new(response.clone(), Some(expire_time), None);
+
+    // Write
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    backend
+        .set::<TestResponse>(&key, &value, &mut ctx)
+        .await
+        .expect("failed to write");
+
+    // Read and verify expire time (with tolerance for TTL-based backends)
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    let result: Option<CacheValue<TestResponse>> = backend
+        .get::<TestResponse>(&key, &mut ctx)
+        .await
+        .expect("failed to read");
+
+    assert!(result.is_some(), "value should exist");
+    let cached = result.unwrap();
+    assert_eq!(cached.data, response, "data should match");
+    assert!(
+        expire_times_match(cached.expire, Some(expire_time)),
+        "expire time should match (within {}ms tolerance): actual={:?}, expected={:?}",
+        EXPIRE_DRIFT_TOLERANCE_MS,
+        cached.expire,
+        expire_time
+    );
+    assert!(cached.stale.is_none(), "stale should be None");
+}
+
+async fn test_stale_metadata_exact_match<B: CacheBackend>(backend: &B) {
+    let key = CacheKey::from_str("test", "stale-exact");
+    let response = TestResponse::new(201, "stale-test", vec![4, 5, 6]);
+
+    // Use specific expire and stale times
+    let expire_time = Utc::now() + chrono::Duration::seconds(3600);
+    let stale_time = Utc::now() + chrono::Duration::seconds(1800);
+    let value = CacheValue::new(response.clone(), Some(expire_time), Some(stale_time));
+
+    // Write
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    backend
+        .set::<TestResponse>(&key, &value, &mut ctx)
+        .await
+        .expect("failed to write");
+
+    // Read and verify exact stale time
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    let result: Option<CacheValue<TestResponse>> = backend
+        .get::<TestResponse>(&key, &mut ctx)
+        .await
+        .expect("failed to read");
+
+    assert!(result.is_some(), "value should exist");
+    let cached = result.unwrap();
+    assert_eq!(cached.data, response, "data should match");
+    assert!(
+        stale_times_match(cached.stale, Some(stale_time)),
+        "stale time should match (at ms precision): actual={:?}, expected={:?}",
+        cached.stale,
+        stale_time
+    );
+    assert!(
+        expire_times_match(cached.expire, Some(expire_time)),
+        "expire time should match (within tolerance): actual={:?}, expected={:?}",
+        cached.expire,
+        expire_time
+    );
+}
+
+async fn test_expire_and_stale_combined<B: CacheBackend>(backend: &B) {
+    let key = CacheKey::from_str("test", "expire-stale-combined");
+    let response = TestResponse::new(202, "combined-test", vec![7, 8, 9]);
+
+    // Set expire far in the future, stale closer
+    let expire_time = Utc::now() + chrono::Duration::hours(24);
+    let stale_time = Utc::now() + chrono::Duration::hours(1);
+    let value = CacheValue::new(response.clone(), Some(expire_time), Some(stale_time));
+
+    // Write
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    backend
+        .set::<TestResponse>(&key, &value, &mut ctx)
+        .await
+        .expect("failed to write");
+
+    // Read and verify both metadata fields
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    let result: Option<CacheValue<TestResponse>> = backend
+        .get::<TestResponse>(&key, &mut ctx)
+        .await
+        .expect("failed to read");
+
+    assert!(result.is_some(), "value should exist");
+    let cached = result.unwrap();
+    assert_eq!(cached.data, response, "data should match");
+    assert!(
+        expire_times_match(cached.expire, Some(expire_time)),
+        "expire time should match (within tolerance): actual={:?}, expected={:?}",
+        cached.expire,
+        expire_time
+    );
+    assert!(
+        stale_times_match(cached.stale, Some(stale_time)),
+        "stale time should match (at ms precision): actual={:?}, expected={:?}",
+        cached.stale,
+        stale_time
+    );
+
+    // Verify stale < expire (logical consistency)
+    assert!(
+        stale_time < expire_time,
+        "stale time should be before expire time"
+    );
+}
+
+async fn test_no_metadata<B: CacheBackend>(backend: &B) {
+    let key = CacheKey::from_str("test", "no-metadata");
+    let response = TestResponse::new(203, "no-metadata-test", vec![10, 11, 12]);
+
+    // No expire, no stale
+    let value = CacheValue::new(response.clone(), None, None);
+
+    // Write
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    backend
+        .set::<TestResponse>(&key, &value, &mut ctx)
+        .await
+        .expect("failed to write");
+
+    // Read and verify no metadata
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    let result: Option<CacheValue<TestResponse>> = backend
+        .get::<TestResponse>(&key, &mut ctx)
+        .await
+        .expect("failed to read");
+
+    assert!(result.is_some(), "value should exist");
+    let cached = result.unwrap();
+    assert_eq!(cached.data, response, "data should match");
+    assert!(cached.expire.is_none(), "expire should be None");
+    assert!(cached.stale.is_none(), "stale should be None");
+}
+
 /// Test UrlEncoded key + JSON value format
 pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend: &B) {
     // Verify backend key format configuration
@@ -308,7 +487,7 @@ pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend:
     // Write and read
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -357,7 +536,7 @@ pub async fn test_url_encoded_key_bincode_value<B: Backend + CacheBackend>(backe
 
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -405,7 +584,7 @@ pub async fn test_bitcode_key_json_value<B: Backend + CacheBackend>(backend: &B)
 
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -453,7 +632,7 @@ pub async fn test_bitcode_key_bincode_value<B: Backend + CacheBackend>(backend: 
 
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write");
 
@@ -513,7 +692,7 @@ where
     // Write to backend (should apply compression via compressor)
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<TestResponse>(&key, &value, &mut ctx)
         .await
         .expect("failed to write to backend");
 

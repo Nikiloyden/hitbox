@@ -9,7 +9,6 @@ use hitbox_core::{
     Predicate,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -72,8 +71,7 @@ async fn test_always_refill_policy() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 
@@ -97,8 +95,7 @@ async fn test_never_refill_policy() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 
@@ -126,8 +123,7 @@ async fn test_manual_refill_with_always_policy() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 
@@ -151,8 +147,7 @@ async fn test_manual_refill_with_never_policy() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 
@@ -175,8 +170,7 @@ async fn test_default_always_refill() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 
@@ -199,8 +193,7 @@ async fn test_default_never_refill() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     policy
         .execute(&value, || async {
-            l1.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-                .await
+            l1.set::<TestValue>(&key, &value, &mut ctx).await
         })
         .await;
 

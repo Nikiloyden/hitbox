@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
 use bincode::{
@@ -221,16 +221,14 @@ where
         .map_err(|e| BackendError::InternalError(Box::new(e)))?
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         let store = self.store.clone();
 
         let key_bytes = encode_to_vec(key, bincode_config())
             .map_err(|e| BackendError::InternalError(Box::new(e)))?;
+
+        // Compute TTL from value.ttl() (derived from value.expire)
+        let ttl = value.ttl();
 
         let serializable: SerializableCacheValue = value.into();
         let value_bytes = encode_to_vec(&serializable, bincode_config())
@@ -309,10 +307,7 @@ mod tests {
         );
 
         // Write with 1 hour TTL
-        backend
-            .write(&key, value.clone(), Some(Duration::from_secs(3600)))
-            .await
-            .unwrap();
+        backend.write(&key, value.clone()).await.unwrap();
 
         // Read
         let result = backend.read(&key).await.unwrap();
@@ -333,10 +328,7 @@ mod tests {
         );
 
         // Write
-        backend
-            .write(&key, value, Some(Duration::from_secs(3600)))
-            .await
-            .unwrap();
+        backend.write(&key, value).await.unwrap();
 
         // Delete
         let status = backend.remove(&key).await.unwrap();
@@ -379,10 +371,7 @@ mod tests {
         );
 
         // Write
-        backend
-            .write(&key, value, Some(Duration::from_secs(3600)))
-            .await
-            .unwrap();
+        backend.write(&key, value).await.unwrap();
 
         // Read
         let result = backend.read(&key).await.unwrap();
@@ -404,10 +393,7 @@ mod tests {
         );
 
         // Write with backend1
-        backend1
-            .write(&key, value, Some(Duration::from_secs(3600)))
-            .await
-            .unwrap();
+        backend1.write(&key, value).await.unwrap();
 
         // Read with backend2
         let result = backend2.read(&key).await.unwrap();
@@ -427,10 +413,7 @@ mod tests {
             Some(Utc::now() + chrono::Duration::hours(1)),
             None,
         );
-        backend
-            .write(&key1, value1, Some(Duration::from_secs(3600)))
-            .await
-            .unwrap();
+        backend.write(&key1, value1).await.unwrap();
 
         // Key 2 with 24 hour TTL
         let key2 = CacheKey::from_str("key2", "1");
@@ -439,10 +422,7 @@ mod tests {
             Some(Utc::now() + chrono::Duration::hours(24)),
             None,
         );
-        backend
-            .write(&key2, value2, Some(Duration::from_secs(86400)))
-            .await
-            .unwrap();
+        backend.write(&key2, value2).await.unwrap();
 
         // Both should be readable
         assert!(backend.read(&key1).await.unwrap().is_some());

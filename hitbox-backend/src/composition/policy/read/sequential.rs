@@ -4,7 +4,7 @@
 //! It's the default and most common strategy for multi-tier caching.
 
 use async_trait::async_trait;
-use hitbox_core::{BoxContext, CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheKey, CacheValue, Offload};
 use std::future::Future;
 
 use super::{CompositionReadPolicy, ReadResult};
@@ -42,23 +42,25 @@ impl SequentialReadPolicy {
 
 #[async_trait]
 impl CompositionReadPolicy for SequentialReadPolicy {
-    #[tracing::instrument(skip(self, read_l1, read_l2), level = "trace")]
-    async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
+    #[tracing::instrument(skip(self, key, read_l1, read_l2, _offload), level = "trace")]
+    async fn execute_with<T, E, F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         read_l1: F1,
         read_l2: F2,
+        _offload: &O,
     ) -> Result<ReadResult<T>, E>
     where
-        T: Send + 'a,
-        E: Send + std::fmt::Debug + 'a,
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
-        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
+        T: Send + 'static,
+        E: Send + std::fmt::Debug + 'static,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        O: Offload,
     {
         // Try L1 first
-        let (l1_result, l1_ctx) = read_l1(key).await;
+        let (l1_result, l1_ctx) = read_l1(key.clone()).await;
         match l1_result {
             Ok(Some(value)) => {
                 // L1 hit - return immediately with L1 context

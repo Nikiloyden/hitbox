@@ -5,7 +5,7 @@
 //! write performance and availability based on application requirements.
 
 use async_trait::async_trait;
-use hitbox_core::CacheKey;
+use hitbox_core::{CacheKey, Offload};
 use std::future::Future;
 
 use crate::BackendError;
@@ -15,7 +15,7 @@ pub mod race;
 pub mod sequential;
 
 pub use optimistic_parallel::OptimisticParallelWritePolicy;
-pub use race::RaceWritePolicy;
+pub use race::{RaceLoserPolicy, RaceWritePolicy};
 pub use sequential::SequentialWritePolicy;
 
 /// Policy trait for controlling write operations across cache layers.
@@ -30,6 +30,7 @@ pub use sequential::SequentialWritePolicy;
 /// The policy is generic over:
 /// * `E` - The error type (e.g., `BackendError`)
 /// * `F1, F2` - Closures for writing to L1 and L2
+/// * `O` - The offload type for background task execution
 ///
 /// # Example
 ///
@@ -40,9 +41,10 @@ pub use sequential::SequentialWritePolicy;
 ///
 /// // Use with CacheBackend level
 /// policy.execute_with(
-///     &key,
-///     |k| async { l1.set::<User>(k, value, ttl).await },
-///     |k| async { l2.set::<User>(k, value, ttl).await },
+///     key.clone(),
+///     |k| async { l1.set::<User>(&k, value, ttl).await },
+///     |k| async { l2.set::<User>(&k, value, ttl).await },
+///     &offload,
 /// ).await?;
 /// ```
 #[async_trait]
@@ -54,9 +56,10 @@ pub trait CompositionWritePolicy: Send + Sync {
     /// (like serialization or validation).
     ///
     /// # Arguments
-    /// * `key` - The cache key to write
+    /// * `key` - The cache key to write (owned for `'static` futures)
     /// * `write_l1` - Closure that writes to L1
     /// * `write_l2` - Closure that writes to L2
+    /// * `offload` - Offload manager for spawning background tasks (e.g., losing race futures)
     ///
     /// # Returns
     /// Success if the policy's success criteria are met. Different policies have
@@ -64,19 +67,22 @@ pub trait CompositionWritePolicy: Send + Sync {
     ///
     /// # Generic Parameters
     /// * `F1, F2` - Closures for writing to L1 and L2 that return `BackendResult<()>`
+    /// * `O` - The offload type for background task execution
     ///
     /// # Error Handling
     /// When both layers fail, implementations should preserve both errors in a
     /// `CompositionError::BothLayersFailed` for better debugging.
-    async fn execute_with<'a, F1, F2, Fut1, Fut2>(
+    async fn execute_with<F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         write_l1: F1,
         write_l2: F2,
+        offload: &O,
     ) -> Result<(), BackendError>
     where
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<(), BackendError>> + Send + 'a,
-        Fut2: Future<Output = Result<(), BackendError>> + Send + 'a;
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
+        Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
+        O: Offload;
 }

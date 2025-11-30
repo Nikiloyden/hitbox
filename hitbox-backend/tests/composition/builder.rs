@@ -1,5 +1,9 @@
 //! Tests for CompositionPolicy builder pattern.
 
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionPolicy;
@@ -13,13 +17,24 @@ use hitbox_backend::{
     DeleteStatus, PassthroughCompressor,
 };
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
     Predicate, Raw,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use smol_str::SmolStr;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -46,12 +61,7 @@ impl Backend for TestBackend {
         Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.store.lock().unwrap().insert(key.clone(), value);
         Ok(())
     }
@@ -170,7 +180,7 @@ async fn test_backend_with_composition_policy() {
         .write(SequentialWritePolicy::new())
         .refill(NeverRefill::new());
 
-    let backend = CompositionBackend::new(l1, l2).with_policy(policy);
+    let backend = CompositionBackend::new(l1, l2, TestOffload).with_policy(policy);
 
     // All custom policies should be set
     let _ = backend.read_policy();
@@ -188,7 +198,7 @@ async fn test_backend_with_policy_functional() {
         .write(OptimisticParallelWritePolicy::new())
         .refill(AlwaysRefill::new());
 
-    let backend = CompositionBackend::new(l1.clone(), l2.clone()).with_policy(policy);
+    let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).with_policy(policy);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -203,7 +213,7 @@ async fn test_backend_with_policy_functional() {
 
     // Write via backend
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 

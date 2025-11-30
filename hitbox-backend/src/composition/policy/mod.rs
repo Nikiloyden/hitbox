@@ -34,7 +34,8 @@ pub use builder::CompositionPolicy;
 
 // Re-export read policies
 pub use read::{
-    CompositionReadPolicy, ParallelReadPolicy, RaceReadPolicy, ReadResult, SequentialReadPolicy,
+    CompositionReadPolicy, ParallelReadPolicy, RaceLoserPolicy as RaceReadLoserPolicy,
+    RaceReadPolicy, ReadResult, SequentialReadPolicy,
 };
 
 // Re-export refill policies
@@ -42,5 +43,6 @@ pub use refill::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
 
 // Re-export write policies
 pub use write::{
-    CompositionWritePolicy, OptimisticParallelWritePolicy, RaceWritePolicy, SequentialWritePolicy,
+    CompositionWritePolicy, OptimisticParallelWritePolicy, RaceLoserPolicy as RaceWriteLoserPolicy,
+    RaceWritePolicy, SequentialWritePolicy,
 };

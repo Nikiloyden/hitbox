@@ -9,7 +9,6 @@ use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
 use hitbox_redis::RedisBackend;
 use http::Response;
-use std::time::Duration;
 use tempfile::TempDir;
 
 // Use Empty as a placeholder body type since we only use BufferedBody::Complete
@@ -51,7 +50,7 @@ async fn bench_write_single<B>(
     let value = CacheValue::new(serialized.clone(), None, None);
     let mut ctx = CacheContext::default().boxed();
     backend
-        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<BenchResponse>(&key, &value, &mut ctx)
         .await
         .unwrap();
 }
@@ -81,7 +80,7 @@ async fn bench_mixed_single<B>(
 
     // Write
     backend
-        .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+        .set::<BenchResponse>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -141,7 +140,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }
@@ -254,7 +253,7 @@ fn feoxdb_backend_benchmarks(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }
@@ -388,7 +387,7 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
                 let value = CacheValue::new(response.clone(), None, None);
                 let mut ctx = CacheContext::default().boxed();
                 backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .unwrap();
             }

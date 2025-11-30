@@ -4,7 +4,7 @@
 //! preferring the response with the longest remaining TTL (freshest data).
 
 use async_trait::async_trait;
-use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, Offload};
 use std::future::Future;
 
 use super::{CompositionReadPolicy, ReadResult};
@@ -58,23 +58,26 @@ impl ParallelReadPolicy {
 
 #[async_trait]
 impl CompositionReadPolicy for ParallelReadPolicy {
-    #[tracing::instrument(skip(self, read_l1, read_l2), level = "trace")]
-    async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
+    #[tracing::instrument(skip(self, key, read_l1, read_l2, _offload), level = "trace")]
+    async fn execute_with<T, E, F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         read_l1: F1,
         read_l2: F2,
+        _offload: &O,
     ) -> Result<ReadResult<T>, E>
     where
-        T: Send + 'a,
-        E: Send + std::fmt::Debug + 'a,
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
-        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
+        T: Send + 'static,
+        E: Send + std::fmt::Debug + 'static,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        O: Offload,
     {
         // Query both in parallel and wait for both to complete
-        let ((l1_result, l1_ctx), (l2_result, l2_ctx)) = futures::join!(read_l1(key), read_l2(key));
+        let ((l1_result, l1_ctx), (l2_result, l2_ctx)) =
+            futures::join!(read_l1(key.clone()), read_l2(key));
 
         // Aggregate results, preferring freshest data (by TTL)
         match (l1_result, l2_result) {

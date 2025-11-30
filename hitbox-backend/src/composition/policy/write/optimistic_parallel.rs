@@ -4,7 +4,7 @@
 //! one write succeeds, maximizing availability at the cost of potential inconsistency.
 
 use async_trait::async_trait;
-use hitbox_core::CacheKey;
+use hitbox_core::{CacheKey, Offload};
 use std::future::Future;
 
 use super::CompositionWritePolicy;
@@ -53,21 +53,23 @@ impl OptimisticParallelWritePolicy {
 
 #[async_trait]
 impl CompositionWritePolicy for OptimisticParallelWritePolicy {
-    #[tracing::instrument(skip(self, write_l1, write_l2), level = "trace")]
-    async fn execute_with<'a, F1, F2, Fut1, Fut2>(
+    #[tracing::instrument(skip(self, key, write_l1, write_l2, _offload), level = "trace")]
+    async fn execute_with<F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         write_l1: F1,
         write_l2: F2,
+        _offload: &O,
     ) -> Result<(), BackendError>
     where
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<(), BackendError>> + Send + 'a,
-        Fut2: Future<Output = Result<(), BackendError>> + Send + 'a,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
+        Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
+        O: Offload,
     {
         // Write to both in parallel
-        let (l1_result, l2_result) = futures::join!(write_l1(key), write_l2(key));
+        let (l1_result, l2_result) = futures::join!(write_l1(key.clone()), write_l2(key));
 
         // Aggregate results - succeed if at least one succeeds
         match (l1_result, l2_result) {

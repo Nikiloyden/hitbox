@@ -9,7 +9,7 @@
 //! ```ignore
 //! use hitbox_backend::composition::Compose;
 //!
-//! let cache = mem_backend.compose(redis_backend);
+//! let cache = mem_backend.compose(redis_backend, offload);
 //! ```
 //!
 //! Composition with custom policies:
@@ -21,12 +21,13 @@
 //!     .read(RaceReadPolicy::new())
 //!     .write(SequentialWritePolicy::new());
 //!
-//! let cache = mem_backend.compose_with(redis_backend, policy);
+//! let cache = mem_backend.compose_with(redis_backend, offload, policy);
 //! ```
 
 use super::policy::{CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy};
 use super::{CompositionBackend, CompositionPolicy};
 use crate::Backend;
+use hitbox_core::Offload;
 
 /// Trait for composing backends into layered cache hierarchies.
 ///
@@ -39,14 +40,14 @@ use crate::Backend;
 /// use hitbox_backend::composition::Compose;
 ///
 /// // Simple composition with default policies
-/// let cache = l1_backend.compose(l2_backend);
+/// let cache = l1_backend.compose(l2_backend, offload);
 ///
 /// // Composition with custom policies
 /// let policy = CompositionPolicy::new()
 ///     .read(RaceReadPolicy::new())
 ///     .write(SequentialWritePolicy::new());
 ///
-/// let cache = l1_backend.compose_with(l2_backend, policy);
+/// let cache = l1_backend.compose_with(l2_backend, offload, policy);
 /// ```
 pub trait Compose: Backend + Sized {
     /// Compose this backend with another backend as L2, using default policies.
@@ -62,6 +63,7 @@ pub trait Compose: Backend + Sized {
     ///
     /// # Arguments
     /// * `l2` - The second-layer backend
+    /// * `offload` - Offload manager for background tasks
     ///
     /// # Example
     /// ```ignore
@@ -73,13 +75,14 @@ pub trait Compose: Backend + Sized {
     /// let redis = RedisBackend::new(client);
     ///
     /// // Moka as L1, Redis as L2
-    /// let cache = moka.compose(redis);
+    /// let cache = moka.compose(redis, offload);
     /// ```
-    fn compose<L2>(self, l2: L2) -> CompositionBackend<Self, L2>
+    fn compose<L2, O>(self, l2: L2, offload: O) -> CompositionBackend<Self, L2, O>
     where
         L2: Backend,
+        O: Offload,
     {
-        CompositionBackend::new(self, l2)
+        CompositionBackend::new(self, l2, offload)
     }
 
     /// Compose this backend with another backend as L2, using custom policies.
@@ -88,6 +91,7 @@ pub trait Compose: Backend + Sized {
     ///
     /// # Arguments
     /// * `l2` - The second-layer backend
+    /// * `offload` - Offload manager for background tasks
     /// * `policy` - Custom composition policies
     ///
     /// # Example
@@ -99,20 +103,22 @@ pub trait Compose: Backend + Sized {
     ///     .read(RaceReadPolicy::new())
     ///     .write(SequentialWritePolicy::new());
     ///
-    /// let cache = l1.compose_with(l2, policy);
+    /// let cache = l1.compose_with(l2, offload, policy);
     /// ```
-    fn compose_with<L2, R, W, F>(
+    fn compose_with<L2, O, R, W, F>(
         self,
         l2: L2,
+        offload: O,
         policy: CompositionPolicy<R, W, F>,
-    ) -> CompositionBackend<Self, L2, R, W, F>
+    ) -> CompositionBackend<Self, L2, O, R, W, F>
     where
         L2: Backend,
+        O: Offload,
         R: CompositionReadPolicy,
         W: CompositionWritePolicy,
         F: CompositionRefillPolicy,
     {
-        CompositionBackend::new(self, l2).with_policy(policy)
+        CompositionBackend::new(self, l2, offload).with_policy(policy)
     }
 }
 
@@ -134,14 +140,28 @@ mod tests {
         EntityPolicyConfig, Predicate, Raw,
     };
     use serde::{Deserialize, Serialize};
+    use smol_str::SmolStr;
     use std::collections::HashMap;
+    use std::future::Future;
     use std::sync::{Arc, Mutex};
-    use std::time::Duration;
 
     #[cfg(feature = "rkyv_format")]
     use rkyv::{Archive, Serialize as RkyvSerialize};
     #[cfg(feature = "rkyv_format")]
     use rkyv_typename::TypeName;
+
+    /// Test offload that spawns tasks with tokio::spawn
+    #[derive(Clone, Debug)]
+    struct TestOffload;
+
+    impl Offload for TestOffload {
+        fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+        where
+            F: Future<Output = ()> + Send + 'static,
+        {
+            tokio::spawn(future);
+        }
+    }
 
     #[derive(Clone, Debug)]
     struct TestBackend {
@@ -162,12 +182,7 @@ mod tests {
             Ok(self.store.lock().unwrap().get(key).cloned())
         }
 
-        async fn write(
-            &self,
-            key: &CacheKey,
-            value: CacheValue<Raw>,
-            _ttl: Option<Duration>,
-        ) -> BackendResult<()> {
+        async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
             self.store.lock().unwrap().insert(key.clone(), value);
             Ok(())
         }
@@ -233,9 +248,10 @@ mod tests {
     async fn test_compose_basic() {
         let l1 = TestBackend::new();
         let l2 = TestBackend::new();
+        let offload = TestOffload;
 
         // Use compose trait
-        let cache = l1.clone().compose(l2.clone());
+        let cache = l1.clone().compose(l2.clone(), offload);
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
@@ -249,7 +265,7 @@ mod tests {
         // Write and read
         let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+            .set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
@@ -280,13 +296,14 @@ mod tests {
 
         let l1 = TestBackend::new();
         let l2 = TestBackend::new();
+        let offload = TestOffload;
 
         // Use compose_with to specify custom policies
         let policy = CompositionPolicy::new()
             .read(RaceReadPolicy::new())
             .refill(NeverRefill::new());
 
-        let cache = l1.clone().compose_with(l2.clone(), policy);
+        let cache = l1.clone().compose_with(l2.clone(), offload, policy);
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
@@ -299,7 +316,7 @@ mod tests {
 
         // Populate only L2
         let mut ctx: BoxContext = CacheContext::default().boxed();
-        l2.set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        l2.set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
@@ -324,12 +341,13 @@ mod tests {
         let l1 = TestBackend::new();
         let l2 = TestBackend::new();
         let l3 = TestBackend::new();
+        let offload = TestOffload;
 
         // Create L2+L3 composition
-        let l2_l3 = l2.clone().compose(l3.clone());
+        let l2_l3 = l2.clone().compose(l3.clone(), offload.clone());
 
         // Compose L1 with the (L2+L3) composition
-        let cache = l1.clone().compose(l2_l3);
+        let cache = l1.clone().compose(l2_l3, offload);
 
         let key = CacheKey::from_str("test", "nested_key");
         let value = CacheValue::new(
@@ -343,7 +361,7 @@ mod tests {
         // Write through nested composition
         let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+            .set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
@@ -377,9 +395,13 @@ mod tests {
 
         let l1 = TestBackend::new();
         let l2 = TestBackend::new();
+        let offload = TestOffload;
 
         // Test method chaining: compose + builder methods
-        let cache = l1.clone().compose(l2.clone()).read(RaceReadPolicy::new());
+        let cache = l1
+            .clone()
+            .compose(l2.clone(), offload)
+            .read(RaceReadPolicy::new());
 
         let key = CacheKey::from_str("test", "chain_key");
         let value = CacheValue::new(
@@ -392,7 +414,7 @@ mod tests {
 
         let mut ctx: BoxContext = CacheContext::default().boxed();
         cache
-            .set::<MockResponse>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+            .set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
