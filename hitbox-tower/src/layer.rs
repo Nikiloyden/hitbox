@@ -3,6 +3,7 @@ use std::sync::Arc;
 use hitbox::backend::CacheBackend;
 use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox::offload::OffloadManager;
+use hitbox_http::HttpEndpoint;
 use hitbox_moka::MokaBackend;
 use tower::Layer;
 
@@ -48,31 +49,31 @@ where
     }
 }
 
-impl Cache<MokaBackend, (), NoopConcurrencyManager> {
-    pub fn builder() -> CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
+    pub fn builder() -> CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
         CacheBuilder::new()
     }
 }
 
 pub struct CacheBuilder<B, C, CM> {
     backend: Option<B>,
-    configuration: Option<C>,
+    configuration: C,
     offload_manager: Option<OffloadManager>,
     concurrency_manager: CM,
 }
 
-impl CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
     pub fn new() -> Self {
         Self {
             backend: None,
-            configuration: None,
+            configuration: HttpEndpoint::default(),
             offload_manager: None,
             concurrency_manager: NoopConcurrencyManager,
         }
     }
 }
 
-impl Default for CacheBuilder<MokaBackend, (), NoopConcurrencyManager> {
+impl Default for CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager> {
     fn default() -> Self {
         Self::new()
     }
@@ -94,7 +95,7 @@ where
     pub fn config<NC>(self, configuration: NC) -> CacheBuilder<B, NC, CM> {
         CacheBuilder {
             backend: self.backend,
-            configuration: Some(configuration),
+            configuration,
             offload_manager: self.offload_manager,
             concurrency_manager: self.concurrency_manager,
         }
@@ -119,7 +120,7 @@ where
     pub fn build(self) -> Cache<B, C, CM> {
         Cache {
             backend: Arc::new(self.backend.expect("Please add a cache backend")),
-            configuration: self.configuration.expect("Please add a configuration"),
+            configuration: self.configuration,
             offload_manager: self.offload_manager,
             concurrency_manager: self.concurrency_manager,
         }

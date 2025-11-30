@@ -6,5 +6,6 @@ pub mod upstream;
 pub use ::http::{Method, StatusCode};
 pub use hitbox::config::CacheConfig;
 pub use hitbox_configuration::{ConfigEndpoint, Endpoint};
+pub use hitbox_http::HttpEndpoint;
 pub use layer::Cache;
 pub use upstream::TowerUpstream;
