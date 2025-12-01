@@ -1,8 +1,10 @@
 use crate::app::app;
+use crate::handler_state::HandlerState;
+use crate::mock_backend::MockBackend;
 use crate::time::{MockTime, MockTimeProvider, clear_mock_time_provider};
+use hitbox::concurrency::BroadcastConcurrencyManager;
 use hitbox::offload::OffloadManager;
 use hitbox_configuration::Endpoint;
-use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -16,6 +18,7 @@ use hurl::http::{Body, RequestSpec};
 #[derive(Debug, Default)]
 pub struct State {
     pub response: Option<TestResponse>,
+    pub responses: Vec<TestResponse>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -28,10 +31,11 @@ pub struct TimeState {
 pub struct HitboxWorld {
     pub config: Endpoint<axum::body::Body, axum::body::Body>,
     pub state: State,
-    pub backend: MokaBackend,
+    pub backend: MockBackend,
     pub time_state: TimeState,
     #[world(default)]
     pub offload_manager: Option<OffloadManager>,
+    pub handler_state: HandlerState,
 }
 
 impl Default for HitboxWorld {
@@ -39,9 +43,10 @@ impl Default for HitboxWorld {
         Self {
             config: Default::default(),
             state: Default::default(),
-            backend: MokaBackend::builder(100).build(),
+            backend: MockBackend::new(),
             time_state: Default::default(),
             offload_manager: None,
+            handler_state: HandlerState::new(),
         }
     }
 }
@@ -58,9 +63,13 @@ impl Drop for HitboxWorld {
 
 impl HitboxWorld {
     pub async fn execute_request(&mut self, request_spec: &RequestSpec) -> Result<(), Error> {
+        let concurrency_manager: BroadcastConcurrencyManager<_> =
+            BroadcastConcurrencyManager::new();
+
         let mut cache_builder = Cache::builder()
             .backend(self.backend.clone())
-            .config(self.config.clone());
+            .config(self.config.clone())
+            .concurrency_manager(concurrency_manager);
 
         if let Some(manager) = &self.offload_manager {
             cache_builder = cache_builder.offload_manager(manager.clone());
@@ -68,7 +77,7 @@ impl HitboxWorld {
 
         let cache = cache_builder.build();
 
-        let router = app().layer(cache);
+        let router = app(self.handler_state.clone()).layer(cache);
 
         let server = TestServer::new(router)?;
         let path = request_spec.url.path();

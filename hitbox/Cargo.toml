@@ -29,6 +29,7 @@ futures = { workspace = true, features = ["alloc"] }
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 dashmap = { workspace = true }
 smol_str = { workspace = true }
+bounded-integer = { version = "0.5", features = ["macro", "serde"] }
 
 [features]
 default = []

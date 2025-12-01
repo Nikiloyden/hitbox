@@ -560,7 +560,7 @@ impl<Req, U> PollCache<Req, U> {
                 ..
             }) => {
                 ctx.record_state(DebugState::ConcurrentPollUpstream);
-                match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
+                match concurrency_manager.check(&self.cache_key, *concurrency) {
                     ConcurrencyDecision::Proceed(permit) => {
                         let upstream_future = self.upstream.call(self.request);
                         PollCacheTransition::PollUpstream {

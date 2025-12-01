@@ -1,4 +1,5 @@
 use crate::core::HitboxWorld;
+use crate::handler_state::HandlerName;
 use anyhow::{Error, anyhow};
 use cucumber::{gherkin::Step, then};
 use jaq_core::{
@@ -169,12 +170,42 @@ fn response_header_is_correct(
     Ok(())
 }
 
+#[then(expr = "backend read was called {int} times with all miss")]
+fn backend_read_all_miss(world: &mut HitboxWorld, expected: usize) -> Result<(), Error> {
+    let read_count = world.backend.read_count();
+    let miss_count = world.backend.read_miss_count();
+
+    if read_count != expected || miss_count != expected {
+        return Err(anyhow!(
+            "Expected {} reads with all miss, but got {} reads ({} miss, {} hit)",
+            expected,
+            read_count,
+            miss_count,
+            world.backend.read_hit_count()
+        ));
+    }
+    Ok(())
+}
+
+#[then(expr = "backend write was called {int} times")]
+fn backend_write_count(world: &mut HitboxWorld, expected: usize) -> Result<(), Error> {
+    let actual = world.backend.write_count();
+    if actual != expected {
+        return Err(anyhow!(
+            "Expected backend write to be called {} times, but was called {} times",
+            expected,
+            actual
+        ));
+    }
+    Ok(())
+}
+
 #[then(expr = "cache has {int} records")]
 async fn check_cache_record_count(
     world: &mut HitboxWorld,
     expected_count: usize,
 ) -> Result<(), Error> {
-    let actual_count = world.backend.cache.iter().count();
+    let actual_count = world.backend.cache_entry_count();
 
     if actual_count != expected_count {
         return Err(anyhow!(
@@ -184,6 +215,111 @@ async fn check_cache_record_count(
         ));
     }
 
+    Ok(())
+}
+
+#[then(expr = "all responses should have status {int}")]
+fn all_responses_status(world: &mut HitboxWorld, status: u16) -> Result<(), Error> {
+    if world.state.responses.is_empty() {
+        return Err(anyhow!("No responses available"));
+    }
+
+    for (i, response) in world.state.responses.iter().enumerate() {
+        let actual = response.status_code().as_u16();
+        if actual != status {
+            return Err(anyhow!(
+                "Response {} has status {}, expected {}",
+                i,
+                actual,
+                status
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[then(expr = "response headers are")]
+fn response_headers_table(world: &mut HitboxWorld, step: &Step) -> Result<(), Error> {
+    let table = step
+        .table
+        .as_ref()
+        .ok_or_else(|| anyhow!("Expected a table"))?;
+
+    if table.rows.len() != world.state.responses.len() {
+        return Err(anyhow!(
+            "Expected {} rows but got {}",
+            world.state.responses.len(),
+            table.rows.len()
+        ));
+    }
+
+    for (i, (row, response)) in table
+        .rows
+        .iter()
+        .zip(world.state.responses.iter())
+        .enumerate()
+    {
+        let header_name = row
+            .first()
+            .ok_or_else(|| anyhow!("Row {} missing header name", i))?;
+        let expected_value = row
+            .get(1)
+            .ok_or_else(|| anyhow!("Row {} missing value", i))?;
+
+        let actual_value = response
+            .headers()
+            .get(header_name)
+            .map(|v| v.to_str().unwrap_or(""))
+            .unwrap_or("");
+
+        if actual_value != expected_value {
+            return Err(anyhow!(
+                "Response {}: header '{}' expected '{}', got '{}'",
+                i,
+                header_name,
+                expected_value,
+                actual_value
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+#[then(expr = "{word} should be called 1 time")]
+fn upstream_called_once(world: &mut HitboxWorld, handler: String) -> Result<(), Error> {
+    let handler_name: HandlerName = handler
+        .parse()
+        .map_err(|_| anyhow!("Unknown handler: {}", handler))?;
+    let actual = world.handler_state.get_call_count(handler_name);
+    if actual != 1 {
+        return Err(anyhow!(
+            "Expected {} to be called 1 time, but was called {} times",
+            handler,
+            actual
+        ));
+    }
+    Ok(())
+}
+
+#[then(expr = "{word} should be called {int} times")]
+fn upstream_called_times(
+    world: &mut HitboxWorld,
+    handler: String,
+    expected: usize,
+) -> Result<(), Error> {
+    let handler_name: HandlerName = handler
+        .parse()
+        .map_err(|_| anyhow!("Unknown handler: {}", handler))?;
+    let actual = world.handler_state.get_call_count(handler_name);
+    if actual != expected {
+        return Err(anyhow!(
+            "Expected {} to be called {} times, but was called {} times",
+            handler,
+            expected,
+            actual
+        ));
+    }
     Ok(())
 }
 
@@ -213,7 +349,7 @@ async fn check_cache_key_exists(world: &mut HitboxWorld, step: &Step) -> Result<
         return Err(anyhow!("Expected table or docstring for cache key"));
     };
 
-    let exists = world.backend.cache.get(&cache_key).await.is_some();
+    let exists = world.backend.cache.get(&cache_key).is_some();
 
     if !exists {
         return Err(anyhow!(
