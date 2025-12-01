@@ -94,7 +94,7 @@ where
             .parts()
             .uri
             .query()
-            .map(crate::query::parse)
+            .and_then(crate::query::parse)
             .unwrap_or_default();
 
         let mut extracted_parts: Vec<KeyPart> = match &self.name_selector {
