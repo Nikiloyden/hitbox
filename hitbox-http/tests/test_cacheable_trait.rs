@@ -75,6 +75,7 @@ async fn test_cacheable_response_serialization_roundtrip() {
 #[tokio::test]
 async fn test_cacheable_response_rkyv_roundtrip() {
     use hitbox::CacheableResponse;
+    use hitbox::RkyvDeserializer;
     use rkyv::Deserialize as RkyvDeserialize;
 
     // Create an HTTP response
@@ -107,7 +108,7 @@ async fn test_cacheable_response_rkyv_roundtrip() {
         .expect("Failed to validate archived data");
 
     let deserialized: SerializableHttpResponse =
-        RkyvDeserialize::deserialize(archived, &mut rkyv::Infallible)
+        RkyvDeserialize::deserialize(archived, &mut RkyvDeserializer)
             .expect("Failed to deserialize with rkyv");
 
     // Verify the data matches using serde_json for comparison

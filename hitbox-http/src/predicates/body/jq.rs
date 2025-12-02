@@ -43,9 +43,9 @@ impl JqExpression {
         match results {
             Ok(values) if values.eq(&vec![Val::Null]) => None,
             Ok(values) if !values.is_empty() => {
-                let values: Vec<Value> = values.into_iter().map(|v| v.into()).collect();
+                let mut values: Vec<Value> = values.into_iter().map(|v| v.into()).collect();
                 if values.len() == 1 {
-                    Some(values.into_iter().next().unwrap())
+                    values.pop()
                 } else {
                     Some(Value::Array(values))
                 }

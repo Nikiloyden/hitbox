@@ -18,7 +18,7 @@ use ::bincode::{Decode, Encode};
 use self::bincode::BincodeVecWriter;
 
 #[cfg(feature = "rkyv_format")]
-use ::rkyv::Infallible;
+use hitbox_core::RkyvDeserializer;
 
 mod bincode;
 mod json;
@@ -159,11 +159,10 @@ impl<'a> FormatDeserializer<'a> {
                     .map_err(|e| FormatError::Deserialize(Box::new(RkyvValidationError::new(e))))?;
 
                 // Deserialize from the validated archive
-                // Note: With Infallible as the error type, this can never actually fail
-                // The empty match on Infallible is exhaustive since it has no constructors
+                // Unlike Infallible, RkyvDeserializer can produce real errors
                 let value: T = archived
-                    .deserialize(&mut Infallible)
-                    .map_err(|inf| match inf {})?;
+                    .deserialize(&mut RkyvDeserializer)
+                    .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
                 Ok(value)
             }

@@ -49,7 +49,7 @@ where
     async fn check(&self, request: Self::Subject) -> PredicateResult<Self::Subject> {
         match self.inner.check(request).await {
             PredicateResult::Cacheable(request) => {
-                let is_cacheable = match request.parts().uri.query().map(crate::query::parse) {
+                let is_cacheable = match request.parts().uri.query().and_then(crate::query::parse) {
                     Some(query_map) => match &self.operation {
                         Operation::Eq(name, value) => query_map
                             .get(name)
