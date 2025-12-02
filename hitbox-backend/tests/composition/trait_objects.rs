@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -5,16 +6,29 @@ use chrono::Utc;
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     Backend, BackendResult, CacheBackend, CacheKeyFormat, CompositionBackend, Compressor,
-    DeleteStatus, PassthroughCompressor,
+    DeleteStatus, PassthroughCompressor, SyncBackend,
 };
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
     Predicate, Raw,
 };
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -41,12 +55,7 @@ impl Backend for TestBackend {
         Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.store.lock().unwrap().insert(key.clone(), value);
         Ok(())
     }
@@ -110,10 +119,10 @@ impl CacheableResponse for TestValue {
 async fn test_boxed_composition_backend() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     // Box the CompositionBackend itself
-    let boxed: Box<CompositionBackend<_, _>> = Box::new(composition);
+    let boxed: Box<CompositionBackend<_, _, _>> = Box::new(composition);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -127,7 +136,7 @@ async fn test_boxed_composition_backend() {
     // Should work through Box
     let mut ctx: BoxContext = CacheContext::default().boxed();
     boxed
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -140,10 +149,10 @@ async fn test_boxed_composition_backend() {
 async fn test_arc_composition_backend() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     // Arc the CompositionBackend itself
-    let arc: Arc<CompositionBackend<_, _>> = Arc::new(composition);
+    let arc: Arc<CompositionBackend<_, _, _>> = Arc::new(composition);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -156,9 +165,7 @@ async fn test_arc_composition_backend() {
 
     // Should work through Arc
     let mut ctx: BoxContext = CacheContext::default().boxed();
-    arc.set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
+    arc.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
 
     let result = arc.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
@@ -174,7 +181,7 @@ async fn test_arc_composition_backend() {
 async fn test_ref_composition_backend() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -188,7 +195,7 @@ async fn test_ref_composition_backend() {
     // Should work through reference
     let mut ctx: BoxContext = CacheContext::default().boxed();
     composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -201,7 +208,7 @@ async fn test_ref_composition_backend() {
 async fn test_composition_as_dyn_backend() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     // Use CompositionBackend as trait object
     let backend: &dyn Backend = &composition;
@@ -218,37 +225,7 @@ async fn test_composition_as_dyn_backend() {
     // Should work through trait object
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await
-        .unwrap();
-
-    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
-}
-
-#[tokio::test]
-async fn test_boxed_composition_as_dyn_backend() {
-    let l1 = TestBackend::new();
-    let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
-
-    // Box CompositionBackend and use as trait object
-    let backend: Box<dyn Backend> = Box::new(composition);
-
-    let key = CacheKey::from_str("test", "key1");
-    let value = CacheValue::new(
-        TestValue {
-            data: "test_value".to_string(),
-        },
-        Some(Utc::now() + chrono::Duration::seconds(60)),
-        None,
-    );
-
-    // Should work through boxed trait object
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 
@@ -261,10 +238,40 @@ async fn test_boxed_composition_as_dyn_backend() {
 async fn test_arc_composition_as_dyn_backend() {
     let l1 = TestBackend::new();
     let l2 = TestBackend::new();
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     // Arc CompositionBackend and use as trait object
-    let backend: Arc<dyn Backend + Send + 'static> = Arc::new(composition);
+    let backend: Arc<SyncBackend> = Arc::new(composition);
+
+    let key = CacheKey::from_str("test", "key1");
+    let value = CacheValue::new(
+        TestValue {
+            data: "test_value".to_string(),
+        },
+        Some(Utc::now() + chrono::Duration::seconds(60)),
+        None,
+    );
+
+    // Should work through Arc trait object
+    let mut ctx: BoxContext = CacheContext::default().boxed();
+    backend
+        .set::<TestValue>(&key, &value, &mut ctx)
+        .await
+        .unwrap();
+
+    let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().data.data, "test_value");
+}
+
+#[tokio::test]
+async fn test_arc_sync_composition_as_dyn_backend() {
+    let l1 = TestBackend::new();
+    let l2 = TestBackend::new();
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
+
+    // Arc CompositionBackend and use as SyncBackend trait object
+    let backend: Arc<SyncBackend> = Arc::new(composition);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -278,7 +285,7 @@ async fn test_arc_composition_as_dyn_backend() {
     // Should work through Arc'd trait object
     let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 

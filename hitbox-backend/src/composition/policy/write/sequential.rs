@@ -4,7 +4,7 @@
 //! It's the classic write-through strategy with strong consistency.
 
 use async_trait::async_trait;
-use hitbox_core::CacheKey;
+use hitbox_core::{CacheKey, Offload};
 use std::future::Future;
 
 use super::CompositionWritePolicy;
@@ -70,21 +70,23 @@ impl SequentialWritePolicy {
 
 #[async_trait]
 impl CompositionWritePolicy for SequentialWritePolicy {
-    #[tracing::instrument(skip(self, write_l1, write_l2), level = "trace")]
-    async fn execute_with<'a, F1, F2, Fut1, Fut2>(
+    #[tracing::instrument(skip(self, key, write_l1, write_l2, _offload), level = "trace")]
+    async fn execute_with<F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         write_l1: F1,
         write_l2: F2,
+        _offload: &O,
     ) -> Result<(), BackendError>
     where
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<(), BackendError>> + Send + 'a,
-        Fut2: Future<Output = Result<(), BackendError>> + Send + 'a,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
+        Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
+        O: Offload,
     {
         // Write to L1 first
-        match write_l1(key).await {
+        match write_l1(key.clone()).await {
             Ok(()) => {
                 tracing::trace!("L1 write succeeded");
             }

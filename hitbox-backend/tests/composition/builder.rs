@@ -1,10 +1,14 @@
 //! Tests for CompositionPolicy builder pattern.
 
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionPolicy;
 use hitbox_backend::composition::policy::{
-    AlwaysRefill, NeverRefill, OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy,
+    OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy, RefillPolicy,
     SequentialReadPolicy, SequentialWritePolicy,
 };
 use hitbox_backend::format::{Format, JsonFormat};
@@ -13,13 +17,24 @@ use hitbox_backend::{
     DeleteStatus, PassthroughCompressor,
 };
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
     Predicate, Raw,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use smol_str::SmolStr;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -46,12 +61,7 @@ impl Backend for TestBackend {
         Ok(self.store.lock().unwrap().get(key).cloned())
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.store.lock().unwrap().insert(key.clone(), value);
         Ok(())
     }
@@ -120,7 +130,7 @@ async fn test_composition_policy_default() {
     // Default policies should be set
     let _ = policy.read_policy(); // SequentialReadPolicy
     let _ = policy.write_policy(); // OptimisticParallelWritePolicy
-    let _ = policy.refill_policy(); // AlwaysRefill
+    let _ = policy.refill_policy(); // RefillPolicy::Never (default)
 }
 
 #[tokio::test]
@@ -141,9 +151,9 @@ async fn test_composition_policy_with_write() {
 
 #[tokio::test]
 async fn test_composition_policy_with_refill() {
-    let policy = CompositionPolicy::new().refill(NeverRefill::new());
+    let policy = CompositionPolicy::new().refill(RefillPolicy::Never);
 
-    // Should have NeverRefill
+    // Should have RefillPolicy::Never
     let _ = policy.refill_policy();
 }
 
@@ -152,7 +162,7 @@ async fn test_composition_policy_chained() {
     let policy = CompositionPolicy::new()
         .read(ParallelReadPolicy::new())
         .write(SequentialWritePolicy::new())
-        .refill(NeverRefill::new());
+        .refill(RefillPolicy::Never);
 
     // All custom policies should be set
     let _ = policy.read_policy();
@@ -168,9 +178,9 @@ async fn test_backend_with_composition_policy() {
     let policy = CompositionPolicy::new()
         .read(RaceReadPolicy::new())
         .write(SequentialWritePolicy::new())
-        .refill(NeverRefill::new());
+        .refill(RefillPolicy::Never);
 
-    let backend = CompositionBackend::new(l1, l2).with_policy(policy);
+    let backend = CompositionBackend::new(l1, l2, TestOffload).with_policy(policy);
 
     // All custom policies should be set
     let _ = backend.read_policy();
@@ -186,9 +196,9 @@ async fn test_backend_with_policy_functional() {
     let policy = CompositionPolicy::new()
         .read(SequentialReadPolicy::new())
         .write(OptimisticParallelWritePolicy::new())
-        .refill(AlwaysRefill::new());
+        .refill(RefillPolicy::Always);
 
-    let backend = CompositionBackend::new(l1.clone(), l2.clone()).with_policy(policy);
+    let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).with_policy(policy);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -203,7 +213,7 @@ async fn test_backend_with_policy_functional() {
 
     // Write via backend
     backend
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
+        .set::<TestValue>(&key, &value, &mut ctx)
         .await
         .unwrap();
 

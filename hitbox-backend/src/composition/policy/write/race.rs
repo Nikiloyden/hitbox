@@ -1,17 +1,28 @@
 //! Race write policy implementation.
 //!
 //! This policy writes to both L1 and L2 simultaneously and returns as soon as
-//! the first write succeeds, dropping the other (like RaceReadPolicy).
+//! the first write succeeds, handling the losing future based on the configured policy.
 
 use async_trait::async_trait;
 use futures::future::{Either, select};
-use futures::pin_mut;
-use hitbox_core::CacheKey;
+use hitbox_core::{CacheKey, Offload};
 use std::future::Future;
 
 use super::CompositionWritePolicy;
 use crate::BackendError;
 use crate::composition::CompositionError;
+
+/// Policy for handling the losing future in a race.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RaceLoserPolicy {
+    /// Offload the losing future to background execution.
+    /// This ensures the operation completes without blocking the response.
+    #[default]
+    Offload,
+    /// Drop the losing future immediately.
+    /// The operation may be cancelled mid-flight.
+    Drop,
+}
 
 /// Race write policy: Write to both simultaneously, return on first success.
 ///
@@ -22,17 +33,23 @@ use crate::composition::CompositionError;
 /// # Behavior
 /// 1. Start both `write_l1(key)` and `write_l2(key)` in parallel using `select`
 /// 2. When the first completes:
-///    - If success: Return Ok immediately, drop the other future
+///    - If success: Return Ok immediately, handle losing future based on policy
 ///    - If failure: Wait for the second to complete
 /// 3. If both fail: Return error with both failures
 ///
+/// # Loser Policy
+/// When one backend wins with a successful write, the losing future can be:
+/// - `RaceLoserPolicy::Offload` (default): Spawned to background, completes without blocking
+/// - `RaceLoserPolicy::Drop`: Dropped immediately, may cancel mid-operation
+///
 /// # Consistency Guarantee
 /// If this operation returns `Ok(())`, **at least one** of L1 or L2 has been updated.
-/// The other layer may or may not be updated (its future is dropped on success).
+/// With `RaceLoserPolicy::Offload`, the other layer will eventually be updated (unless it fails).
+/// With `RaceLoserPolicy::Drop`, the other layer may or may not be updated.
 ///
 /// # Tradeoffs
 /// - **Pros**: Lowest latency, high availability
-/// - **Cons**: Only one layer guaranteed to be written, potential inconsistency
+/// - **Cons**: Only one layer guaranteed to be written at return time
 ///
 /// # Use Cases
 /// - Latency-critical write paths where one layer is sufficient
@@ -43,35 +60,44 @@ use crate::composition::CompositionError;
 /// If you need both layers to be written, use [`super::OptimisticParallelWritePolicy`] instead,
 /// which waits for both writes to complete.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct RaceWritePolicy;
+pub struct RaceWritePolicy {
+    /// Policy for handling the losing future.
+    loser_policy: RaceLoserPolicy,
+}
 
 impl RaceWritePolicy {
-    /// Create a new race write policy.
+    /// Create a new race write policy with default settings (offload losers).
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// Set the policy for handling losing futures.
+    pub fn loser_policy(mut self, policy: RaceLoserPolicy) -> Self {
+        self.loser_policy = policy;
+        self
     }
 }
 
 #[async_trait]
 impl CompositionWritePolicy for RaceWritePolicy {
-    #[tracing::instrument(skip(self, write_l1, write_l2), level = "trace")]
-    async fn execute_with<'a, F1, F2, Fut1, Fut2>(
+    #[tracing::instrument(skip(self, key, write_l1, write_l2, offload), level = "trace")]
+    async fn execute_with<F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         write_l1: F1,
         write_l2: F2,
+        offload: &O,
     ) -> Result<(), BackendError>
     where
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = Result<(), BackendError>> + Send + 'a,
-        Fut2: Future<Output = Result<(), BackendError>> + Send + 'a,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
+        Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
+        O: Offload,
     {
-        let l1_fut = write_l1(key);
-        let l2_fut = write_l2(key);
-
-        // Pin both futures for select
-        pin_mut!(l1_fut, l2_fut);
+        // Box futures so we can move them to offload if needed
+        let l1_fut = Box::pin(write_l1(key.clone()));
+        let l2_fut = Box::pin(write_l2(key));
 
         // Race both futures
         match select(l1_fut, l2_fut).await {
@@ -79,9 +105,18 @@ impl CompositionWritePolicy for RaceWritePolicy {
                 // L1 completed first
                 match l1_result {
                     Ok(()) => {
-                        // L1 succeeded - return immediately, drop L2 future
+                        // L1 succeeded - handle losing L2 future based on policy
                         tracing::trace!("L1 write succeeded (won race)");
-                        // l2_fut is dropped here
+                        match self.loser_policy {
+                            RaceLoserPolicy::Offload => {
+                                offload.spawn("race_write_l2_loser", async move {
+                                    let _ = l2_fut.await;
+                                });
+                            }
+                            RaceLoserPolicy::Drop => {
+                                drop(l2_fut);
+                            }
+                        }
                         Ok(())
                     }
                     Err(e1) => {
@@ -110,9 +145,18 @@ impl CompositionWritePolicy for RaceWritePolicy {
                 // L2 completed first
                 match l2_result {
                     Ok(()) => {
-                        // L2 succeeded - return immediately, drop L1 future
+                        // L2 succeeded - handle losing L1 future based on policy
                         tracing::trace!("L2 write succeeded (won race)");
-                        // l1_fut is dropped here
+                        match self.loser_policy {
+                            RaceLoserPolicy::Offload => {
+                                offload.spawn("race_write_l1_loser", async move {
+                                    let _ = l1_fut.await;
+                                });
+                            }
+                            RaceLoserPolicy::Drop => {
+                                drop(l1_fut);
+                            }
+                        }
                         Ok(())
                     }
                     Err(e2) => {

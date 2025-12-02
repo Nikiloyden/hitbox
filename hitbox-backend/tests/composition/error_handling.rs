@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::format::{Format, JsonFormat};
@@ -6,11 +8,24 @@ use hitbox_backend::{
     Compressor, DeleteStatus, PassthroughCompressor,
 };
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig,
+    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
     Predicate, Raw,
 };
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use smol_str::SmolStr;
+
+/// Test offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
@@ -39,12 +54,7 @@ impl Backend for FailingBackend {
         )))
     }
 
-    async fn write(
-        &self,
-        _key: &CacheKey,
-        _value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, _key: &CacheKey, _value: CacheValue<Raw>) -> BackendResult<()> {
         Err(BackendError::InternalError(Box::new(
             std::io::Error::other(self.error_message.clone()),
         )))
@@ -108,7 +118,7 @@ impl CacheableResponse for TestValue {
 async fn test_both_layers_fail_set() {
     let l1 = FailingBackend::new("L1 connection timeout");
     let l2 = FailingBackend::new("L2 authentication failed");
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -122,9 +132,7 @@ async fn test_both_layers_fail_set() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // When both layers fail, should return CompositionError with both errors
-    let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await;
+    let result = composition.set::<TestValue>(&key, &value, &mut ctx).await;
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -158,7 +166,7 @@ async fn test_both_layers_fail_set() {
 async fn test_both_layers_fail_delete() {
     let l1 = FailingBackend::new("L1 disk full");
     let l2 = FailingBackend::new("L2 network unreachable");
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
 
@@ -198,7 +206,7 @@ async fn test_both_layers_fail_delete() {
 async fn test_both_layers_fail_backend_write() {
     let l1 = FailingBackend::new("L1 quota exceeded");
     let l2 = FailingBackend::new("L2 permission denied");
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
     let value = CacheValue::new(
@@ -212,9 +220,7 @@ async fn test_both_layers_fail_backend_write() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
 
     // Test via CacheBackend::set (which uses Backend::write internally)
-    let result = composition
-        .set::<TestValue>(&key, &value, Some(Duration::from_secs(60)), &mut ctx)
-        .await;
+    let result = composition.set::<TestValue>(&key, &value, &mut ctx).await;
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -242,7 +248,7 @@ async fn test_both_layers_fail_backend_write() {
 async fn test_both_layers_fail_backend_remove() {
     let l1 = FailingBackend::new("L1 service unavailable");
     let l2 = FailingBackend::new("L2 read-only mode");
-    let composition = CompositionBackend::new(l1, l2);
+    let composition = CompositionBackend::new(l1, l2, TestOffload);
 
     let key = CacheKey::from_str("test", "key1");
 

@@ -1,9 +1,8 @@
 use crate::backend::{Expiration, MokaBackend};
-use hitbox::{CacheKey, CacheValue, Raw};
+use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{CacheKeyFormat, Compressor, PassthroughCompressor};
 use moka::future::{Cache, CacheBuilder};
-use smol_str::SmolStr;
 
 pub struct MokaBackendBuilder<S = JsonFormat, C = PassthroughCompressor>
 where
@@ -14,7 +13,7 @@ where
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
-    name: SmolStr,
+    name: BackendLabel,
 }
 
 impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
@@ -25,7 +24,7 @@ impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
-            name: SmolStr::new_static("moka"),
+            name: BackendLabel::new_static("moka"),
         }
     }
 }
@@ -39,7 +38,7 @@ where
     ///
     /// The name is used for source path composition in multi-layer caches.
     /// For example, with name "sessions", the source path might be "composition.L1.sessions".
-    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
         self.name = name.into();
         self
     }

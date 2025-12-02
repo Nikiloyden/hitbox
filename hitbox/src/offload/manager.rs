@@ -335,3 +335,12 @@ impl Default for OffloadManager {
         Self::with_defaults()
     }
 }
+
+impl hitbox_core::Offload for OffloadManager {
+    fn spawn<F>(&self, kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        OffloadManager::spawn(self, kind, future);
+    }
+}

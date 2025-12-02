@@ -7,9 +7,8 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, Raw};
+use hitbox_core::{BackendLabel, CacheKey, CacheValue, Raw};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// Simple in-memory backend for testing using DashMap.
 ///
@@ -36,6 +35,11 @@ impl TestBackend {
     pub fn has(&self, key: &CacheKey) -> bool {
         self.store.contains_key(key)
     }
+
+    /// Get raw cache value with metadata (expire, stale) for inspection.
+    pub fn get_raw(&self, key: &CacheKey) -> Option<CacheValue<Raw>> {
+        self.store.get(key).map(|v| v.clone())
+    }
 }
 
 impl Default for TestBackend {
@@ -50,12 +54,7 @@ impl Backend for TestBackend {
         Ok(self.store.get(key).map(|v| v.clone()))
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.store.insert(key.clone(), value);
         Ok(())
     }
@@ -80,6 +79,10 @@ impl Backend for TestBackend {
     fn compressor(&self) -> &dyn Compressor {
         &PassthroughCompressor
     }
+
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("test")
+    }
 }
 
 impl CacheBackend for TestBackend {}
@@ -96,12 +99,7 @@ impl Backend for ErrorBackend {
         )))
     }
 
-    async fn write(
-        &self,
-        _key: &CacheKey,
-        _value: CacheValue<Raw>,
-        _ttl: Option<Duration>,
-    ) -> BackendResult<()> {
+    async fn write(&self, _key: &CacheKey, _value: CacheValue<Raw>) -> BackendResult<()> {
         Err(BackendError::InternalError(Box::new(
             std::io::Error::other("simulated error"),
         )))
@@ -123,6 +121,10 @@ impl Backend for ErrorBackend {
 
     fn compressor(&self) -> &dyn Compressor {
         &PassthroughCompressor
+    }
+
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("error")
     }
 }
 

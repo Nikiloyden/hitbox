@@ -66,7 +66,7 @@ where
                 let mut ctx = CacheContext::default().boxed();
 
                 if backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .is_err()
                 {
@@ -168,7 +168,7 @@ where
 
                 // Write
                 if backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                    .set::<BenchResponse>(&key, &value, &mut ctx)
                     .await
                     .is_err()
                 {
@@ -295,7 +295,7 @@ async fn main() {
             let value = CacheValue::new(response.clone(), None, None);
             let mut ctx = CacheContext::default().boxed();
             backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
+                .set::<BenchResponse>(&key, &value, &mut ctx)
                 .await
                 .unwrap();
         }
@@ -358,9 +358,7 @@ async fn main() {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
             let mut ctx = CacheContext::default().boxed();
-            let _ = backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                .await;
+            let _ = backend.set::<BenchResponse>(&key, &value, &mut ctx).await;
         }
 
         // Read test
@@ -442,9 +440,7 @@ async fn main() {
             let key = CacheKey::from_str("bench", &format!("key-{}", i));
             let value = CacheValue::new(response.clone(), None, None);
             let mut ctx = CacheContext::default().boxed();
-            let _ = backend
-                .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                .await;
+            let _ = backend.set::<BenchResponse>(&key, &value, &mut ctx).await;
         }
 
         // Read test

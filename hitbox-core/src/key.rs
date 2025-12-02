@@ -4,12 +4,63 @@ use bitcode::__private::{
 use bitcode::{Decode, Encode};
 use core::num::NonZeroUsize;
 use smol_str::SmolStr;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct CacheKey {
+/// Inner structure containing the actual cache key data.
+/// Wrapped in Arc for cheap cloning.
+#[derive(Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+struct CacheKeyInner {
     parts: Vec<KeyPart>,
     version: u32,
     prefix: SmolStr,
+}
+
+/// A cache key that can be cheaply cloned via Arc.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(from = "CacheKeyInner", into = "CacheKeyInner")]
+pub struct CacheKey {
+    inner: Arc<CacheKeyInner>,
+}
+
+impl PartialEq for CacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        // Fast path: same Arc pointer
+        Arc::ptr_eq(&self.inner, &other.inner) || self.inner == other.inner
+    }
+}
+
+impl Eq for CacheKey {}
+
+impl Hash for CacheKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl From<CacheKeyInner> for CacheKey {
+    fn from(inner: CacheKeyInner) -> Self {
+        CacheKey {
+            inner: Arc::new(inner),
+        }
+    }
+}
+
+impl From<CacheKey> for CacheKeyInner {
+    fn from(key: CacheKey) -> Self {
+        // Try to unwrap Arc, or clone if shared
+        Arc::try_unwrap(key.inner).unwrap_or_else(|arc| (*arc).clone())
+    }
+}
+
+impl Clone for CacheKeyInner {
+    fn clone(&self) -> Self {
+        CacheKeyInner {
+            parts: self.parts.clone(),
+            version: self.version,
+            prefix: self.prefix.clone(),
+        }
+    }
 }
 
 impl Encode for CacheKey {
@@ -29,9 +80,9 @@ pub struct CacheKeyEncoder {
 
 impl Encoder<CacheKey> for CacheKeyEncoder {
     fn encode(&mut self, value: &CacheKey) {
-        self.parts.encode(&value.parts);
-        self.version.encode(&value.version);
-        self.prefix.encode(value.prefix.as_str());
+        self.parts.encode(&value.inner.parts);
+        self.version.encode(&value.inner.version);
+        self.prefix.encode(value.inner.prefix.as_str());
     }
 }
 
@@ -69,50 +120,58 @@ impl<'de> Decoder<'de, CacheKey> for CacheKeyDecoder<'de> {
     fn decode(&mut self) -> CacheKey {
         let prefix_str: &str = self.prefix.decode();
         CacheKey {
-            parts: self.parts.decode(),
-            version: self.version.decode(),
-            prefix: SmolStr::new(prefix_str),
+            inner: Arc::new(CacheKeyInner {
+                parts: self.parts.decode(),
+                version: self.version.decode(),
+                prefix: SmolStr::new(prefix_str),
+            }),
         }
     }
 }
 
 impl CacheKey {
     pub fn parts(&self) -> impl Iterator<Item = &KeyPart> {
-        self.parts.iter()
+        self.inner.parts.iter()
     }
 
     pub fn version(&self) -> u32 {
-        self.version
+        self.inner.version
     }
 
     pub fn prefix(&self) -> &str {
-        &self.prefix
+        &self.inner.prefix
     }
 
     pub fn new(prefix: impl Into<SmolStr>, version: u32, parts: Vec<KeyPart>) -> Self {
         CacheKey {
-            parts,
-            version,
-            prefix: prefix.into(),
+            inner: Arc::new(CacheKeyInner {
+                parts,
+                version,
+                prefix: prefix.into(),
+            }),
         }
     }
 
     pub fn from_str(key: &str, value: &str) -> Self {
         CacheKey {
-            parts: vec![KeyPart::new(key, Some(value))],
-            version: 0,
-            prefix: SmolStr::default(),
+            inner: Arc::new(CacheKeyInner {
+                parts: vec![KeyPart::new(key, Some(value))],
+                version: 0,
+                prefix: SmolStr::default(),
+            }),
         }
     }
 
     pub fn from_slice(parts: &[(&str, Option<&str>)]) -> Self {
         CacheKey {
-            parts: parts
-                .iter()
-                .map(|(key, value)| KeyPart::new(key, *value))
-                .collect(),
-            version: 0,
-            prefix: SmolStr::default(),
+            inner: Arc::new(CacheKeyInner {
+                parts: parts
+                    .iter()
+                    .map(|(key, value)| KeyPart::new(key, *value))
+                    .collect(),
+                version: 0,
+                prefix: SmolStr::default(),
+            }),
         }
     }
 }
@@ -243,9 +302,11 @@ impl<T> KeyParts<T> {
         (
             self.subject,
             CacheKey {
-                version: 0,
-                prefix: SmolStr::default(),
-                parts: self.parts,
+                inner: Arc::new(CacheKeyInner {
+                    version: 0,
+                    prefix: SmolStr::default(),
+                    parts: self.parts,
+                }),
             },
         )
     }

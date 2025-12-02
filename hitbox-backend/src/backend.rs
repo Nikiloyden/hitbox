@@ -1,38 +1,40 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use hitbox_core::{
-    BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode,
-    ResponseSource, SmolStr,
+    BackendLabel, BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw,
+    ReadMode, ResponseSource,
 };
 
 use crate::{
     BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
     format::{Format, FormatExt, JsonFormat},
+    metrics::Timer,
 };
 
 pub type BackendResult<T> = Result<T, BackendError>;
+
+/// Type alias for a dynamically dispatched Backend that is Send but not Sync.
+pub type UnsyncBackend = dyn Backend + Send;
+
+/// Type alias for a dynamically dispatched Backend that is Send + Sync.
+pub type SyncBackend = dyn Backend + Send + Sync;
 
 #[async_trait]
 pub trait Backend: Sync + Send {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>>;
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()>;
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()>;
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus>;
 
-    /// Returns the name of this backend for source path composition.
+    /// Returns the label of this backend for source path composition.
     ///
     /// This is used to build hierarchical source paths like "composition.l1.moka"
     /// when backends are nested within CompositionBackend.
-    fn name(&self) -> &str {
-        "backend"
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("backend")
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -54,20 +56,15 @@ impl Backend for &dyn Backend {
         (*self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (*self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (*self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         (*self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (*self).name()
     }
 
@@ -90,20 +87,15 @@ impl Backend for Box<dyn Backend> {
         (**self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (**self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (**self).name()
     }
 
@@ -121,25 +113,51 @@ impl Backend for Box<dyn Backend> {
 }
 
 #[async_trait]
-impl Backend for Arc<dyn Backend + Send + 'static> {
+impl Backend for Arc<UnsyncBackend> {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
         (**self).read(key).await
     }
 
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<Duration>,
-    ) -> BackendResult<()> {
-        (**self).write(key, value, ttl).await
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
+        (**self).name()
+    }
+
+    fn value_format(&self) -> &dyn Format {
+        (**self).value_format()
+    }
+
+    fn key_format(&self) -> &CacheKeyFormat {
+        (**self).key_format()
+    }
+
+    fn compressor(&self) -> &dyn Compressor {
+        (**self).compressor()
+    }
+}
+
+#[async_trait]
+impl Backend for Arc<SyncBackend> {
+    async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+        (**self).read(key).await
+    }
+
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        (**self).write(key, value).await
+    }
+
+    async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
+        (**self).remove(key).await
+    }
+
+    fn name(&self) -> BackendLabel {
         (**self).name()
     }
 
@@ -172,18 +190,31 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = SmolStr::from(self.name());
+            let backend_label = self.name();
+
+            let read_timer = Timer::new();
             let read_result = self.read(key).await;
+            crate::metrics::record_read(backend_label.as_str(), read_timer.elapsed());
 
             match read_result {
                 Ok(Some(value)) => {
-                    let bytes_read = value.data.len() as u64;
                     let (meta, raw_data) = value.into_parts();
+                    let raw_len = raw_data.len();
+                    crate::metrics::record_read_bytes(backend_label.as_str(), raw_len);
+
                     let format = self.value_format();
+
+                    let decompress_timer = Timer::new();
                     let decompressed = self.compressor().decompress(&raw_data)?;
+                    crate::metrics::record_decompress(
+                        backend_label.as_str(),
+                        decompress_timer.elapsed(),
+                    );
+
                     let decompressed_bytes = Bytes::from(decompressed);
 
                     // Deserialize using with_deserializer - context may be upgraded
+                    let deserialize_timer = Timer::new();
                     let mut deserialized_opt: Option<T::Cached> = None;
                     format.with_deserializer(
                         &decompressed_bytes,
@@ -194,6 +225,10 @@ pub trait CacheBackend: Backend {
                         },
                         ctx,
                     )?;
+                    crate::metrics::record_deserialize(
+                        backend_label.as_str(),
+                        deserialize_timer.elapsed(),
+                    );
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -206,26 +241,16 @@ pub trait CacheBackend: Backend {
                     // Refill L1 if read mode is Refill (data came from L2).
                     // CompositionFormat will create L1-only envelope, so only L1 gets populated.
                     if ctx.read_mode() == ReadMode::Refill {
-                        let _ = self
-                            .set::<T>(key, &cached_value, cached_value.ttl(), ctx)
-                            .await;
+                        let _ = self.set::<T>(key, &cached_value, ctx).await;
                     }
 
-                    // Record read metrics
-                    ctx.metrics_mut()
-                        .record_read(&backend_name, bytes_read, true);
                     ctx.set_status(CacheStatus::Hit);
-                    ctx.set_source(ResponseSource::Backend(backend_name));
+                    ctx.set_source(ResponseSource::Backend(backend_label));
                     Ok(Some(cached_value))
                 }
-                Ok(None) => {
-                    // Record read miss (0 bytes)
-                    ctx.metrics_mut().record_read(&backend_name, 0, true);
-                    Ok(None)
-                }
+                Ok(None) => Ok(None),
                 Err(e) => {
-                    // Record read error
-                    ctx.metrics_mut().record_read(&backend_name, 0, false);
+                    crate::metrics::record_read_error(backend_label.as_str());
                     Err(e)
                 }
             }
@@ -236,7 +261,6 @@ pub trait CacheBackend: Backend {
         &self,
         key: &CacheKey,
         value: &CacheValue<T::Cached>,
-        ttl: Option<Duration>,
         ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<()>> + Send
     where
@@ -244,39 +268,54 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = self.name().to_owned();
+            // Skip write if this is a refill operation reaching the source backend.
+            // The source backend already has this data - it provided it during get().
+            // CompositionBackend handles L1 refill via its own set() implementation.
+            if ctx.read_mode() == ReadMode::Refill {
+                return Ok(());
+            }
+
+            let backend_label = self.name();
             let format = self.value_format();
-            // Use the context for serialization (allows CompositionFormat to check policy)
+
+            let serialize_timer = Timer::new();
             let serialized_value = format.serialize(&value.data, &**ctx)?;
+            crate::metrics::record_serialize(backend_label.as_str(), serialize_timer.elapsed());
+
+            let compress_timer = Timer::new();
             let compressed_value = self.compressor().compress(&serialized_value)?;
-            let bytes_written = compressed_value.len() as u64;
+            crate::metrics::record_compress(backend_label.as_str(), compress_timer.elapsed());
+
+            let compressed_len = compressed_value.len();
+
+            let write_timer = Timer::new();
             let result = self
                 .write(
                     key,
                     CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
-                    ttl,
                 )
                 .await;
-            // Record write metrics
-            ctx.metrics_mut()
-                .record_write(&backend_name, bytes_written, result.is_ok());
-            result
+            crate::metrics::record_write(backend_label.as_str(), write_timer.elapsed());
+
+            match result {
+                Ok(()) => {
+                    crate::metrics::record_write_bytes(backend_label.as_str(), compressed_len);
+                    Ok(())
+                }
+                Err(e) => {
+                    crate::metrics::record_write_error(backend_label.as_str());
+                    Err(e)
+                }
+            }
         }
     }
 
     fn delete(
         &self,
         key: &CacheKey,
-        ctx: &mut BoxContext,
+        _ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<DeleteStatus>> + Send {
-        async move {
-            let backend_name = self.name().to_owned();
-            let result = self.remove(key).await;
-            // Record delete metrics
-            ctx.metrics_mut()
-                .record_delete(&backend_name, result.is_ok());
-            result
-        }
+        async move { self.remove(key).await }
     }
 }
 
@@ -286,4 +325,5 @@ impl CacheBackend for &dyn Backend {}
 
 impl CacheBackend for Box<dyn Backend> {}
 
-impl CacheBackend for Arc<dyn Backend + Send + 'static> {}
+impl CacheBackend for Arc<UnsyncBackend> {}
+impl CacheBackend for Arc<SyncBackend> {}

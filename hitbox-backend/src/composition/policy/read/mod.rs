@@ -5,7 +5,7 @@
 //! read performance based on application requirements.
 
 use async_trait::async_trait;
-use hitbox_core::{BoxContext, CacheKey, CacheValue};
+use hitbox_core::{BoxContext, CacheKey, CacheValue, Offload};
 use std::future::Future;
 
 use crate::composition::CompositionLayer;
@@ -15,7 +15,7 @@ pub mod race;
 pub mod sequential;
 
 pub use parallel::ParallelReadPolicy;
-pub use race::RaceReadPolicy;
+pub use race::{RaceLoserPolicy, RaceReadPolicy};
 pub use sequential::SequentialReadPolicy;
 
 /// Result of a read operation including the value, source layer, and context.
@@ -41,6 +41,7 @@ pub struct ReadResult<T> {
 /// * `T` - The return type (e.g., `CacheValue<User>` or `CacheValue<Raw>`)
 /// * `E` - The error type (e.g., `BackendError`)
 /// * `F1, F2` - Closures for reading from L1 and L2
+/// * `O` - The offload type for background task execution
 ///
 /// # Example
 ///
@@ -49,18 +50,19 @@ pub struct ReadResult<T> {
 ///
 /// let policy = SequentialReadPolicy::default();
 ///
-/// // Use with CacheBackend level
+/// // Use with CacheBackend level (key is cloned for each closure)
 /// let result = policy.execute_with(
-///     &key,
-///     |k, ctx| async { (l1.get::<User>(k, &mut ctx).await, ctx) },
-///     |k, ctx| async {
-///         let value = l2.get::<User>(k, &mut ctx).await?;
+///     key.clone(),
+///     |k| async move { (l1.get::<User>(&k, &mut ctx).await, ctx) },
+///     |k| async move {
+///         let value = l2.get::<User>(&k, &mut ctx).await?;
 ///         // Populate L1 on L2 hit
 ///         if let Some(ref v) = value {
-///             l1.set::<User>(k, v, v.ttl(), &mut ctx.clone_box()).await.ok();
+///             l1.set::<User>(&k, v, v.ttl(), &mut ctx.clone_box()).await.ok();
 ///         }
 ///         Ok((value, ctx))
 ///     },
+///     &offload,
 /// ).await?;
 /// ```
 #[async_trait]
@@ -75,21 +77,24 @@ pub trait CompositionReadPolicy: Send + Sync {
     /// * `key` - The cache key to look up
     /// * `read_l1` - Closure that reads from L1, returns (result, context)
     /// * `read_l2` - Closure that reads from L2, returns (result, context)
+    /// * `offload` - Offload manager for spawning background tasks (e.g., losing race futures)
     ///
     /// # Returns
     /// A `ReadResult` containing the value, source layer, and context from the layer
     /// that provided the data. The context can be used for merging with outer context.
-    async fn execute_with<'a, T, E, F1, F2, Fut1, Fut2>(
+    async fn execute_with<T, E, F1, F2, Fut1, Fut2, O>(
         &self,
-        key: &'a CacheKey,
+        key: CacheKey,
         read_l1: F1,
         read_l2: F2,
+        offload: &O,
     ) -> Result<ReadResult<T>, E>
     where
-        T: Send + 'a,
-        E: Send + std::fmt::Debug + 'a,
-        F1: FnOnce(&'a CacheKey) -> Fut1 + Send,
-        F2: FnOnce(&'a CacheKey) -> Fut2 + Send,
-        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a,
-        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'a;
+        T: Send + 'static,
+        E: Send + std::fmt::Debug + 'static,
+        F1: FnOnce(CacheKey) -> Fut1 + Send,
+        F2: FnOnce(CacheKey) -> Fut2 + Send,
+        Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
+        O: Offload;
 }

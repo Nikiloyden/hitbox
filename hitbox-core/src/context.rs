@@ -1,9 +1,10 @@
 //! Cache context types for tracking cache operation results.
 
 use std::any::Any;
-use std::collections::HashMap;
 
-use smol_str::SmolStr;
+use smallbox::{SmallBox, smallbox, space::S4};
+
+use crate::label::BackendLabel;
 
 /// Whether the request resulted in a cache hit, miss, or stale data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -14,14 +15,37 @@ pub enum CacheStatus {
     Stale,
 }
 
+impl CacheStatus {
+    /// Returns the status as a string slice.
+    #[inline]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            CacheStatus::Hit => "hit",
+            CacheStatus::Miss => "miss",
+            CacheStatus::Stale => "stale",
+        }
+    }
+}
+
 /// Source of the response - either from upstream or from a cache backend.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ResponseSource {
     /// Response came from upstream service (cache miss or bypass).
     #[default]
     Upstream,
-    /// Response came from cache backend with the given name.
-    Backend(SmolStr),
+    /// Response came from cache backend with the given label.
+    Backend(BackendLabel),
+}
+
+impl ResponseSource {
+    /// Returns the source as a string slice.
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        match self {
+            ResponseSource::Upstream => "upstream",
+            ResponseSource::Backend(label) => label.as_str(),
+        }
+    }
 }
 
 /// Mode for cache read operations.
@@ -37,108 +61,6 @@ pub enum ReadMode {
     ///
     /// Used in composition backends to populate L1 with data read from L2.
     Refill,
-}
-
-/// Metrics for a single cache backend/layer.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LayerMetrics {
-    /// Number of read operations.
-    pub reads: u32,
-    /// Number of write operations.
-    pub writes: u32,
-    /// Number of delete operations.
-    pub deletes: u32,
-    /// Total bytes read.
-    pub bytes_read: u64,
-    /// Total bytes written.
-    pub bytes_written: u64,
-    /// Number of read errors.
-    pub read_errors: u32,
-    /// Number of write errors.
-    pub write_errors: u32,
-    /// Number of delete errors.
-    pub delete_errors: u32,
-}
-
-impl LayerMetrics {
-    /// Merge another LayerMetrics into this one by summing all fields.
-    pub fn merge(&mut self, other: &LayerMetrics) {
-        self.reads += other.reads;
-        self.writes += other.writes;
-        self.deletes += other.deletes;
-        self.bytes_read += other.bytes_read;
-        self.bytes_written += other.bytes_written;
-        self.read_errors += other.read_errors;
-        self.write_errors += other.write_errors;
-        self.delete_errors += other.delete_errors;
-    }
-}
-
-/// Aggregated metrics by source path.
-///
-/// Tracks cache operation metrics for each backend in the cache hierarchy.
-/// Source paths are hierarchical, e.g., "composition.moka" or "outer.inner.redis".
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Metrics {
-    /// Metrics aggregated by source path (e.g., "cache.moka" -> LayerMetrics).
-    pub layers: HashMap<SmolStr, LayerMetrics>,
-}
-
-impl Metrics {
-    /// Create new empty metrics.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record a read operation.
-    pub fn record_read(&mut self, source: &str, bytes: u64, success: bool) {
-        let layer = self.layers.entry(SmolStr::from(source)).or_default();
-        layer.reads += 1;
-        if success {
-            layer.bytes_read += bytes;
-        } else {
-            layer.read_errors += 1;
-        }
-    }
-
-    /// Record a write operation.
-    pub fn record_write(&mut self, source: &str, bytes: u64, success: bool) {
-        let layer = self.layers.entry(SmolStr::from(source)).or_default();
-        layer.writes += 1;
-        if success {
-            layer.bytes_written += bytes;
-        } else {
-            layer.write_errors += 1;
-        }
-    }
-
-    /// Record a delete operation.
-    pub fn record_delete(&mut self, source: &str, success: bool) {
-        let layer = self.layers.entry(SmolStr::from(source)).or_default();
-        layer.deletes += 1;
-        if !success {
-            layer.delete_errors += 1;
-        }
-    }
-
-    /// Merge metrics from another Metrics instance, prefixing all source paths.
-    ///
-    /// Used by composition backends to incorporate inner backend metrics
-    /// with hierarchical naming.
-    pub fn merge_with_prefix(&mut self, other: &Metrics, prefix: &str) {
-        for (source, layer_metrics) in &other.layers {
-            let prefixed_source = SmolStr::from(format!("{}.{}", prefix, source));
-            self.layers
-                .entry(prefixed_source)
-                .or_default()
-                .merge(layer_metrics);
-        }
-    }
-
-    /// Check if metrics are empty.
-    pub fn is_empty(&self) -> bool {
-        self.layers.is_empty()
-    }
 }
 
 /// Unified context for cache operations.
@@ -181,14 +103,6 @@ pub trait Context: Send + Sync {
         // Default implementation does nothing - simple contexts ignore read mode
     }
 
-    // Metrics
-
-    /// Returns a reference to the metrics.
-    fn metrics(&self) -> &Metrics;
-
-    /// Returns a mutable reference to the metrics.
-    fn metrics_mut(&mut self) -> &mut Metrics;
-
     // Type identity and conversion
 
     /// Returns a reference to self as `Any` for downcasting.
@@ -215,8 +129,8 @@ pub trait Context: Send + Sync {
     ///
     /// # Arguments
     /// * `other` - The inner context to merge from
-    /// * `prefix` - Name prefix to prepend to source path (e.g., backend name)
-    fn merge_from(&mut self, other: &dyn Context, prefix: &str) {
+    /// * `prefix` - Label prefix to prepend to source path (e.g., backend label)
+    fn merge_from(&mut self, other: &dyn Context, prefix: &BackendLabel) {
         // Merge status - take the inner status if it indicates a hit
         let inner_status = other.status();
         if inner_status == CacheStatus::Hit || inner_status == CacheStatus::Stale {
@@ -225,27 +139,37 @@ pub trait Context: Send + Sync {
 
         // Merge source with path composition
         match other.source() {
-            ResponseSource::Backend(inner_name) => {
-                // Compose: prefix.inner_name (e.g., "composition.moka")
-                let composed = SmolStr::from(format!("{}.{}", prefix, inner_name));
+            ResponseSource::Backend(inner_label) => {
+                // Compose: prefix.inner_label (e.g., "composition.moka")
+                let composed = prefix.compose(inner_label);
                 self.set_source(ResponseSource::Backend(composed));
             }
             ResponseSource::Upstream => {
                 // No backend hit, keep as upstream
             }
         }
-
-        // Merge metrics with prefix
-        self.metrics_mut()
-            .merge_with_prefix(other.metrics(), prefix);
     }
 }
 
-/// Boxed context trait object.
+/// Boxed context trait object using SmallBox for inline storage.
 ///
-/// Used to pass context through cache operations with dynamic dispatch.
-/// Only one allocation at `CacheFuture` creation.
-pub type BoxContext = Box<dyn Context>;
+/// Uses SmallBox with S4 space (4 * usize = 32 bytes on 64-bit) to avoid
+/// heap allocation for small contexts (like `CacheContext`). Larger contexts
+/// (like `CompositionContext`) fall back to heap allocation automatically.
+///
+/// This optimization reduces allocation overhead in the common case
+/// where only basic cache context tracking is needed.
+pub type BoxContext = SmallBox<dyn Context, S4>;
+
+/// Convert a BoxContext (SmallBox) into a CacheContext.
+///
+/// This function converts the SmallBox to a Box and then calls
+/// `into_cache_context()`. The allocation happens only at the end
+/// of the request lifecycle when the context is finalized.
+pub fn finalize_context(ctx: BoxContext) -> CacheContext {
+    let boxed: Box<dyn Context> = SmallBox::into_box(ctx);
+    boxed.into_cache_context()
+}
 
 /// FSM state for debugging/tracing purposes.
 ///
@@ -260,8 +184,10 @@ pub enum DebugState {
     CheckRequestCachePolicy,
     /// Polling the cache backend
     PollCache,
-    /// Checking cache state (actual/stale/expired)
-    CheckCacheState,
+    /// Converting cached value to response (cache hit, no refill)
+    ConvertResponse,
+    /// Handling stale cache hit
+    HandleStale,
     /// Check concurrency policy
     CheckConcurrency,
     /// Concurrent upstream polling with concurrency control
@@ -274,7 +200,7 @@ pub enum DebugState {
     UpstreamPolled,
     /// Checking if response should be cached
     CheckResponseCachePolicy,
-    /// Updating cache with response
+    /// Updating cache with response (also used for L1 refill from L2 hit)
     UpdateCache,
     /// Final state with response
     Response,
@@ -286,7 +212,8 @@ impl std::fmt::Display for DebugState {
             DebugState::Initial => write!(f, "Initial"),
             DebugState::CheckRequestCachePolicy => write!(f, "CheckRequestCachePolicy"),
             DebugState::PollCache => write!(f, "PollCache"),
-            DebugState::CheckCacheState => write!(f, "CheckCacheState"),
+            DebugState::ConvertResponse => write!(f, "ConvertResponse"),
+            DebugState::HandleStale => write!(f, "HandleStale"),
             DebugState::CheckConcurrency => write!(f, "CheckConcurrency"),
             DebugState::ConcurrentPollUpstream => write!(f, "ConcurrentPollUpstream"),
             DebugState::AwaitResponse => write!(f, "AwaitResponse"),
@@ -304,10 +231,10 @@ impl std::fmt::Display for DebugState {
 pub struct CacheContext {
     /// Whether the request resulted in a cache hit, miss, or stale data.
     pub status: CacheStatus,
+    /// Read mode for this operation.
+    pub read_mode: ReadMode,
     /// Source of the response.
     pub source: ResponseSource,
-    /// Metrics aggregated by source path.
-    pub metrics: Metrics,
     /// FSM states visited during the cache operation (only with `fsm-trace` feature).
     #[cfg(feature = "fsm-trace")]
     pub states: Vec<DebugState>,
@@ -317,8 +244,9 @@ impl CacheContext {
     /// Convert this context into a boxed trait object.
     ///
     /// This is a convenience method for creating `BoxContext` from `CacheContext`.
+    /// Uses SmallBox for inline storage, avoiding heap allocation for small contexts.
     pub fn boxed(self) -> BoxContext {
-        Box::new(self)
+        smallbox!(self)
     }
 }
 
@@ -339,12 +267,12 @@ impl Context for CacheContext {
         self.source = source;
     }
 
-    fn metrics(&self) -> &Metrics {
-        &self.metrics
+    fn read_mode(&self) -> ReadMode {
+        self.read_mode
     }
 
-    fn metrics_mut(&mut self) -> &mut Metrics {
-        &mut self.metrics
+    fn set_read_mode(&mut self, mode: ReadMode) {
+        self.read_mode = mode;
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -352,7 +280,7 @@ impl Context for CacheContext {
     }
 
     fn clone_box(&self) -> BoxContext {
-        Box::new(self.clone())
+        smallbox!(self.clone())
     }
 
     fn into_cache_context(self: Box<Self>) -> CacheContext {
@@ -362,5 +290,51 @@ impl Context for CacheContext {
     #[cfg(feature = "fsm-trace")]
     fn record_state(&mut self, state: DebugState) {
         self.states.push(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context_sizes() {
+        use std::mem::size_of;
+        let cache_ctx_size = size_of::<CacheContext>();
+        let box_ctx_size = size_of::<BoxContext>();
+        let s4_space = 4 * size_of::<usize>();
+
+        println!("CacheContext size: {} bytes", cache_ctx_size);
+        println!("  - CacheStatus: {} bytes", size_of::<CacheStatus>());
+        println!("  - ResponseSource: {} bytes", size_of::<ResponseSource>());
+        println!("BoxContext size: {} bytes", box_ctx_size);
+        println!("S4 inline space: {} bytes", s4_space);
+
+        #[cfg(not(feature = "fsm-trace"))]
+        {
+            // CacheContext should fit in S4 inline storage (32 bytes on 64-bit)
+            assert!(
+                cache_ctx_size <= s4_space,
+                "CacheContext ({} bytes) should fit in S4 ({} bytes)",
+                cache_ctx_size,
+                s4_space
+            );
+        }
+
+        #[cfg(feature = "fsm-trace")]
+        {
+            // With fsm-trace, Vec<DebugState> is added. Verify base struct still fits.
+            let vec_size = size_of::<Vec<DebugState>>();
+            let base_size = cache_ctx_size - vec_size;
+            println!("  - Vec<DebugState>: {} bytes", vec_size);
+            println!("  - Base size (without Vec): {} bytes", base_size);
+
+            assert!(
+                base_size <= s4_space,
+                "Base CacheContext ({} bytes) should fit in S4 ({} bytes)",
+                base_size,
+                s4_space
+            );
+        }
     }
 }

@@ -1,15 +1,28 @@
 use bytes::Bytes;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hitbox::{CacheKey, CacheableResponse};
-use hitbox_backend::composition::policy::{CompositionPolicy, NeverRefill};
+use hitbox_backend::composition::policy::{CompositionPolicy, RefillPolicy};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, CompositionBackend, PassthroughCompressor};
-use hitbox_core::{CacheContext, CacheValue};
+use hitbox_core::{CacheContext, CacheValue, Offload, SmolStr};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
 use hitbox_moka::MokaBackend;
 use http::Response;
+use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
+
+/// Offload that spawns tasks with tokio::spawn
+#[derive(Clone, Debug)]
+struct BenchOffload;
+
+impl Offload for BenchOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
 
 // Use Empty as placeholder body type
 type BenchBody = http_body_util::Empty<Bytes>;
@@ -56,9 +69,7 @@ fn bench_direct_moka(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -70,7 +81,7 @@ fn bench_direct_moka(c: &mut Criterion) {
                 b.to_async(&runtime).iter(|| async {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
+                        .set::<BenchResponse>(key, value, &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -113,8 +124,8 @@ fn bench_composition_concrete(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let backend = CompositionBackend::new(l1, l2)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+        let backend = CompositionBackend::new(l1, l2, BenchOffload)
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -124,9 +135,7 @@ fn bench_composition_concrete(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -138,7 +147,7 @@ fn bench_composition_concrete(c: &mut Criterion) {
                 b.to_async(&runtime).iter(|| async {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
+                        .set::<BenchResponse>(key, value, &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -182,8 +191,8 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let backend = CompositionBackend::new(l1, l2)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+        let backend = CompositionBackend::new(l1, l2, BenchOffload)
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -193,9 +202,7 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -211,12 +218,7 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
                 async move {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(
-                            &key,
-                            &value,
-                            Some(Duration::from_secs(3600)),
-                            &mut ctx,
-                        )
+                        .set::<BenchResponse>(&key, &value, &mut ctx)
                         .await
                         .unwrap();
                 }
@@ -265,8 +267,8 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
                 .build(),
         );
 
-        let backend = CompositionBackend::new(l1, l2)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+        let backend = CompositionBackend::new(l1, l2, BenchOffload)
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -276,9 +278,7 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -294,12 +294,7 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
                 async move {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(
-                            &key,
-                            &value,
-                            Some(Duration::from_secs(3600)),
-                            &mut ctx,
-                        )
+                        .set::<BenchResponse>(&key, &value, &mut ctx)
                         .await
                         .unwrap();
                 }
@@ -349,8 +344,8 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
         );
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1, l2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1, l2, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -361,9 +356,7 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -379,12 +372,7 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
                 async move {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(
-                            &key,
-                            &value,
-                            Some(Duration::from_secs(3600)),
-                            &mut ctx,
-                        )
+                        .set::<BenchResponse>(&key, &value, &mut ctx)
                         .await
                         .unwrap();
                 }
@@ -430,7 +418,7 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let l1 = CompositionBackend::new(l1_inner1, l1_inner2);
+        let l1 = CompositionBackend::new(l1_inner1, l1_inner2, BenchOffload);
 
         // Create L2 (simple Moka)
         let l2 = MokaBackend::builder(10000)
@@ -439,8 +427,8 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
             .build();
 
         // Compose L1 composition with L2
-        let backend = CompositionBackend::new(l1, l2)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+        let backend = CompositionBackend::new(l1, l2, BenchOffload)
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -450,9 +438,7 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -464,7 +450,7 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
                 b.to_async(&runtime).iter(|| async {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
+                        .set::<BenchResponse>(key, value, &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -513,8 +499,8 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
         );
 
         let l1: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1_inner1, l1_inner2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1_inner1, l1_inner2, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create L2 (simple Moka) as dyn
@@ -527,8 +513,8 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         // Compose L1 composition with L2 as dyn
         let backend: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1, l2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1, l2, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -539,9 +525,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -557,12 +541,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
                 async move {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(
-                            &key,
-                            &value,
-                            Some(Duration::from_secs(3600)),
-                            &mut ctx,
-                        )
+                        .set::<BenchResponse>(&key, &value, &mut ctx)
                         .await
                         .unwrap();
                 }
@@ -608,7 +587,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let l1_middle = CompositionBackend::new(l1_deep1, l1_deep2);
+        let l1_middle = CompositionBackend::new(l1_deep1, l1_deep2, BenchOffload);
 
         // Create middle level
         let l2_middle = MokaBackend::builder(10000)
@@ -616,7 +595,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let l1_top = CompositionBackend::new(l1_middle, l2_middle);
+        let l1_top = CompositionBackend::new(l1_middle, l2_middle, BenchOffload);
 
         // Create top level
         let l2_top = MokaBackend::builder(10000)
@@ -624,7 +603,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
             .compressor(PassthroughCompressor)
             .build();
 
-        let backend = CompositionBackend::new(l1_top, l2_top);
+        let backend = CompositionBackend::new(l1_top, l2_top, BenchOffload);
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -634,9 +613,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -648,7 +625,7 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
                 b.to_async(&runtime).iter(|| async {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
+                        .set::<BenchResponse>(key, value, &mut ctx)
                         .await
                         .unwrap();
                 });
@@ -697,8 +674,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
         );
 
         let l1_middle: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1_deep1, l1_deep2)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1_deep1, l1_deep2, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create middle level
@@ -710,8 +687,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
         );
 
         let l1_top: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1_middle, l2_middle)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1_middle, l2_middle, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create top level
@@ -723,8 +700,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
         );
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
-            CompositionBackend::new(l1_top, l2_top)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+            CompositionBackend::new(l1_top, l2_top, BenchOffload)
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -735,9 +712,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
         runtime
             .block_on(async {
                 let mut ctx = CacheContext::default().boxed();
-                backend
-                    .set::<BenchResponse>(&key, &value, Some(Duration::from_secs(3600)), &mut ctx)
-                    .await
+                backend.set::<BenchResponse>(&key, &value, &mut ctx).await
             })
             .unwrap();
 
@@ -749,7 +724,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
                 b.to_async(&runtime).iter(|| async {
                     let mut ctx = CacheContext::default().boxed();
                     backend
-                        .set::<BenchResponse>(key, value, Some(Duration::from_secs(3600)), &mut ctx)
+                        .set::<BenchResponse>(key, value, &mut ctx)
                         .await
                         .unwrap();
                 });

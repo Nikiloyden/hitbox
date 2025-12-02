@@ -1,28 +1,29 @@
-//! Redis backend actor implementation.
-use crate::error::Error;
+//! Redis backend implementation.
+
 use async_trait::async_trait;
 use bytes::Bytes;
-use chrono::Utc;
-use hitbox::{CacheKey, CacheValue, Raw};
+use chrono::{DateTime, Utc};
+use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
-    format::{Format, JsonFormat},
+    format::{BincodeFormat, Format},
 };
 use redis::{Client, aio::ConnectionManager};
-use smol_str::SmolStr;
 use tokio::sync::OnceCell;
 use tracing::trace;
 
+use crate::error::Error;
+
 /// Redis cache backend based on redis-rs crate.
 ///
-/// This struct provides redis as storage [Backend] for hitbox.
-/// Its use one [MultiplexedConnection] for asynchronous network interaction.
+/// This struct provides Redis as a storage [`Backend`] for hitbox.
+/// It uses a [`ConnectionManager`] for asynchronous network interaction.
 ///
-/// [MultiplexedConnection]: redis::aio::MultiplexedConnection
-/// [Backend]: hitbox_backend::Backend
+/// [`ConnectionManager`]: redis::aio::ConnectionManager
+/// [`Backend`]: hitbox_backend::Backend
 #[derive(Clone)]
-pub struct RedisBackend<S = JsonFormat, C = PassthroughCompressor>
+pub struct RedisBackend<S = BincodeFormat, C = PassthroughCompressor>
 where
     S: Format,
     C: Compressor,
@@ -32,10 +33,10 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: SmolStr,
+    name: BackendLabel,
 }
 
-impl RedisBackend<JsonFormat, PassthroughCompressor> {
+impl RedisBackend<BincodeFormat, PassthroughCompressor> {
     /// Create new backend instance with default settings.
     ///
     /// # Examples
@@ -52,7 +53,8 @@ impl RedisBackend<JsonFormat, PassthroughCompressor> {
     }
 
     /// Creates new RedisBackend builder with default settings.
-    pub fn builder() -> RedisBackendBuilder<JsonFormat, PassthroughCompressor> {
+    #[must_use]
+    pub fn builder() -> RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
         RedisBackendBuilder::default()
     }
 }
@@ -77,8 +79,8 @@ where
     }
 }
 
-/// Part of builder pattern implementation for RedisBackend actor.
-pub struct RedisBackendBuilder<S = JsonFormat, C = PassthroughCompressor>
+/// Part of builder pattern implementation for RedisBackend.
+pub struct RedisBackendBuilder<S = BincodeFormat, C = PassthroughCompressor>
 where
     S: Format,
     C: Compressor,
@@ -87,17 +89,17 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: SmolStr,
+    name: BackendLabel,
 }
 
-impl Default for RedisBackendBuilder<JsonFormat, PassthroughCompressor> {
+impl Default for RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
     fn default() -> Self {
         Self {
             connection_info: "redis://127.0.0.1/".to_owned(),
-            serializer: JsonFormat,
+            serializer: BincodeFormat,
             key_format: CacheKeyFormat::default(),
             compressor: PassthroughCompressor,
-            name: SmolStr::new_static("redis"),
+            name: BackendLabel::new_static("redis"),
         }
     }
 }
@@ -107,9 +109,9 @@ where
     S: Format,
     C: Compressor,
 {
-    /// Set connection info (host, port, database, etc.) for RedisBackend actor.
-    pub fn server(mut self, connection_info: String) -> Self {
-        self.connection_info = connection_info;
+    /// Set connection info (host, port, database, etc.) for RedisBackend.
+    pub fn server(mut self, connection_info: impl Into<String>) -> Self {
+        self.connection_info = connection_info.into();
         self
     }
 
@@ -137,7 +139,7 @@ where
     ///
     /// The name is used for source path composition in multi-layer caches.
     /// For example, with name "sessions", the source path might be "composition.L1.sessions".
-    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
         self.name = name.into();
         self
     }
@@ -176,43 +178,67 @@ where
     C: Compressor + Send + Sync,
 {
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-        let client = self.client.clone();
-        let cache_key = self.key_format.serialize(key)?;
-        let mut con = client.get_connection_manager().await.map_err(Error::from)?;
-        let result: Option<Vec<u8>> = redis::cmd("GET")
-            .arg(cache_key)
-            .query_async(&mut con)
-            .await
-            .map_err(Error::from)?;
-        Ok(result
-            .map(|value| CacheValue::new(Bytes::from(value), Some(Utc::now()), Some(Utc::now()))))
-    }
-
-    async fn write(
-        &self,
-        key: &CacheKey,
-        value: CacheValue<Raw>,
-        ttl: Option<std::time::Duration>,
-    ) -> BackendResult<()> {
         let mut con = self.connection().await?.clone();
         let cache_key = self.key_format.serialize(key)?;
 
-        let mut request = redis::cmd("SET");
-        request.arg(cache_key).arg(value.data.to_vec());
-
-        ttl.map(|ttl_duration| request.arg("EX").arg(ttl_duration.as_secs()));
-
-        request
+        // Pipeline: HMGET (data, stale) + PTTL with typed decoding
+        let ((data, stale_ms), pttl): ((Option<Vec<u8>>, Option<i64>), i64) = redis::pipe()
+            .cmd("HMGET")
+            .arg(&cache_key)
+            .arg("d")
+            .arg("s")
+            .cmd("PTTL")
+            .arg(&cache_key)
             .query_async(&mut con)
             .await
-            .map_err(Error::from)
-            .map_err(BackendError::from)
+            .map_err(Error::from)?;
+
+        // If data is None, key doesn't exist
+        let data = match data {
+            Some(data) => Bytes::from(data),
+            None => return Ok(None),
+        };
+
+        // Convert stale millis to DateTime
+        let stale = stale_ms.and_then(DateTime::from_timestamp_millis);
+
+        // Calculate expire from PTTL (milliseconds remaining)
+        // PTTL returns: -2 if key doesn't exist, -1 if no TTL, else milliseconds
+        let expire = (pttl > 0).then(|| Utc::now() + chrono::Duration::milliseconds(pttl));
+
+        Ok(Some(CacheValue::new(data, expire, stale)))
+    }
+
+    async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+        let mut con = self.connection().await?.clone();
+        let cache_key = self.key_format.serialize(key)?;
+
+        // Build HSET command with data field, optionally add stale field
+        let mut cmd = redis::cmd("HSET");
+        cmd.arg(&cache_key).arg("d").arg(value.data.as_ref());
+        if let Some(stale) = value.stale {
+            cmd.arg("s").arg(stale.timestamp_millis());
+        }
+
+        // Pipeline: HSET + optional EXPIRE (computed from value.ttl())
+        let mut pipe = redis::pipe();
+        pipe.add_command(cmd).ignore();
+        if let Some(ttl_duration) = value.ttl() {
+            pipe.cmd("EXPIRE")
+                .arg(&cache_key)
+                .arg(ttl_duration.as_secs())
+                .ignore();
+        }
+
+        pipe.query_async::<()>(&mut con)
+            .await
+            .map_err(Error::from)?;
+        Ok(())
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
-        let client = self.client.clone();
+        let mut con = self.connection().await?.clone();
         let cache_key = self.key_format.serialize(key)?;
-        let mut con = client.get_connection_manager().await.map_err(Error::from)?;
 
         let deleted: i32 = redis::cmd("DEL")
             .arg(cache_key)
@@ -227,8 +253,8 @@ where
         }
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> BackendLabel {
+        self.name.clone()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -242,75 +268,6 @@ where
     fn compressor(&self) -> &dyn Compressor {
         &self.compressor
     }
-
-    // async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
-    //     let client = self.client.clone();
-    //     let cache_key = UrlEncodedKeySerializer::serialize(key)?;
-    //     async move {
-    //         let mut con = client.get_tokio_connection_manager().await.unwrap();
-    //         let result: Option<Vec<u8>> = redis::cmd("GET")
-    //             .arg(cache_key)
-    //             .query_async(&mut con)
-    //             .await
-    //             .map_err(Error::from)
-    //             .map_err(BackendError::from)?;
-    //         result
-    //             .map(|value| {
-    //                 JsonFormat::<Vec<u8>>::deserialize(value).map_err(BackendError::from)
-    //             })
-    //             .transpose()
-    //     }
-    //     .await
-    // }
-    //
-    // async fn delete(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
-    //     let mut con = self.connection().await?.clone();
-    //     let cache_key = UrlEncodedKeySerializer::serialize(key)?;
-    //     redis::cmd("DEL")
-    //         .arg(cache_key)
-    //         .query_async(&mut con)
-    //         .await
-    //         .map(|res| {
-    //             if res > 0 {
-    //                 DeleteStatus::Deleted(res)
-    //             } else {
-    //                 DeleteStatus::Missing
-    //             }
-    //         })
-    //         .map_err(Error::from)
-    //         .map_err(BackendError::from)
-    // }
-    //
-    // async fn set<T>(
-    //     &self,
-    //     key: &CacheKey,
-    //     value: &CacheValue<T::Cached>,
-    //     ttl: Option<u32>,
-    // ) -> BackendResult<()>
-    // where
-    //     T: CacheableResponse + Send,
-    //     T::Cached: serde::Serialize + Send + Sync,
-    // {
-    //     let mut con = self.connection().await?.clone();
-    //     let mut request = redis::cmd("SET");
-    //     let cache_key = UrlEncodedKeySerializer::serialize(key)?;
-    //     let serialized_value =
-    //         JsonFormat::<Vec<u8>>::serialize(value).map_err(BackendError::from)?;
-    //     request.arg(cache_key).arg(serialized_value);
-    //     if let Some(ttl) = ttl {
-    //         request.arg("EX").arg(ttl);
-    //     };
-    //     request
-    //         .query_async(&mut con)
-    //         .await
-    //         .map_err(Error::from)
-    //         .map_err(BackendError::from)
-    // }
-
-    // async fn start(&self) -> BackendResult<()> {
-    //     self.connection().await?;
-    //     Ok(())
-    // }
 }
 
 // Explicit CacheBackend implementation using default trait methods

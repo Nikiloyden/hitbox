@@ -4,7 +4,7 @@ use std::time::Duration;
 #[cfg(any(test, feature = "test-helpers"))]
 use std::sync::RwLock;
 
-use crate::response::{CacheState, CacheableResponse};
+use crate::response::CacheState;
 
 #[cfg(any(test, feature = "test-helpers"))]
 use crate::time_provider::TimeProvider;
@@ -99,20 +99,24 @@ impl<T> CacheValue<T> {
 }
 
 impl<T> CacheValue<T> {
-    pub async fn cache_state<C: CacheableResponse<Cached = T>>(self) -> CacheState<C> {
-        let (meta, data) = self.into_parts();
-        let origin = C::from_cached(data).await;
+    /// Check the cache state based on expire/stale timestamps.
+    ///
+    /// Returns `CacheState<CacheValue<T>>` preserving the original value with metadata.
+    /// This is a sync operation - just checks timestamps, no conversion.
+    ///
+    /// The caller is responsible for converting to Response via `from_cached()` when needed.
+    pub fn cache_state(self) -> CacheState<Self> {
         let now = current_time();
-        if let Some(expire) = meta.expire
+        if let Some(expire) = self.expire
             && expire <= now
         {
-            CacheState::Expired(origin)
-        } else if let Some(stale) = meta.stale
+            CacheState::Expired(self)
+        } else if let Some(stale) = self.stale
             && stale <= now
         {
-            CacheState::Stale(origin)
+            CacheState::Stale(self)
         } else {
-            CacheState::Actual(origin)
+            CacheState::Actual(self)
         }
     }
 }

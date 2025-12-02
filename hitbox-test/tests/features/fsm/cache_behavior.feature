@@ -266,7 +266,7 @@ Feature: Cache FSM Behavior
       | Initial                 |
       | CheckRequestCachePolicy |
       | PollCache               |
-      | CheckCacheState         |
+      | ConvertResponse         |
       | Response                |
 
   # =============================================================================
@@ -286,7 +286,7 @@ Feature: Cache FSM Behavior
       | Initial                 |
       | CheckRequestCachePolicy |
       | PollCache               |
-      | CheckCacheState         |
+      | HandleStale             |
       | Response                |
 
   # =============================================================================
@@ -307,7 +307,6 @@ Feature: Cache FSM Behavior
       | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
-      | CheckCacheState          |
       | CheckConcurrency         |
       | PollUpstream             |
       | UpstreamPolled           |
@@ -329,7 +328,6 @@ Feature: Cache FSM Behavior
       | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
-      | CheckCacheState          |
       | CheckConcurrency         |
       | PollUpstream             |
       | UpstreamPolled           |
@@ -355,7 +353,6 @@ Feature: Cache FSM Behavior
       | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
-      | CheckCacheState          |
       | CheckConcurrency         |
       | ConcurrentPollUpstream   |
       | PollUpstream             |
@@ -378,7 +375,6 @@ Feature: Cache FSM Behavior
       | Initial                  |
       | CheckRequestCachePolicy  |
       | PollCache                |
-      | CheckCacheState          |
       | CheckConcurrency         |
       | ConcurrentPollUpstream   |
       | PollUpstream             |
@@ -403,18 +399,17 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states for each request should be:
-      | Request 1                | Request 2                | Request 3                |
-      | Initial                  | Initial                  | Initial                  |
-      | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
-      | PollCache                | PollCache                | PollCache                |
-      | CheckCacheState          | CheckCacheState          | CheckCacheState          |
-      | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
-      | ConcurrentPollUpstream   | ConcurrentPollUpstream   | ConcurrentPollUpstream   |
-      | PollUpstream             | AwaitResponse            | AwaitResponse            |
-      | UpstreamPolled           | Response                 | Response                 |
-      | CheckResponseCachePolicy |                          |                          |
-      | UpdateCache              |                          |                          |
-      | Response                 |                          |                          |
+      | Request 1                | Request 2               | Request 3               |
+      | Initial                  | Initial                 | Initial                 |
+      | CheckRequestCachePolicy  | CheckRequestCachePolicy | CheckRequestCachePolicy |
+      | PollCache                | PollCache               | PollCache               |
+      | CheckConcurrency         | CheckConcurrency        | CheckConcurrency        |
+      | ConcurrentPollUpstream   | ConcurrentPollUpstream  | ConcurrentPollUpstream  |
+      | PollUpstream             | AwaitResponse           | AwaitResponse           |
+      | UpstreamPolled           | Response                | Response                |
+      | CheckResponseCachePolicy |                         |                         |
+      | UpdateCache              |                         |                         |
+      | Response                 |                         |                         |
 
   # =============================================================================
   # Cache Hit - Expired, Dogpile Prevention: Await Closed

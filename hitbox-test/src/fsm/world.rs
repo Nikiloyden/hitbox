@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -8,11 +9,13 @@ use hitbox::CacheContext;
 use hitbox::concurrency::BroadcastConcurrencyManager;
 use hitbox::fsm::CacheFuture;
 use hitbox::policy::{EnabledCacheConfig, PolicyConfig};
-use hitbox_backend::CacheBackend;
+use hitbox_backend::composition::CompositionPolicy;
+use hitbox_backend::composition::policy::RefillPolicy;
+use hitbox_backend::{CacheBackend, CompositionBackend};
 use hitbox_core::{
     CacheKey, CachePolicy, CacheValue, CacheablePolicyData, CacheableRequest, CacheableResponse,
-    EntityPolicyConfig, Extractor, KeyPart, KeyParts, Predicate, PredicateResult,
-    RequestCachePolicy, ResponseCachePolicy, Upstream,
+    EntityPolicyConfig, Extractor, KeyPart, KeyParts, Offload, Predicate, PredicateResult,
+    RequestCachePolicy, ResponseCachePolicy, SmolStr, Upstream,
 };
 use hitbox_moka::MokaBackend;
 
@@ -172,6 +175,22 @@ impl Upstream<SimpleRequest> for ConfigurableUpstream {
 }
 
 // =============================================================================
+// Test Offload (for composition backend)
+// =============================================================================
+
+#[derive(Clone, Debug)]
+pub struct TestOffload;
+
+impl Offload for TestOffload {
+    fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        tokio::spawn(future);
+    }
+}
+
+// =============================================================================
 // FSM Configuration
 // =============================================================================
 
@@ -183,6 +202,22 @@ pub struct FsmConfig {
     pub concurrency: Option<u8>,
     pub ttl: Option<u32>,
     pub stale: Option<u32>,
+}
+
+// =============================================================================
+// Composition Configuration
+// =============================================================================
+
+#[derive(Debug, Clone, Default)]
+pub struct CompositionConfig {
+    /// Whether to use CompositionBackend instead of single MokaBackend
+    pub enabled: bool,
+    /// Refill policy for composition backend
+    pub refill_policy: RefillPolicy,
+    /// Cache state for L1 (when composition is enabled)
+    pub l1_state: CacheState,
+    /// Cache state for L2 (when composition is enabled)
+    pub l2_state: CacheState,
 }
 
 // =============================================================================
@@ -251,6 +286,12 @@ pub struct FsmWorld {
     pub request_delay_ms: u64,
     pub results: TestResults,
     pub backend: MokaBackend,
+    /// Composition backend configuration
+    pub composition: CompositionConfig,
+    /// L1 backend (for inspection when composition is enabled)
+    pub l1_backend: MokaBackend,
+    /// L2 backend (for inspection when composition is enabled)
+    pub l2_backend: MokaBackend,
 }
 
 impl FsmWorld {
@@ -269,13 +310,15 @@ impl FsmWorld {
             request_delay_ms: 10,
             results: TestResults::default(),
             backend: MokaBackend::builder(100).build(),
+            composition: CompositionConfig::default(),
+            l1_backend: MokaBackend::builder(100).build(),
+            l2_backend: MokaBackend::builder(100).build(),
         }
     }
 
     pub async fn run_requests(&mut self, num_requests: usize, request_value: u32) {
         let upstream_call_count = Arc::new(AtomicUsize::new(0));
 
-        let backend = Arc::new(self.backend.clone());
         let request_pred = Arc::new(ConfigurableRequestPredicate {
             cacheable: self.config.request_cacheable,
         });
@@ -297,12 +340,16 @@ impl FsmWorld {
         });
 
         // Pre-populate cache if needed
-        self.prepopulate_cache(&backend).await;
+        if self.composition.enabled {
+            self.prepopulate_composition_cache().await;
+        } else {
+            let backend = Arc::new(self.backend.clone());
+            self.prepopulate_cache(&backend).await;
+        }
 
         let mut handles = Vec::new();
 
         for i in 0..num_requests {
-            let backend = backend.clone();
             let request_pred = request_pred.clone();
             let response_pred = response_pred.clone();
             let extractor = extractor.clone();
@@ -312,6 +359,13 @@ impl FsmWorld {
             let upstream_delay_ms = self.upstream_delay_ms;
             let request_delay_ms = self.request_delay_ms;
 
+            // Create appropriate backend based on composition configuration
+            let composition_enabled = self.composition.enabled;
+            let refill_policy = self.composition.refill_policy;
+            let l1 = self.l1_backend.clone();
+            let l2 = self.l2_backend.clone();
+            let single_backend = self.backend.clone();
+
             let handle = tokio::spawn(async move {
                 if request_delay_ms > 0 && i > 0 {
                     tokio::time::sleep(Duration::from_millis(i as u64 * request_delay_ms)).await;
@@ -319,19 +373,43 @@ impl FsmWorld {
 
                 let upstream = ConfigurableUpstream::new(upstream_call_count, upstream_delay_ms);
 
-                let cache_future = CacheFuture::new(
-                    backend,
-                    SimpleRequest(request_value),
-                    upstream,
-                    request_pred,
-                    response_pred,
-                    extractor,
-                    policy,
-                    None, // No offload manager for tests
-                    concurrency_manager,
-                );
+                if composition_enabled {
+                    // Use CompositionBackend
+                    let composition = CompositionBackend::new(l1, l2, TestOffload)
+                        .with_policy(CompositionPolicy::new().refill(refill_policy));
+                    let backend = Arc::new(composition);
 
-                cache_future.await
+                    let cache_future = CacheFuture::new(
+                        backend,
+                        SimpleRequest(request_value),
+                        upstream,
+                        request_pred,
+                        response_pred,
+                        extractor,
+                        policy,
+                        None, // No offload manager for tests
+                        concurrency_manager,
+                    );
+
+                    cache_future.await
+                } else {
+                    // Use single MokaBackend
+                    let backend = Arc::new(single_backend);
+
+                    let cache_future = CacheFuture::new(
+                        backend,
+                        SimpleRequest(request_value),
+                        upstream,
+                        request_pred,
+                        response_pred,
+                        extractor,
+                        policy,
+                        None, // No offload manager for tests
+                        concurrency_manager,
+                    );
+
+                    cache_future.await
+                }
             });
 
             handles.push(handle);
@@ -359,12 +437,7 @@ impl FsmWorld {
                 let expire = Some(Utc::now() + chrono::Duration::hours(1));
                 let cache_value = CacheValue::new(*value, expire, None);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
                     .await;
             }
             CacheState::Stale(value) => {
@@ -375,12 +448,7 @@ impl FsmWorld {
                 let stale = Some(Utc::now() - chrono::Duration::seconds(1));
                 let cache_value = CacheValue::new(*value, expire, stale);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
                     .await;
             }
             CacheState::Expired(value) => {
@@ -390,12 +458,56 @@ impl FsmWorld {
                 let stale = Some(Utc::now() - chrono::Duration::minutes(30));
                 let cache_value = CacheValue::new(*value, expire, stale);
                 let _ = backend
-                    .set::<SimpleResponse>(
-                        &cache_key,
-                        &cache_value,
-                        Some(Duration::from_secs(3600)),
-                        &mut ctx,
-                    )
+                    .set::<SimpleResponse>(&cache_key, &cache_value, &mut ctx)
+                    .await;
+            }
+        }
+    }
+
+    /// Pre-populate L1 and L2 caches based on composition configuration.
+    async fn prepopulate_composition_cache(&self) {
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+
+        // Populate L1 based on l1_state
+        self.populate_backend(&self.l1_backend, &cache_key, &self.composition.l1_state)
+            .await;
+
+        // Populate L2 based on l2_state
+        self.populate_backend(&self.l2_backend, &cache_key, &self.composition.l2_state)
+            .await;
+    }
+
+    /// Helper to populate a single backend with given cache state.
+    async fn populate_backend(
+        &self,
+        backend: &MokaBackend,
+        cache_key: &CacheKey,
+        state: &CacheState,
+    ) {
+        let mut ctx = CacheContext::default().boxed();
+        match state {
+            CacheState::Empty => {}
+            CacheState::Fresh(value) => {
+                let expire = Some(Utc::now() + chrono::Duration::hours(1));
+                let cache_value = CacheValue::new(*value, expire, None);
+                let _ = backend
+                    .set::<SimpleResponse>(cache_key, &cache_value, &mut ctx)
+                    .await;
+            }
+            CacheState::Stale(value) => {
+                let expire = Some(Utc::now() + chrono::Duration::hours(1));
+                let stale = Some(Utc::now() - chrono::Duration::seconds(1));
+                let cache_value = CacheValue::new(*value, expire, stale);
+                let _ = backend
+                    .set::<SimpleResponse>(cache_key, &cache_value, &mut ctx)
+                    .await;
+            }
+            CacheState::Expired(value) => {
+                let expire = Some(Utc::now() - chrono::Duration::hours(1));
+                let stale = Some(Utc::now() - chrono::Duration::minutes(30));
+                let cache_value = CacheValue::new(*value, expire, stale);
+                let _ = backend
+                    .set::<SimpleResponse>(cache_key, &cache_value, &mut ctx)
                     .await;
             }
         }
@@ -419,6 +531,64 @@ impl FsmWorld {
         let cache_key = CacheKey::from_str("fixed_key", "value");
         let mut ctx = CacheContext::default().boxed();
         self.backend
+            .get::<SimpleResponse>(&cache_key, &mut ctx)
+            .await
+            .ok()
+            .flatten()
+            .is_none()
+    }
+
+    // =========================================================================
+    // Composition L1/L2 inspection methods
+    // =========================================================================
+
+    /// Check if L1 contains a specific value.
+    pub async fn l1_contains_value(&self, expected: u32) -> bool {
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+        let mut ctx = CacheContext::default().boxed();
+        if let Ok(Some(cached)) = self
+            .l1_backend
+            .get::<SimpleResponse>(&cache_key, &mut ctx)
+            .await
+        {
+            cached.into_inner() == expected
+        } else {
+            false
+        }
+    }
+
+    /// Check if L1 cache is empty.
+    pub async fn l1_is_empty(&self) -> bool {
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+        let mut ctx = CacheContext::default().boxed();
+        self.l1_backend
+            .get::<SimpleResponse>(&cache_key, &mut ctx)
+            .await
+            .ok()
+            .flatten()
+            .is_none()
+    }
+
+    /// Check if L2 contains a specific value.
+    pub async fn l2_contains_value(&self, expected: u32) -> bool {
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+        let mut ctx = CacheContext::default().boxed();
+        if let Ok(Some(cached)) = self
+            .l2_backend
+            .get::<SimpleResponse>(&cache_key, &mut ctx)
+            .await
+        {
+            cached.into_inner() == expected
+        } else {
+            false
+        }
+    }
+
+    /// Check if L2 cache is empty.
+    pub async fn l2_is_empty(&self) -> bool {
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+        let mut ctx = CacheContext::default().boxed();
+        self.l2_backend
             .get::<SimpleResponse>(&cache_key, &mut ctx)
             .await
             .ok()
