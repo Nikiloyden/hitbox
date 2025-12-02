@@ -81,19 +81,8 @@ impl CompositionReadPolicy for SequentialReadPolicy {
             }
         }
 
-        // Try L2 - keep L1 context to merge metrics
-        let (l2_result, mut l2_ctx) = read_l2(key).await;
-
-        // Merge L1 metrics into L2 context (L1 was queried even if it missed)
-        // We merge directly without prefix since both are at the same level
-        for (source, layer_metrics) in l1_ctx.metrics().layers.iter() {
-            l2_ctx
-                .metrics_mut()
-                .layers
-                .entry(source.clone())
-                .or_default()
-                .merge(layer_metrics);
-        }
+        // Try L2
+        let (l2_result, l2_ctx) = read_l2(key).await;
 
         match l2_result {
             Ok(Some(value)) => {

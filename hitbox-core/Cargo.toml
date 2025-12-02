@@ -22,6 +22,7 @@ serde = { workspace = true }
 bitcode = { workspace = true, features = ["derive"] }
 bytes = { version = "1", features = ["serde"] }
 smol_str = { workspace = true }
+smallbox = { workspace = true }
 
 # Optional rkyv support
 rkyv = { workspace = true, optional = true }

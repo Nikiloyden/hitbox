@@ -3,6 +3,7 @@ use hitbox_backend::composition::CompositionFormat;
 use hitbox_backend::format::{BincodeFormat, FormatExt, JsonFormat};
 use hitbox_core::{BoxContext, CacheContext};
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
 use std::sync::Arc;
 
 #[cfg(feature = "rkyv_format")]
@@ -41,6 +42,8 @@ fn test_same_format_optimization() {
         Arc::new(JsonFormat),
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
+        SmolStr::new_static("test.l1"),
+        SmolStr::new_static("test.l2"),
     );
 
     let data = TestData::large();
@@ -65,6 +68,8 @@ fn test_different_formats() {
         Arc::new(BincodeFormat),
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
+        SmolStr::new_static("test.l1"),
+        SmolStr::new_static("test.l2"),
     );
 
     let data = TestData::large();
@@ -97,6 +102,8 @@ fn test_serialization_size_comparison() {
         Arc::new(JsonFormat),
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
+        SmolStr::new_static("test.l1"),
+        SmolStr::new_static("test.l2"),
     );
     let composition_same_size = composition_same.serialize(&data, &ctx).unwrap().len();
 
@@ -106,6 +113,8 @@ fn test_serialization_size_comparison() {
         Arc::new(BincodeFormat),
         Arc::new(PassthroughCompressor),
         Arc::new(PassthroughCompressor),
+        SmolStr::new_static("test.l1"),
+        SmolStr::new_static("test.l2"),
     );
     let composition_diff_size = composition_diff.serialize(&data, &ctx).unwrap().len();
 

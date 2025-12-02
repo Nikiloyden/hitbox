@@ -33,7 +33,7 @@ smol_str = { workspace = true }
 [features]
 default = []
 
-metrics = ["dep:metrics", "lazy_static"]
+metrics = ["dep:metrics", "lazy_static", "hitbox-backend/metrics"]
 rkyv_format = ["hitbox-core/rkyv_format", "hitbox-backend/rkyv_format"]
 
 [dev-dependencies]

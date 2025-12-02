@@ -79,6 +79,10 @@ impl Backend for TestBackend {
     fn compressor(&self) -> &dyn Compressor {
         &PassthroughCompressor
     }
+
+    fn name(&self) -> &str {
+        "test"
+    }
 }
 
 impl CacheBackend for TestBackend {}
@@ -117,6 +121,10 @@ impl Backend for ErrorBackend {
 
     fn compressor(&self) -> &dyn Compressor {
         &PassthroughCompressor
+    }
+
+    fn name(&self) -> &str {
+        "error"
     }
 }
 

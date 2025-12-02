@@ -4,7 +4,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{self, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -58,6 +58,8 @@ where
     /// Whether this is a background revalidation task.
     is_revalidation: bool,
     concurrency_manager: C,
+    /// Start time for latency measurement.
+    start_time: Instant,
 }
 
 impl<B, Req, Res, U, ReqP, ResP, E, C> CacheFuture<B, Req, Res, U, ReqP, ResP, E, C>
@@ -98,6 +100,7 @@ where
             offload_manager,
             is_revalidation: false,
             concurrency_manager,
+            start_time: Instant::now(),
         }
     }
 }
@@ -160,6 +163,7 @@ where
             is_revalidation: true,
             // Revalidation tasks don't need concurrency control
             concurrency_manager: NoopConcurrencyManager,
+            start_time: Instant::now(),
         }
     }
 }
@@ -622,22 +626,15 @@ where
                     let upstream_response = response.take().expect(POLL_AFTER_READY_ERROR);
                     let ctx_ref = ctx.as_mut().expect(CONTEXT_TAKEN_ERROR);
                     ctx_ref.record_state(DebugState::Response);
-                    let source = match ctx_ref.status() {
-                        CacheStatus::Hit | CacheStatus::Stale => {
-                            // TODO: get backend name from backend instance
-                            ResponseSource::Backend("unknown".into())
-                        }
-                        CacheStatus::Miss => ResponseSource::Upstream,
-                    };
-                    ctx_ref.set_source(source);
+                    // For cache miss, set source to Upstream.
+                    // For hit/stale, the backend has already set the correct source.
+                    if ctx_ref.status() == CacheStatus::Miss {
+                        ctx_ref.set_source(ResponseSource::Upstream);
+                    }
                     let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    let ctx = ctx.into_cache_context();
-                    let (operation, revalidate) = if *this.is_revalidation {
-                        ("revalidate", true)
-                    } else {
-                        ("request", false)
-                    };
-                    crate::metrics::record_context_metrics(&ctx, operation, revalidate);
+                    let ctx = hitbox_core::finalize_context(ctx);
+                    let duration = this.start_time.elapsed();
+                    crate::metrics::record_context_metrics(&ctx, duration, *this.is_revalidation);
                     return Poll::Ready((upstream_response, ctx));
                 }
             };

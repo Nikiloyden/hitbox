@@ -5,9 +5,8 @@
 
 use std::any::Any;
 
-use hitbox_core::{
-    BoxContext, CacheContext, CacheStatus, Context, Metrics, ReadMode, ResponseSource,
-};
+use hitbox_core::{BoxContext, CacheContext, CacheStatus, Context, ReadMode, ResponseSource};
+use smallbox::smallbox;
 
 use super::CompositionFormat;
 
@@ -98,20 +97,12 @@ impl Context for CompositionContext {
         self.inner.set_read_mode(mode);
     }
 
-    fn metrics(&self) -> &Metrics {
-        self.inner.metrics()
-    }
-
-    fn metrics_mut(&mut self) -> &mut Metrics {
-        self.inner.metrics_mut()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn clone_box(&self) -> BoxContext {
-        Box::new(CompositionContext {
+        smallbox!(CompositionContext {
             inner: self.inner.clone_box(),
             layer: self.layer,
             format: self.format.clone(),
@@ -119,7 +110,7 @@ impl Context for CompositionContext {
     }
 
     fn into_cache_context(self: Box<Self>) -> CacheContext {
-        self.inner.into_cache_context()
+        hitbox_core::finalize_context(self.inner)
     }
 }
 
@@ -138,5 +129,5 @@ impl std::fmt::Debug for CompositionContext {
 /// composition-specific data.
 pub fn upgrade_context(ctx: &mut BoxContext, layer: CompositionLayer, format: CompositionFormat) {
     let inner = std::mem::replace(ctx, CacheContext::default().boxed());
-    *ctx = Box::new(CompositionContext::wrap(inner, layer, format));
+    *ctx = smallbox!(CompositionContext::wrap(inner, layer, format));
 }

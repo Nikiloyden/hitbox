@@ -13,9 +13,10 @@ mod value;
 
 pub use cacheable::Cacheable;
 pub use context::{
-    BoxContext, CacheContext, CacheStatus, Context, DebugState, LayerMetrics, Metrics, ReadMode,
+    finalize_context, BoxContext, CacheContext, CacheStatus, Context, DebugState, ReadMode,
     ResponseSource,
 };
+pub use smallbox::space::S4;
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};
 pub use offload::Offload;

@@ -10,6 +10,7 @@ use hitbox_core::{
 use crate::{
     BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
     format::{Format, FormatExt, JsonFormat},
+    metrics::Timer,
 };
 
 pub type BackendResult<T> = Result<T, BackendError>;
@@ -189,18 +190,28 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = SmolStr::from(self.name());
+            let backend_name = self.name();
+
+            let read_timer = Timer::new();
             let read_result = self.read(key).await;
+            crate::metrics::record_read(backend_name, read_timer.elapsed());
 
             match read_result {
                 Ok(Some(value)) => {
-                    let bytes_read = value.data.len() as u64;
                     let (meta, raw_data) = value.into_parts();
+                    let raw_len = raw_data.len();
+                    crate::metrics::record_read_bytes(backend_name, raw_len);
+
                     let format = self.value_format();
+
+                    let decompress_timer = Timer::new();
                     let decompressed = self.compressor().decompress(&raw_data)?;
+                    crate::metrics::record_decompress(backend_name, decompress_timer.elapsed());
+
                     let decompressed_bytes = Bytes::from(decompressed);
 
                     // Deserialize using with_deserializer - context may be upgraded
+                    let deserialize_timer = Timer::new();
                     let mut deserialized_opt: Option<T::Cached> = None;
                     format.with_deserializer(
                         &decompressed_bytes,
@@ -211,6 +222,7 @@ pub trait CacheBackend: Backend {
                         },
                         ctx,
                     )?;
+                    crate::metrics::record_deserialize(backend_name, deserialize_timer.elapsed());
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -226,21 +238,13 @@ pub trait CacheBackend: Backend {
                         let _ = self.set::<T>(key, &cached_value, ctx).await;
                     }
 
-                    // Record read metrics
-                    ctx.metrics_mut()
-                        .record_read(&backend_name, bytes_read, true);
                     ctx.set_status(CacheStatus::Hit);
-                    ctx.set_source(ResponseSource::Backend(backend_name));
+                    ctx.set_source(ResponseSource::Backend(SmolStr::from(backend_name)));
                     Ok(Some(cached_value))
                 }
-                Ok(None) => {
-                    // Record read miss (0 bytes)
-                    ctx.metrics_mut().record_read(&backend_name, 0, true);
-                    Ok(None)
-                }
+                Ok(None) => Ok(None),
                 Err(e) => {
-                    // Record read error
-                    ctx.metrics_mut().record_read(&backend_name, 0, false);
+                    crate::metrics::record_read_error(backend_name);
                     Err(e)
                 }
             }
@@ -258,38 +262,47 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = self.name().to_owned();
+            let backend_name = self.name();
             let format = self.value_format();
-            // Use the context for serialization (allows CompositionFormat to check policy)
+
+            let serialize_timer = Timer::new();
             let serialized_value = format.serialize(&value.data, &**ctx)?;
+            crate::metrics::record_serialize(backend_name, serialize_timer.elapsed());
+
+            let compress_timer = Timer::new();
             let compressed_value = self.compressor().compress(&serialized_value)?;
-            let bytes_written = compressed_value.len() as u64;
+            crate::metrics::record_compress(backend_name, compress_timer.elapsed());
+
+            let compressed_len = compressed_value.len();
+
+            let write_timer = Timer::new();
             let result = self
                 .write(
                     key,
                     CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
                 )
                 .await;
-            // Record write metrics
-            ctx.metrics_mut()
-                .record_write(&backend_name, bytes_written, result.is_ok());
-            result
+            crate::metrics::record_write(backend_name, write_timer.elapsed());
+
+            match result {
+                Ok(()) => {
+                    crate::metrics::record_write_bytes(backend_name, compressed_len);
+                    Ok(())
+                }
+                Err(e) => {
+                    crate::metrics::record_write_error(backend_name);
+                    Err(e)
+                }
+            }
         }
     }
 
     fn delete(
         &self,
         key: &CacheKey,
-        ctx: &mut BoxContext,
+        _ctx: &mut BoxContext,
     ) -> impl Future<Output = BackendResult<DeleteStatus>> + Send {
-        async move {
-            let backend_name = self.name().to_owned();
-            let result = self.remove(key).await;
-            // Record delete metrics
-            ctx.metrics_mut()
-                .record_delete(&backend_name, result.is_ok());
-            result
-        }
+        async move { self.remove(key).await }
     }
 }
 

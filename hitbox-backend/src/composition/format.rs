@@ -7,10 +7,12 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use hitbox_core::{BoxContext, CacheValue, Raw, ReadMode};
+use smol_str::SmolStr;
 
 use super::context::{CompositionContext, CompositionLayer, upgrade_context};
 use super::envelope::CompositionEnvelope;
 use crate::format::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
+use crate::metrics::Timer;
 use crate::{Compressor, Context};
 
 /// Format implementation for CompositionBackend that handles multi-layer serialization.
@@ -26,6 +28,10 @@ pub struct CompositionFormat {
     l2_format: Arc<dyn Format>,
     l1_compressor: Arc<dyn Compressor>,
     l2_compressor: Arc<dyn Compressor>,
+    /// Pre-computed metrics label for L1: "{composition_name}.{l1_name}"
+    l1_label: SmolStr,
+    /// Pre-computed metrics label for L2: "{composition_name}.{l2_name}"
+    l2_label: SmolStr,
 }
 
 impl CompositionFormat {
@@ -35,12 +41,32 @@ impl CompositionFormat {
         l2_format: Arc<dyn Format>,
         l1_compressor: Arc<dyn Compressor>,
         l2_compressor: Arc<dyn Compressor>,
+        l1_label: SmolStr,
+        l2_label: SmolStr,
     ) -> Self {
         CompositionFormat {
             l1_format,
             l2_format,
             l1_compressor,
             l2_compressor,
+            l1_label,
+            l2_label,
+        }
+    }
+
+    /// Update the metrics labels (called when composition name changes).
+    pub fn set_labels(&mut self, l1_label: SmolStr, l2_label: SmolStr) {
+        self.l1_label = l1_label;
+        self.l2_label = l2_label;
+    }
+
+    /// Get the label for a specific layer.
+    ///
+    /// This is useful for getting the source path after deserialization.
+    pub fn label_for_layer(&self, layer: CompositionLayer) -> &SmolStr {
+        match layer {
+            CompositionLayer::L1 => &self.l1_label,
+            CompositionLayer::L2 => &self.l2_label,
         }
     }
 
@@ -48,6 +74,122 @@ impl CompositionFormat {
     /// Returns true if both formats have the same FormatTypeId.
     fn same_format(&self) -> bool {
         self.l1_format.format_type_id() == self.l2_format.format_type_id()
+    }
+
+    /// Serialize data for a specific layer.
+    ///
+    /// Returns compressed bytes ready to write via `Backend::write`.
+    /// Metrics are recorded with the appropriate composed label.
+    pub fn serialize_layer(
+        &self,
+        layer: CompositionLayer,
+        f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
+        context: &dyn Context,
+    ) -> Result<Bytes, FormatError> {
+        let (format, compressor, label): (&dyn Format, &dyn Compressor, &SmolStr) = match layer {
+            CompositionLayer::L1 => (&*self.l1_format, &*self.l1_compressor, &self.l1_label),
+            CompositionLayer::L2 => (&*self.l2_format, &*self.l2_compressor, &self.l2_label),
+        };
+
+        // Serialize
+        let serialize_timer = Timer::new();
+        let serialized = format.with_serializer(f, context)?;
+        crate::metrics::record_serialize(label, serialize_timer.elapsed());
+
+        // Compress
+        let compress_timer = Timer::new();
+        let compressed = compressor
+            .compress(&serialized)
+            .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+        crate::metrics::record_compress(label, compress_timer.elapsed());
+
+        Ok(Bytes::from(compressed))
+    }
+
+    /// Serialize data for both layers and return raw compressed bytes without Envelope.
+    ///
+    /// This is used by `CacheBackend::set` for static dispatch where we don't need
+    /// the Envelope overhead. Each layer's bytes can be written directly via `Backend::write`.
+    ///
+    /// Returns `(l1_bytes, l2_bytes)` - compressed and ready to write to each layer.
+    ///
+    /// Metrics are recorded with composed labels (l1_label, l2_label).
+    /// Same-format optimization is applied (serialize once if formats are equal).
+    pub fn serialize_parts(
+        &self,
+        f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
+        context: &dyn Context,
+    ) -> Result<(Bytes, Bytes), FormatError> {
+        // Serialize and compress for L1
+        let l1_serialize_timer = Timer::new();
+        let l1_serialized = self.l1_format.with_serializer(f, context)?;
+        crate::metrics::record_serialize(&self.l1_label, l1_serialize_timer.elapsed());
+
+        let l1_compress_timer = Timer::new();
+        let l1_compressed = self
+            .l1_compressor
+            .compress(&l1_serialized)
+            .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+        crate::metrics::record_compress(&self.l1_label, l1_compress_timer.elapsed());
+
+        // Serialize and compress for L2
+        // If L1 and L2 use the same format, reuse the serialized data (skip second serialization)
+        let l2_serialized = if self.same_format() {
+            l1_serialized.clone()
+        } else {
+            let l2_serialize_timer = Timer::new();
+            let serialized = self.l2_format.with_serializer(f, context)?;
+            crate::metrics::record_serialize(&self.l2_label, l2_serialize_timer.elapsed());
+            serialized
+        };
+
+        let l2_compress_timer = Timer::new();
+        let l2_compressed = self
+            .l2_compressor
+            .compress(&l2_serialized)
+            .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+        crate::metrics::record_compress(&self.l2_label, l2_compress_timer.elapsed());
+
+        Ok((Bytes::from(l1_compressed), Bytes::from(l2_compressed)))
+    }
+
+    /// Deserialize data from a specific layer.
+    ///
+    /// This is used by `CacheBackend::get` for static dispatch where we read from
+    /// a specific layer and need to deserialize without Envelope overhead.
+    ///
+    /// Metrics are recorded with the appropriate composed label.
+    pub fn deserialize_layer(
+        &self,
+        data: &[u8],
+        layer: CompositionLayer,
+        f: &mut dyn FnMut(&mut FormatDeserializer) -> Result<(), FormatError>,
+        ctx: &mut BoxContext,
+    ) -> Result<(), FormatError> {
+        let (format, compressor, label): (&dyn Format, &dyn Compressor, &SmolStr) = match layer {
+            CompositionLayer::L1 => (&*self.l1_format, &*self.l1_compressor, &self.l1_label),
+            CompositionLayer::L2 => (&*self.l2_format, &*self.l2_compressor, &self.l2_label),
+        };
+
+        // Decompress
+        let decompress_timer = Timer::new();
+        let decompressed = compressor
+            .decompress(data)
+            .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+        crate::metrics::record_decompress(label, decompress_timer.elapsed());
+
+        // Deserialize
+        let deserialize_timer = Timer::new();
+        format.with_deserializer(&decompressed, f, ctx)?;
+        crate::metrics::record_deserialize(label, deserialize_timer.elapsed());
+
+        // NOTE: Don't call upgrade_context here. For nested compositions,
+        // the inner CompositionFormat::with_deserializer already upgraded the context.
+        // For simple backends, the context remains unchanged, and the caller
+        // (CacheBackend::get) will use the backend name directly.
+        // The merge_from call in get() adds the composition prefix.
+
+        Ok(())
     }
 }
 
@@ -64,11 +206,17 @@ impl Format for CompositionFormat {
         {
             // For refill operations, create an L1-only envelope
             // This data came from L2, so serialize and compress it for L1 storage
+            let serialize_timer = Timer::new();
             let l1_serialized = self.l1_format.with_serializer(f, context)?;
+            crate::metrics::record_serialize(&self.l1_label, serialize_timer.elapsed());
+
+            let compress_timer = Timer::new();
             let l1_compressed = self
                 .l1_compressor
                 .compress(&l1_serialized)
                 .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+            crate::metrics::record_compress(&self.l1_label, compress_timer.elapsed());
+
             let composition =
                 CompositionEnvelope::L1(CacheValue::new(Bytes::from(l1_compressed), None, None));
 
@@ -79,23 +227,34 @@ impl Format for CompositionFormat {
 
         // Normal write path: Create Both envelope with data for both layers
         // Serialize and compress for L1
+        let l1_serialize_timer = Timer::new();
         let l1_serialized = self.l1_format.with_serializer(f, context)?;
+        crate::metrics::record_serialize(&self.l1_label, l1_serialize_timer.elapsed());
+
+        let l1_compress_timer = Timer::new();
         let l1_compressed = self
             .l1_compressor
             .compress(&l1_serialized)
             .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+        crate::metrics::record_compress(&self.l1_label, l1_compress_timer.elapsed());
 
         // Serialize and compress for L2
         // If L1 and L2 use the same format, reuse the serialized data instead of serializing again
         let l2_serialized = if self.same_format() {
             l1_serialized.clone()
         } else {
-            self.l2_format.with_serializer(f, context)?
+            let l2_serialize_timer = Timer::new();
+            let serialized = self.l2_format.with_serializer(f, context)?;
+            crate::metrics::record_serialize(&self.l2_label, l2_serialize_timer.elapsed());
+            serialized
         };
+
+        let l2_compress_timer = Timer::new();
         let l2_compressed = self
             .l2_compressor
             .compress(&l2_serialized)
             .map_err(|e| FormatError::Serialize(Box::new(e)))?;
+        crate::metrics::record_compress(&self.l2_label, l2_compress_timer.elapsed());
 
         // Pack both compressed values into CompositionEnvelope
         let composition = CompositionEnvelope::Both {
@@ -119,40 +278,48 @@ impl Format for CompositionFormat {
         let composition = CompositionEnvelope::deserialize(data)
             .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
 
-        // Extract source, compressed data, format, and compressor from envelope type
-        let (compressed_data, format, compressor, source): (
+        // Extract source, compressed data, format, compressor, and label from envelope type
+        let (compressed_data, format, compressor, source, label): (
             &Bytes,
             &dyn Format,
             &dyn Compressor,
             CompositionLayer,
+            &SmolStr,
         ) = match &composition {
             CompositionEnvelope::L1(v) => (
                 &v.data,
                 &*self.l1_format,
                 &*self.l1_compressor,
                 CompositionLayer::L1,
+                &self.l1_label,
             ),
             CompositionEnvelope::L2(v) => (
                 &v.data,
                 &*self.l2_format,
                 &*self.l2_compressor,
                 CompositionLayer::L2,
+                &self.l2_label,
             ),
             CompositionEnvelope::Both { l1, .. } => (
                 &l1.data,
                 &*self.l1_format,
                 &*self.l1_compressor,
                 CompositionLayer::L1,
+                &self.l1_label,
             ),
         };
 
         // Decompress the data
+        let decompress_timer = Timer::new();
         let decompressed = compressor
             .decompress(compressed_data.as_ref())
             .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+        crate::metrics::record_decompress(label, decompress_timer.elapsed());
 
         // Use the appropriate format to deserialize the decompressed data
+        let deserialize_timer = Timer::new();
         format.with_deserializer(&decompressed, f, ctx)?;
+        crate::metrics::record_deserialize(label, deserialize_timer.elapsed());
 
         // Upgrade context to CompositionContext with source layer info
         upgrade_context(ctx, source, self.clone());

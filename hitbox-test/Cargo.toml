@@ -82,6 +82,7 @@ optional = true
 default = []
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
+metrics = ["hitbox/metrics"]
 rkyv_format = [
     "dep:rkyv",
     "dep:rkyv_typename",
