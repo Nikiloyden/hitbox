@@ -56,7 +56,7 @@ rkyv_typename = { workspace = true, optional = true }
 
 [features]
 default = []
-rkyv_format = ["dep:rkyv", "dep:rkyv_dyn", "dep:rkyv_typename", "hitbox-backend/rkyv_format"]
+rkyv_format = ["dep:rkyv", "dep:rkyv_dyn", "dep:rkyv_typename", "hitbox/rkyv_format", "hitbox-backend/rkyv_format"]
 
 [dev-dependencies]
 hitbox-core = { path = "../hitbox-core", version = "0.1" }

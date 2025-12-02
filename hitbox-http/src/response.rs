@@ -62,6 +62,61 @@ where
 }
 
 #[cfg(feature = "rkyv_format")]
+mod rkyv_status_code {
+    use hitbox::RkyvDeserializeError;
+    use http::StatusCode;
+    use rkyv::{
+        Fallible,
+        with::{ArchiveWith, DeserializeWith, SerializeWith},
+    };
+
+    pub struct StatusCodeAsU16;
+
+    impl ArchiveWith<StatusCode> for StatusCodeAsU16 {
+        type Archived = rkyv::Archived<u16>;
+        type Resolver = rkyv::Resolver<u16>;
+
+        unsafe fn resolve_with(
+            field: &StatusCode,
+            pos: usize,
+            resolver: Self::Resolver,
+            out: *mut Self::Archived,
+        ) {
+            let value = field.as_u16();
+            // Safety: The caller guarantees that `out` is aligned and points to enough bytes
+            unsafe { rkyv::Archive::resolve(&value, pos, resolver, out) };
+        }
+    }
+
+    impl<S: Fallible + ?Sized> SerializeWith<StatusCode, S> for StatusCodeAsU16
+    where
+        S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
+    {
+        fn serialize_with(
+            field: &StatusCode,
+            serializer: &mut S,
+        ) -> Result<Self::Resolver, S::Error> {
+            rkyv::Serialize::serialize(&field.as_u16(), serializer)
+        }
+    }
+
+    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<u16>, StatusCode, D> for StatusCodeAsU16
+    where
+        D::Error: From<RkyvDeserializeError>,
+    {
+        fn deserialize_with(
+            field: &rkyv::Archived<u16>,
+            deserializer: &mut D,
+        ) -> Result<StatusCode, D::Error> {
+            let value: u16 = rkyv::Deserialize::deserialize(field, deserializer)?;
+            StatusCode::from_u16(value).map_err(|e| {
+                RkyvDeserializeError::new(format!("invalid status code: {}", e)).into()
+            })
+        }
+    }
+}
+
+#[cfg(feature = "rkyv_format")]
 mod rkyv_header_map {
     use http::HeaderMap;
     use rkyv::{
@@ -142,7 +197,9 @@ mod rkyv_header_map {
 #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
 #[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct SerializableHttpResponse {
-    status: u16,
+    #[serde(with = "http_serde::status_code")]
+    #[cfg_attr(feature = "rkyv_format", with(rkyv_status_code::StatusCodeAsU16))]
+    status: http::StatusCode,
     version: String,
     body: Bytes,
     #[serde(with = "http_serde::header_map")]
@@ -197,7 +254,7 @@ where
         // We can store the HeaderMap directly, including pseudo-headers
         // HeaderMap is designed to handle pseudo-headers and http-serde will serialize them correctly
         CachePolicy::Cacheable(SerializableHttpResponse {
-            status: self.parts.status.as_u16(),
+            status: self.parts.status,
             version: format!("{:?}", self.parts.version),
             body: body_bytes,
             headers: self.parts.headers,
@@ -206,12 +263,8 @@ where
 
     async fn from_cached(cached: Self::Cached) -> Self {
         let body = BufferedBody::Complete(Some(cached.body));
-        let mut response = Response::builder()
-            .status(cached.status)
-            .body(body)
-            .unwrap();
-
-        // Replace the headers with the cached HeaderMap
+        let mut response = Response::new(body);
+        *response.status_mut() = cached.status;
         *response.headers_mut() = cached.headers;
 
         CacheableHttpResponse::from_response(response)
