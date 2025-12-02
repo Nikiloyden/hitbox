@@ -6,6 +6,11 @@ on:
       - '**/Cargo.lock'
   schedule:
     - cron: '0 0 * * 0' # Run weekly on Sunday at midnight UTC
+
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   security_audit:
     runs-on: ubuntu-latest
