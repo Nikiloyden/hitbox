@@ -146,7 +146,7 @@ impl Encoder<KeyPart> for KeyPartEncoder {
         // Manually encode Option<SmolStr> as variant + str
         self.value_variant.encode(&(value.value.is_some() as u8));
         if let Some(ref v) = value.value {
-            self.value_str.reserve(NonZeroUsize::new(1).unwrap());
+            self.value_str.reserve(NonZeroUsize::MIN);
             self.value_str.encode(v.as_str());
         }
     }
