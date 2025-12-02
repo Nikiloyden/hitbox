@@ -68,7 +68,7 @@ bytemuck = { version = "1.19", features = ["derive"] }
 http = { workspace = true }
 http-serde = "2.1.1"
 flexbuffers = "25.2"
-metrics-util = "0.19"
+metrics-util = "0.20"
 smol_str = { workspace = true }
 chrono = { workspace = true }
 serial_test = "3.2"
