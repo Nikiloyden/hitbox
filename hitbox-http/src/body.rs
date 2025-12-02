@@ -457,53 +457,56 @@ where
             // Partial - combine prefix with remaining stream
             BufferedBody::Partial(partial) => {
                 let (prefix, remaining) = partial.into_parts();
-                let prefix_len = prefix.as_ref().map(|p| p.len()).unwrap_or(0);
 
-                if prefix_len >= limit_bytes {
-                    // Prefix already has enough bytes - preserve the remaining state
-                    CollectExactResult::AtLeast {
-                        buffered: prefix.unwrap(),
-                        remaining: Some(remaining),
+                match prefix {
+                    Some(buffered) if buffered.len() >= limit_bytes => {
+                        // Prefix already has enough bytes - preserve the remaining state
+                        CollectExactResult::AtLeast {
+                            buffered,
+                            remaining: Some(remaining),
+                        }
                     }
-                } else {
-                    // Need to read more from remaining stream
-                    match remaining {
-                        Remaining::Body(stream) => {
-                            // Read more bytes from stream
-                            let needed = limit_bytes - prefix_len;
-                            let result = collect_exact_from_stream(stream, needed).await;
-                            match result {
-                                CollectExactResult::AtLeast {
-                                    buffered: new_bytes,
-                                    remaining,
-                                } => {
-                                    let combined = combine_bytes(prefix, new_bytes);
+                    prefix => {
+                        // Need to read more from remaining stream
+                        let prefix_len = prefix.as_ref().map(|p| p.len()).unwrap_or(0);
+                        match remaining {
+                            Remaining::Body(stream) => {
+                                // Read more bytes from stream
+                                let needed = limit_bytes - prefix_len;
+                                let result = collect_exact_from_stream(stream, needed).await;
+                                match result {
                                     CollectExactResult::AtLeast {
-                                        buffered: combined,
+                                        buffered: new_bytes,
                                         remaining,
+                                    } => {
+                                        let combined = combine_bytes(prefix, new_bytes);
+                                        CollectExactResult::AtLeast {
+                                            buffered: combined,
+                                            remaining,
+                                        }
                                     }
-                                }
-                                CollectExactResult::Incomplete {
-                                    buffered: new_bytes,
-                                    error,
-                                } => {
-                                    let combined = if let Some(new) = new_bytes {
-                                        Some(combine_bytes(prefix, new))
-                                    } else {
-                                        prefix
-                                    };
                                     CollectExactResult::Incomplete {
-                                        buffered: combined,
+                                        buffered: new_bytes,
                                         error,
+                                    } => {
+                                        let combined = if let Some(new) = new_bytes {
+                                            Some(combine_bytes(prefix, new))
+                                        } else {
+                                            prefix
+                                        };
+                                        CollectExactResult::Incomplete {
+                                            buffered: combined,
+                                            error,
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Remaining::Error(error) => {
-                            // Already have an error, can't read more
-                            CollectExactResult::Incomplete {
-                                buffered: prefix,
-                                error,
+                            Remaining::Error(error) => {
+                                // Already have an error, can't read more
+                                CollectExactResult::Incomplete {
+                                    buffered: prefix,
+                                    error,
+                                }
                             }
                         }
                     }
