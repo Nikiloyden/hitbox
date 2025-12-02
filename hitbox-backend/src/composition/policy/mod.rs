@@ -17,8 +17,8 @@
 //! - [`RaceWritePolicy`] - Race both writes, return on first success, background the other
 //!
 //! ## Refill Policies
-//! - [`AlwaysRefill`] - Always populate L1 after L2 hit (default)
-//! - [`NeverRefill`] - Never populate L1 after L2 hit
+//! - [`RefillPolicy::Always`] - Always populate L1 after L2 hit
+//! - [`RefillPolicy::Never`] - Never populate L1 after L2 hit (default)
 //!
 //! ## Delete Policies (Future)
 //! - `SequentialDeletePolicy` - Delete from L1, then L2
@@ -38,8 +38,8 @@ pub use read::{
     RaceReadPolicy, ReadResult, SequentialReadPolicy,
 };
 
-// Re-export refill policies
-pub use refill::{AlwaysRefill, CompositionRefillPolicy, NeverRefill};
+// Re-export refill policy
+pub use refill::RefillPolicy;
 
 // Re-export write policies
 pub use write::{

@@ -61,8 +61,8 @@ use hitbox_core::{
     Offload, Raw, ResponseSource,
 };
 use policy::{
-    AlwaysRefill, CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy,
-    OptimisticParallelWritePolicy, ReadResult, SequentialReadPolicy,
+    CompositionReadPolicy, CompositionWritePolicy, OptimisticParallelWritePolicy, ReadResult,
+    RefillPolicy, SequentialReadPolicy,
 };
 use smol_str::SmolStr;
 use std::sync::Arc;
@@ -92,7 +92,7 @@ pub enum CompositionError {
 /// Each layer can use its own serialization format and compression since
 /// `CacheBackend` operates on typed data, not raw bytes.
 ///
-/// Behavior can be customized via `CompositionReadPolicy`, `CompositionWritePolicy`, and `CompositionRefillPolicy` to control
+/// Behavior can be customized via `CompositionReadPolicy`, `CompositionWritePolicy`, and `RefillPolicy` to control
 /// how reads, writes, and L1 refills are executed across the layers.
 pub struct CompositionBackend<
     L1,
@@ -100,14 +100,12 @@ pub struct CompositionBackend<
     O,
     R = SequentialReadPolicy,
     W = OptimisticParallelWritePolicy,
-    F = AlwaysRefill,
 > where
     L1: Backend,
     L2: Backend,
     O: Offload,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
-    F: CompositionRefillPolicy,
 {
     /// First-layer cache (typically fast, local)
     l1: L1,
@@ -122,7 +120,7 @@ pub struct CompositionBackend<
     /// Write policy
     write_policy: W,
     /// Refill policy
-    refill_policy: F,
+    refill_policy: RefillPolicy,
     /// Name of this backend for source path composition
     name: SmolStr,
     /// Pre-computed metrics label for L1: "{name}.{l1.name()}"
@@ -137,8 +135,7 @@ fn compose_label(prefix: &str, suffix: &str) -> SmolStr {
     SmolStr::from(format!("{}.{}", prefix, suffix))
 }
 
-impl<L1, L2, O>
-    CompositionBackend<L1, L2, O, SequentialReadPolicy, OptimisticParallelWritePolicy, AlwaysRefill>
+impl<L1, L2, O> CompositionBackend<L1, L2, O, SequentialReadPolicy, OptimisticParallelWritePolicy>
 where
     L1: Backend,
     L2: Backend,
@@ -149,7 +146,7 @@ where
     /// Default policies:
     /// - Read: `SequentialReadPolicy` (try L1 first, then L2)
     /// - Write: `OptimisticParallelWritePolicy` (write to both, succeed if ≥1 succeeds)
-    /// - Refill: `AlwaysRefill` (always populate L1 after L2 hit)
+    /// - Refill: `RefillPolicy::Never` (do not populate L1 after L2 hit)
     ///
     /// # Arguments
     /// * `l1` - First-layer backend (checked first on reads)
@@ -174,7 +171,7 @@ where
             offload,
             read_policy: SequentialReadPolicy::new(),
             write_policy: OptimisticParallelWritePolicy::new(),
-            refill_policy: AlwaysRefill::new(),
+            refill_policy: RefillPolicy::default(),
             name,
             l1_label,
             l2_label,
@@ -182,14 +179,13 @@ where
     }
 }
 
-impl<L1, L2, O, R, W, F> CompositionBackend<L1, L2, O, R, W, F>
+impl<L1, L2, O, R, W> CompositionBackend<L1, L2, O, R, W>
 where
     L1: Backend,
     L2: Backend,
     O: Offload,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
-    F: CompositionRefillPolicy,
 {
     /// Returns a reference to the read policy.
     pub fn read_policy(&self) -> &R {
@@ -202,7 +198,7 @@ where
     }
 
     /// Returns a reference to the refill policy.
-    pub fn refill_policy(&self) -> &F {
+    pub fn refill_policy(&self) -> &RefillPolicy {
         &self.refill_policy
     }
 
@@ -233,24 +229,23 @@ where
     /// # Example
     /// ```ignore
     /// use hitbox_backend::{CompositionBackend, composition::CompositionPolicy};
-    /// use hitbox_backend::composition::policy::{RaceReadPolicy, SequentialWritePolicy, NeverRefill};
+    /// use hitbox_backend::composition::policy::{RaceReadPolicy, SequentialWritePolicy, RefillPolicy};
     ///
     /// let policy = CompositionPolicy::new()
     ///     .read(RaceReadPolicy::new())
     ///     .write(SequentialWritePolicy::new())
-    ///     .refill(NeverRefill::new());
+    ///     .refill(RefillPolicy::Always);
     ///
     /// let backend = CompositionBackend::new(l1, l2, offload)
     ///     .with_policy(policy);
     /// ```
-    pub fn with_policy<NewR, NewW, NewF>(
+    pub fn with_policy<NewR, NewW>(
         self,
-        policy: CompositionPolicy<NewR, NewW, NewF>,
-    ) -> CompositionBackend<L1, L2, O, NewR, NewW, NewF>
+        policy: CompositionPolicy<NewR, NewW>,
+    ) -> CompositionBackend<L1, L2, O, NewR, NewW>
     where
         NewR: CompositionReadPolicy,
         NewW: CompositionWritePolicy,
-        NewF: CompositionRefillPolicy,
     {
         CompositionBackend {
             l1: self.l1,
@@ -281,7 +276,7 @@ where
     pub fn read<NewR: CompositionReadPolicy>(
         self,
         read_policy: NewR,
-    ) -> CompositionBackend<L1, L2, O, NewR, W, F> {
+    ) -> CompositionBackend<L1, L2, O, NewR, W> {
         CompositionBackend {
             l1: self.l1,
             l2: self.l2,
@@ -311,7 +306,7 @@ where
     pub fn write<NewW: CompositionWritePolicy>(
         self,
         write_policy: NewW,
-    ) -> CompositionBackend<L1, L2, O, R, NewW, F> {
+    ) -> CompositionBackend<L1, L2, O, R, NewW> {
         CompositionBackend {
             l1: self.l1,
             l2: self.l2,
@@ -333,38 +328,24 @@ where
     /// # Example
     /// ```ignore
     /// use hitbox_backend::CompositionBackend;
-    /// use hitbox_backend::composition::policy::NeverRefill;
+    /// use hitbox_backend::composition::policy::RefillPolicy;
     ///
     /// let backend = CompositionBackend::new(l1, l2, offload)
-    ///     .refill(NeverRefill::new());
+    ///     .refill(RefillPolicy::Always);
     /// ```
-    pub fn refill<NewF: CompositionRefillPolicy>(
-        self,
-        refill_policy: NewF,
-    ) -> CompositionBackend<L1, L2, O, R, W, NewF> {
-        CompositionBackend {
-            l1: self.l1,
-            l2: self.l2,
-            format: self.format,
-            offload: self.offload,
-            read_policy: self.read_policy,
-            write_policy: self.write_policy,
-            refill_policy,
-            name: self.name,
-            l1_label: self.l1_label,
-            l2_label: self.l2_label,
-        }
+    pub fn refill(mut self, refill_policy: RefillPolicy) -> Self {
+        self.refill_policy = refill_policy;
+        self
     }
 }
 
-impl<L1, L2, O, R, W, F> Clone for CompositionBackend<L1, L2, O, R, W, F>
+impl<L1, L2, O, R, W> Clone for CompositionBackend<L1, L2, O, R, W>
 where
     L1: Clone + Backend,
     L2: Clone + Backend,
     O: Offload,
     R: Clone + CompositionReadPolicy,
     W: Clone + CompositionWritePolicy,
-    F: Clone + CompositionRefillPolicy,
 {
     fn clone(&self) -> Self {
         Self {
@@ -374,7 +355,7 @@ where
             offload: self.offload.clone(),
             read_policy: self.read_policy.clone(),
             write_policy: self.write_policy.clone(),
-            refill_policy: self.refill_policy.clone(),
+            refill_policy: self.refill_policy,
             name: self.name.clone(),
             l1_label: self.l1_label.clone(),
             l2_label: self.l2_label.clone(),
@@ -382,14 +363,13 @@ where
     }
 }
 
-impl<L1, L2, O, R, W, F> std::fmt::Debug for CompositionBackend<L1, L2, O, R, W, F>
+impl<L1, L2, O, R, W> std::fmt::Debug for CompositionBackend<L1, L2, O, R, W>
 where
     L1: std::fmt::Debug + Backend,
     L2: std::fmt::Debug + Backend,
     O: std::fmt::Debug + Offload,
     R: std::fmt::Debug + CompositionReadPolicy,
     W: std::fmt::Debug + CompositionWritePolicy,
-    F: std::fmt::Debug + CompositionRefillPolicy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompositionBackend")
@@ -414,14 +394,13 @@ where
 // copied into the buffer as-is without re-serialization. When using CompositionBackend
 // directly via CacheBackend::get/set, even this minimal envelope overhead is avoided.
 #[async_trait]
-impl<L1, L2, O, R, W, F> Backend for CompositionBackend<L1, L2, O, R, W, F>
+impl<L1, L2, O, R, W> Backend for CompositionBackend<L1, L2, O, R, W>
 where
     L1: Backend + Clone + Send + Sync + 'static,
     L2: Backend + Clone + Send + Sync + 'static,
     O: Offload,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
-    F: CompositionRefillPolicy,
 {
     #[tracing::instrument(skip(self), level = "trace")]
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
@@ -613,14 +592,13 @@ where
     }
 }
 
-impl<L1, L2, O, R, W, F> CacheBackend for CompositionBackend<L1, L2, O, R, W, F>
+impl<L1, L2, O, R, W> CacheBackend for CompositionBackend<L1, L2, O, R, W>
 where
     L1: CacheBackend + Clone + Send + Sync + 'static,
     L2: CacheBackend + Clone + Send + Sync + 'static,
     O: Offload,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
-    F: CompositionRefillPolicy + Clone + 'static,
 {
     #[tracing::instrument(skip(self, ctx), level = "trace")]
     async fn get<T>(
@@ -632,10 +610,9 @@ where
         T: CacheableResponse,
         T::Cached: Cacheable,
     {
-        // Clone backends, format, and refill policy for 'static closures
+        // Clone backends for 'static closures
         let l1 = self.l1.clone();
         let l2 = self.l2.clone();
-        let refill_policy = self.refill_policy.clone();
 
         // Use pre-computed composed labels for metrics
         let l1_label = self.l1_label.clone();
@@ -652,11 +629,6 @@ where
         // Clone context for internal L1/L2 operations
         let l1_ctx = ctx.clone_box();
         let l2_ctx = ctx.clone_box();
-
-        // Clone for refill in L2 closure
-        let l1_for_refill = l1.clone();
-        let l1_label_for_refill = l1_label.clone();
-        let format_for_refill = self.format.clone();
 
         let read_l1 = |k: CacheKey| async move {
             let mut internal_ctx = l1_ctx;
@@ -720,7 +692,7 @@ where
             (result, internal_ctx)
         };
 
-        let read_l2_with_refill = |k: CacheKey| async move {
+        let read_l2 = |k: CacheKey| async move {
             let mut internal_ctx = l2_ctx;
 
             // Read raw bytes from L2 with metrics
@@ -734,6 +706,8 @@ where
                     crate::metrics::record_read_bytes(&l2_label, raw_data.len());
 
                     // Deserialize using CompositionFormat (records decompress/deserialize metrics)
+                    // Note: deserialize_layer upgrades context to CompositionContext with L2 layer,
+                    // which sets ReadMode::Refill - CacheFuture will handle the actual refill
                     let mut deserialized_opt: Option<T::Cached> = None;
                     match format_for_l2.deserialize_layer(
                         &raw_data,
@@ -749,53 +723,6 @@ where
                             Some(deserialized) => {
                                 let cache_value =
                                     CacheValue::new(deserialized, meta.expire, meta.stale);
-
-                                // Refill L1 on L2 hit using policy (best-effort)
-                                refill_policy
-                                    .execute(&cache_value, || async {
-                                        // Serialize for L1 only using serialize_layer
-                                        let l1_bytes = match format_for_refill.serialize_layer(
-                                            CompositionLayer::L1,
-                                            &mut |serializer| {
-                                                serializer.serialize(&cache_value.data)?;
-                                                Ok(())
-                                            },
-                                            &*internal_ctx,
-                                        ) {
-                                            Ok(bytes) => bytes,
-                                            Err(e) => {
-                                                return Err(BackendError::InternalError(Box::new(
-                                                    e,
-                                                )))
-                                            }
-                                        };
-
-                                        let l1_len = l1_bytes.len();
-                                        let l1_value = CacheValue::new(
-                                            l1_bytes,
-                                            cache_value.expire,
-                                            cache_value.stale,
-                                        );
-
-                                        // Write to L1 with metrics
-                                        let timer = Timer::new();
-                                        let result = l1_for_refill.write(&k, l1_value).await;
-                                        crate::metrics::record_write(
-                                            &l1_label_for_refill,
-                                            timer.elapsed(),
-                                        );
-                                        match &result {
-                                            Ok(()) => crate::metrics::record_write_bytes(
-                                                &l1_label_for_refill,
-                                                l1_len,
-                                            ),
-                                            Err(_) => crate::metrics::record_write_error(
-                                                &l1_label_for_refill,
-                                            ),
-                                        }
-                                        result
-                                    })
-                                    .await;
 
                                 // Set cache status and source for L2 hit
                                 internal_ctx.set_status(CacheStatus::Hit);
@@ -834,16 +761,22 @@ where
 
         let ReadResult {
             value,
+            source,
             context: inner_ctx,
-            ..
         } = self
             .read_policy
-            .execute_with(key.clone(), read_l1, read_l2_with_refill, &self.offload)
+            .execute_with(key.clone(), read_l1, read_l2, &self.offload)
             .await?;
 
         // Merge inner context into outer context, composing source paths
-        if value.is_some() {
+        if let Some(ref _cache_value) = value {
             ctx.merge_from(&*inner_ctx, &self.name);
+
+            // If L2 hit and refill policy is Always, set ReadMode::Refill
+            // CacheFuture will handle the actual refill via set()
+            if source == CompositionLayer::L2 && self.refill_policy == RefillPolicy::Always {
+                ctx.set_read_mode(hitbox_core::ReadMode::Refill);
+            }
         }
 
         Ok(value)
@@ -860,6 +793,98 @@ where
         T: CacheableResponse,
         T::Cached: Cacheable,
     {
+        use hitbox_core::ReadMode;
+
+        // Check if this is a refill operation (triggered by CacheFuture after L2 hit)
+        // This happens when CacheBackend::get() sets ReadMode::Refill
+        if ctx.read_mode() == ReadMode::Refill {
+            match self.refill_policy {
+                RefillPolicy::Always => {
+                    // Refill L1 only - write serialized data to L1
+                    let l1_bytes = self
+                        .format
+                        .serialize_layer(
+                            CompositionLayer::L1,
+                            &mut |serializer| {
+                                serializer.serialize(&value.data)?;
+                                Ok(())
+                            },
+                            &**ctx,
+                        )
+                        .map_err(|e| BackendError::InternalError(Box::new(e)))?;
+
+                    let l1_len = l1_bytes.len();
+                    let l1_value = CacheValue::new(l1_bytes, value.expire, value.stale);
+
+                    // Write to L1 with metrics
+                    let timer = Timer::new();
+                    let result = self.l1.write(key, l1_value).await;
+                    crate::metrics::record_write(&self.l1_label, timer.elapsed());
+                    match &result {
+                        Ok(()) => crate::metrics::record_write_bytes(&self.l1_label, l1_len),
+                        Err(_) => crate::metrics::record_write_error(&self.l1_label),
+                    }
+                    result?;
+
+                    // Recursively call L2.set() for nested refill
+                    // L2 (if it's a CompositionBackend) will handle its own refill logic
+                    return self.l2.set::<T>(key, value, ctx).await;
+                }
+                RefillPolicy::Never => {
+                    // With Never policy, don't refill at all
+                    // L2 already has the data (it's the source), so skip write
+                    return Ok(());
+                }
+            }
+        }
+
+        // Check if this is a nested refill operation via CompositionContext
+        // Each CompositionContext wraps an inner context and tracks which layer provided data
+        if let Some(comp_ctx) = ctx.as_any().downcast_ref::<CompositionContext>()
+            && comp_ctx.layer == CompositionLayer::L2
+        {
+            match self.refill_policy {
+                RefillPolicy::Always => {
+                    // This level needs refill: write to L1 only
+                    let l1_bytes = self
+                        .format
+                        .serialize_layer(
+                            CompositionLayer::L1,
+                            &mut |serializer| {
+                                serializer.serialize(&value.data)?;
+                                Ok(())
+                            },
+                            &**ctx,
+                        )
+                        .map_err(|e| BackendError::InternalError(Box::new(e)))?;
+
+                    let l1_len = l1_bytes.len();
+                    let l1_value = CacheValue::new(l1_bytes, value.expire, value.stale);
+
+                    // Write to L1 with metrics
+                    let timer = Timer::new();
+                    let result = self.l1.write(key, l1_value).await;
+                    crate::metrics::record_write(&self.l1_label, timer.elapsed());
+                    match &result {
+                        Ok(()) => crate::metrics::record_write_bytes(&self.l1_label, l1_len),
+                        Err(_) => crate::metrics::record_write_error(&self.l1_label),
+                    }
+                    result?;
+
+                    // Recursively call L2.set() with inner context for nested refill
+                    // Inner context may be another CompositionContext (nested) or CacheContext (leaf)
+                    let mut inner_ctx = comp_ctx.inner().clone_box();
+                    return self.l2.set::<T>(key, value, &mut inner_ctx).await;
+                }
+                RefillPolicy::Never => {
+                    // Skip L1 write (no refill), but recurse to L2 for nested handling
+                    let mut inner_ctx = comp_ctx.inner().clone_box();
+                    return self.l2.set::<T>(key, value, &mut inner_ctx).await;
+                }
+            }
+        }
+
+        // Normal mode: write to both layers
         // Serialize for both layers using CompositionFormat
         // This handles same-format optimization and records metrics with composed labels
         let (l1_bytes, l2_bytes) = self
@@ -1126,7 +1151,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_l2_hit_populates_l1() {
+    async fn test_l2_hit_sets_refill_mode() {
+        use hitbox_core::ReadMode;
+
         let l1 = TestBackend::with_name("moka");
         let l2 = TestBackend::with_name("redis");
 
@@ -1139,15 +1166,22 @@ mod tests {
             None,
         );
 
-        // Write only to L2
+        // Backend with RefillPolicy::Always
+        let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload)
+            .name("cache")
+            .refill(RefillPolicy::Always);
+
+        // Write through CompositionBackend (populates both L1 and L2)
         let mut ctx: BoxContext = CacheContext::default().boxed();
-        l2.set::<MockResponse>(&key, &value, &mut ctx)
+        backend
+            .set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
-        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).name("cache");
+        // Clear L1 to simulate L1 miss scenario
+        l1.store.lock().unwrap().clear();
 
-        // First read should hit L2 and populate L1
+        // Read should hit L2 and set ReadMode::Refill
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
         assert_eq!(result.unwrap().data.value, "value1");
@@ -1156,11 +1190,16 @@ mod tests {
         assert_eq!(ctx.status(), CacheStatus::Hit);
         assert_eq!(ctx.source(), &ResponseSource::Backend("cache.redis".into()));
 
-        // Verify L1 was populated from L2 (cache warming)
+        // Verify ReadMode::Refill is set (CacheFuture will use this to call set())
+        assert_eq!(ctx.read_mode(), ReadMode::Refill);
+
+        // L1 should NOT be populated yet (refill happens via CacheFuture.set())
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let l1_result = l1.get::<MockResponse>(&key, &mut ctx).await.unwrap();
-        assert!(l1_result.is_some(), "L1 should be populated from L2 hit");
-        assert_eq!(l1_result.unwrap().data.value, "value1");
+        assert!(
+            l1_result.is_none(),
+            "L1 should not be populated directly by get()"
+        );
     }
 
     #[tokio::test]
@@ -1432,7 +1471,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_l2_hit_with_refill() {
+    async fn test_l2_hit_with_refill_via_set() {
+        use hitbox_core::ReadMode;
+
         let l1 = TestBackend::with_name("moka");
         let l2 = TestBackend::with_name("redis");
 
@@ -1445,22 +1486,36 @@ mod tests {
             None,
         );
 
-        // Write only to L2
+        let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload)
+            .name("cache")
+            .refill(RefillPolicy::Always);
+
+        // Write through CompositionBackend (populates both L1 and L2)
         let mut ctx: BoxContext = CacheContext::default().boxed();
-        l2.set::<MockResponse>(&key, &value, &mut ctx)
+        backend
+            .set::<MockResponse>(&key, &value, &mut ctx)
             .await
             .unwrap();
 
-        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).name("cache");
+        // Clear L1 to simulate L1 miss scenario
+        l1.store.lock().unwrap().clear();
 
-        // Read should hit L2 and refill L1
+        // Read should hit L2 and set ReadMode::Refill
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = backend.get::<MockResponse>(&key, &mut ctx).await.unwrap();
-        assert_eq!(result.unwrap().data.value, "from_l2");
+        let cached_value = result.unwrap();
+        assert_eq!(cached_value.data.value, "from_l2");
 
         // Verify status and source - L2 hit
         assert_eq!(ctx.status(), CacheStatus::Hit);
         assert_eq!(ctx.source(), &ResponseSource::Backend("cache.redis".into()));
+        assert_eq!(ctx.read_mode(), ReadMode::Refill);
+
+        // Simulate CacheFuture calling set() with refill context (only writes to L1)
+        backend
+            .set::<MockResponse>(&key, &cached_value, &mut ctx)
+            .await
+            .unwrap();
 
         // Verify L1 was refilled - read again should hit L1
         let mut ctx: BoxContext = CacheContext::default().boxed();

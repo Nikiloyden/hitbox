@@ -6,48 +6,10 @@
 //! These tests use the `#[serial]` attribute to ensure they run sequentially
 //! because they share a global mock time provider.
 
-use chrono::Utc;
 use hitbox_core::{CacheState, CacheValue, TimeProvider};
 use hitbox_test::time::{clear_mock_time_provider, setup_mock_time_for_testing};
 use serial_test::serial;
 use std::time::Duration;
-
-// Simple test response type
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct TestResponse {
-    data: String,
-}
-
-// Implement CacheableResponse for TestResponse
-#[async_trait::async_trait]
-impl hitbox_core::CacheableResponse for TestResponse {
-    type Cached = String;
-    type Subject = TestResponse;
-
-    async fn cache_policy<P>(
-        self,
-        _predicates: P,
-        config: &hitbox_core::EntityPolicyConfig,
-    ) -> hitbox_core::ResponseCachePolicy<Self>
-    where
-        P: hitbox_core::Predicate<Subject = Self::Subject> + Send + Sync,
-    {
-        let cached = self.data.clone();
-        hitbox_core::CachePolicy::Cacheable(CacheValue::new(
-            cached,
-            config.ttl.map(|d| Utc::now() + d),
-            config.stale_ttl.map(|d| Utc::now() + d),
-        ))
-    }
-
-    async fn into_cached(self) -> hitbox_core::CachePolicy<Self::Cached, Self> {
-        hitbox_core::CachePolicy::Cacheable(self.data)
-    }
-
-    async fn from_cached(cached: Self::Cached) -> Self {
-        TestResponse { data: cached }
-    }
-}
 
 #[tokio::test]
 #[serial]
@@ -84,7 +46,7 @@ async fn test_mock_time_with_cache_value_expiration() {
     let cache_value = CacheValue::new("test data".to_string(), Some(expire), None);
 
     // Immediately - should be Actual
-    let state = cache_value.clone().cache_state::<TestResponse>().await;
+    let state = cache_value.clone().cache_state();
     assert!(
         matches!(state, CacheState::Actual(_)),
         "Cache should be Actual immediately after creation"
@@ -92,7 +54,7 @@ async fn test_mock_time_with_cache_value_expiration() {
 
     // After 5 seconds - still Actual (within TTL)
     mock_time.advance_secs(5);
-    let state = cache_value.clone().cache_state::<TestResponse>().await;
+    let state = cache_value.clone().cache_state();
     assert!(
         matches!(state, CacheState::Actual(_)),
         "Cache should still be Actual after 5 seconds (TTL is 10s)"
@@ -100,7 +62,7 @@ async fn test_mock_time_with_cache_value_expiration() {
 
     // After 11 seconds total - Expired (past TTL)
     mock_time.advance_secs(6);
-    let state = cache_value.cache_state::<TestResponse>().await;
+    let state = cache_value.cache_state();
     assert!(
         matches!(state, CacheState::Expired(_)),
         "Cache should be Expired after 11 seconds (past 10s TTL)"
@@ -153,15 +115,15 @@ async fn test_multiple_cache_values_share_mock_time() {
     let cache2 = CacheValue::new("data2".to_string(), Some(expire2), None);
 
     // Both should be Actual initially
-    let state1 = cache1.clone().cache_state::<TestResponse>().await;
-    let state2 = cache2.clone().cache_state::<TestResponse>().await;
+    let state1 = cache1.clone().cache_state();
+    let state2 = cache2.clone().cache_state();
     assert!(matches!(state1, CacheState::Actual(_)));
     assert!(matches!(state2, CacheState::Actual(_)));
 
     // Advance to 15 seconds - cache1 expired, cache2 still valid
     mock_time.advance_secs(15);
-    let state1 = cache1.cache_state::<TestResponse>().await;
-    let state2 = cache2.clone().cache_state::<TestResponse>().await;
+    let state1 = cache1.cache_state();
+    let state2 = cache2.clone().cache_state();
 
     assert!(
         matches!(state1, CacheState::Expired(_)),
@@ -174,7 +136,7 @@ async fn test_multiple_cache_values_share_mock_time() {
 
     // Advance to 25 seconds total - both expired
     mock_time.advance_secs(10);
-    let state2 = cache2.cache_state::<TestResponse>().await;
+    let state2 = cache2.cache_state();
     assert!(
         matches!(state2, CacheState::Expired(_)),
         "Cache2 should be expired after 25s (TTL was 20s)"
@@ -192,7 +154,7 @@ async fn test_cache_value_without_expiration() {
     let cache_value = CacheValue::new("eternal data".to_string(), None, None);
 
     // Should always be Actual
-    let state = cache_value.clone().cache_state::<TestResponse>().await;
+    let state = cache_value.clone().cache_state();
     assert!(
         matches!(state, CacheState::Actual(_)),
         "Cache without expiration should always be Actual"
@@ -213,11 +175,12 @@ async fn test_data_preserved_in_all_states() {
     let cache_value = CacheValue::new(test_data.clone(), Some(expire), Some(stale));
 
     // Verify data in Actual state (T+0)
-    let state = cache_value.clone().cache_state::<TestResponse>().await;
+    // Note: cache_state() now returns CacheState<CacheValue<String>>
+    let state = cache_value.clone().cache_state();
     match state {
-        CacheState::Actual(response) => {
+        CacheState::Actual(value) => {
             assert_eq!(
-                response.data, test_data,
+                value.data, test_data,
                 "Data should be preserved in Actual state"
             );
         }
@@ -226,11 +189,11 @@ async fn test_data_preserved_in_all_states() {
 
     // Verify data in Stale state (T+6, past stale time but within TTL)
     mock_time.advance_secs(6);
-    let state = cache_value.clone().cache_state::<TestResponse>().await;
+    let state = cache_value.clone().cache_state();
     match state {
-        CacheState::Stale(response) => {
+        CacheState::Stale(value) => {
             assert_eq!(
-                response.data, test_data,
+                value.data, test_data,
                 "Data should be preserved in Stale state"
             );
         }
@@ -239,11 +202,11 @@ async fn test_data_preserved_in_all_states() {
 
     // Verify data in Expired state (T+11, past TTL)
     mock_time.advance_secs(5);
-    let state = cache_value.cache_state::<TestResponse>().await;
+    let state = cache_value.cache_state();
     match state {
-        CacheState::Expired(response) => {
+        CacheState::Expired(value) => {
             assert_eq!(
-                response.data, test_data,
+                value.data, test_data,
                 "Data should be preserved in Expired state"
             );
         }

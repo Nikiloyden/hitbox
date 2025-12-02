@@ -97,11 +97,8 @@ async fn debug_cache(world: &mut HitboxWorld) -> Result<(), Error> {
                 eprintln!("  CacheBackend::get: Ok(Some)");
                 eprintln!("  CacheValue expire: {:?}", cached_value.expire);
                 eprintln!("  CacheValue stale: {:?}", cached_value.stale);
-                // Test cache_state
-                let cache_state = cached_value
-                    .clone()
-                    .cache_state::<CacheableHttpResponse<axum::body::Body>>()
-                    .await;
+                // Test cache_state (sync operation - just checks timestamps)
+                let cache_state = cached_value.clone().cache_state();
                 match cache_state {
                     hitbox::CacheState::Actual(_) => eprintln!("  cache_state: Actual (HIT)"),
                     hitbox::CacheState::Stale(_) => eprintln!("  cache_state: Stale"),

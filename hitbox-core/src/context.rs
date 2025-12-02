@@ -2,7 +2,7 @@
 
 use std::any::Any;
 
-use smallbox::{smallbox, space::S4, SmallBox};
+use smallbox::{SmallBox, smallbox, space::S4};
 use smol_str::SmolStr;
 
 /// Whether the request resulted in a cache hit, miss, or stale data.
@@ -183,8 +183,10 @@ pub enum DebugState {
     CheckRequestCachePolicy,
     /// Polling the cache backend
     PollCache,
-    /// Checking cache state (actual/stale/expired)
-    CheckCacheState,
+    /// Converting cached value to response (cache hit, no refill)
+    ConvertResponse,
+    /// Handling stale cache hit
+    HandleStale,
     /// Check concurrency policy
     CheckConcurrency,
     /// Concurrent upstream polling with concurrency control
@@ -197,7 +199,7 @@ pub enum DebugState {
     UpstreamPolled,
     /// Checking if response should be cached
     CheckResponseCachePolicy,
-    /// Updating cache with response
+    /// Updating cache with response (also used for L1 refill from L2 hit)
     UpdateCache,
     /// Final state with response
     Response,
@@ -209,7 +211,8 @@ impl std::fmt::Display for DebugState {
             DebugState::Initial => write!(f, "Initial"),
             DebugState::CheckRequestCachePolicy => write!(f, "CheckRequestCachePolicy"),
             DebugState::PollCache => write!(f, "PollCache"),
-            DebugState::CheckCacheState => write!(f, "CheckCacheState"),
+            DebugState::ConvertResponse => write!(f, "ConvertResponse"),
+            DebugState::HandleStale => write!(f, "HandleStale"),
             DebugState::CheckConcurrency => write!(f, "CheckConcurrency"),
             DebugState::ConcurrentPollUpstream => write!(f, "ConcurrentPollUpstream"),
             DebugState::AwaitResponse => write!(f, "AwaitResponse"),
@@ -227,6 +230,8 @@ impl std::fmt::Display for DebugState {
 pub struct CacheContext {
     /// Whether the request resulted in a cache hit, miss, or stale data.
     pub status: CacheStatus,
+    /// Read mode for this operation.
+    pub read_mode: ReadMode,
     /// Source of the response.
     pub source: ResponseSource,
     /// FSM states visited during the cache operation (only with `fsm-trace` feature).
@@ -259,6 +264,14 @@ impl Context for CacheContext {
 
     fn set_source(&mut self, source: ResponseSource) {
         self.source = source;
+    }
+
+    fn read_mode(&self) -> ReadMode {
+        self.read_mode
+    }
+
+    fn set_read_mode(&mut self, mode: ReadMode) {
+        self.read_mode = mode;
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -296,12 +309,31 @@ mod tests {
         println!("BoxContext size: {} bytes", box_ctx_size);
         println!("S4 inline space: {} bytes", s4_space);
 
-        // CacheContext should fit in S4 inline storage (32 bytes on 64-bit)
-        assert!(
-            cache_ctx_size <= s4_space,
-            "CacheContext ({} bytes) should fit in S4 ({} bytes)",
-            cache_ctx_size,
-            s4_space
-        );
+        #[cfg(not(feature = "fsm-trace"))]
+        {
+            // CacheContext should fit in S4 inline storage (32 bytes on 64-bit)
+            assert!(
+                cache_ctx_size <= s4_space,
+                "CacheContext ({} bytes) should fit in S4 ({} bytes)",
+                cache_ctx_size,
+                s4_space
+            );
+        }
+
+        #[cfg(feature = "fsm-trace")]
+        {
+            // With fsm-trace, Vec<DebugState> is added. Verify base struct still fits.
+            let vec_size = size_of::<Vec<DebugState>>();
+            let base_size = cache_ctx_size - vec_size;
+            println!("  - Vec<DebugState>: {} bytes", vec_size);
+            println!("  - Base size (without Vec): {} bytes", base_size);
+
+            assert!(
+                base_size <= s4_space,
+                "Base CacheContext ({} bytes) should fit in S4 ({} bytes)",
+                base_size,
+                s4_space
+            );
+        }
     }
 }

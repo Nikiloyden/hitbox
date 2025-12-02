@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use hitbox::{CacheKey, CacheableResponse};
-use hitbox_backend::composition::policy::{CompositionPolicy, NeverRefill};
+use hitbox_backend::composition::policy::{CompositionPolicy, RefillPolicy};
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{Backend, CacheBackend, CompositionBackend, PassthroughCompressor};
 use hitbox_core::{CacheContext, CacheValue, Offload, SmolStr};
@@ -125,7 +125,7 @@ fn bench_composition_concrete(c: &mut Criterion) {
             .build();
 
         let backend = CompositionBackend::new(l1, l2, BenchOffload)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -192,7 +192,7 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
             .build();
 
         let backend = CompositionBackend::new(l1, l2, BenchOffload)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -268,7 +268,7 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
         );
 
         let backend = CompositionBackend::new(l1, l2, BenchOffload)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -345,7 +345,7 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1, l2, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -428,7 +428,7 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
 
         // Compose L1 composition with L2
         let backend = CompositionBackend::new(l1, l2, BenchOffload)
-            .with_policy(CompositionPolicy::new().refill(NeverRefill::new()));
+            .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never));
 
         let response = runtime.block_on(generate_response(*size_bytes));
         let key = CacheKey::from_str("bench", "key1");
@@ -500,7 +500,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         let l1: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_inner1, l1_inner2, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create L2 (simple Moka) as dyn
@@ -514,7 +514,7 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
         // Compose L1 composition with L2 as dyn
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1, l2, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));
@@ -675,7 +675,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         let l1_middle: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_deep1, l1_deep2, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create middle level
@@ -688,7 +688,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         let l1_top: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_middle, l2_middle, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         // Create top level
@@ -701,7 +701,7 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         let backend: Arc<dyn Backend + Send> = Arc::new(
             CompositionBackend::new(l1_top, l2_top, BenchOffload)
-                .with_policy(CompositionPolicy::new().refill(NeverRefill::new())),
+                .with_policy(CompositionPolicy::new().refill(RefillPolicy::Never)),
         );
 
         let response = runtime.block_on(generate_response(*size_bytes));

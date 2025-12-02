@@ -35,7 +35,7 @@ use hitbox::fsm::CacheFuture;
 use hitbox::policy::{EnabledCacheConfig, PolicyConfig};
 use hitbox::predicate::Predicate;
 use hitbox_backend::composition::policy::{
-    CompositionPolicy, NeverRefill, OptimisticParallelWritePolicy, RaceReadPolicy,
+    CompositionPolicy, OptimisticParallelWritePolicy, RaceReadPolicy, RefillPolicy,
 };
 use hitbox_backend::format::BincodeFormat;
 use hitbox_backend::{CacheBackend, CompositionBackend, PassthroughCompressor};
@@ -435,7 +435,7 @@ fn bench_compare_composition_read(c: &mut Criterion) {
         .with_policy(
             CompositionPolicy::new()
                 .read(RaceReadPolicy::new())
-                .refill(NeverRefill::new()),
+                .refill(RefillPolicy::Never),
         );
 
     // Generate cache key using extractors
@@ -481,7 +481,7 @@ fn bench_compare_composition_read(c: &mut Criterion) {
         CompositionBackend::new(dyn_l1, dyn_l2, BenchOffload).with_policy(
             CompositionPolicy::new()
                 .read(RaceReadPolicy::new())
-                .refill(NeverRefill::new()),
+                .refill(RefillPolicy::Never),
         ),
     );
 
@@ -548,7 +548,7 @@ fn bench_compare_composition_write(c: &mut Criterion) {
         .with_policy(
             CompositionPolicy::new()
                 .write(OptimisticParallelWritePolicy::new())
-                .refill(NeverRefill::new()),
+                .refill(RefillPolicy::Never),
         );
 
     // Generate cache key using extractors
@@ -585,7 +585,7 @@ fn bench_compare_composition_write(c: &mut Criterion) {
         CompositionBackend::new(dyn_l1, dyn_l2, BenchOffload).with_policy(
             CompositionPolicy::new()
                 .write(OptimisticParallelWritePolicy::new())
-                .refill(NeverRefill::new()),
+                .refill(RefillPolicy::Never),
         ),
     );
 

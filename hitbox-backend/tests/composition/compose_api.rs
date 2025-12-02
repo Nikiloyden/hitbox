@@ -6,7 +6,7 @@ use std::future::Future;
 
 use chrono::Utc;
 use hitbox_backend::composition::CompositionPolicy;
-use hitbox_backend::composition::policy::{NeverRefill, RaceReadPolicy};
+use hitbox_backend::composition::policy::{RaceReadPolicy, RefillPolicy};
 use hitbox_backend::{CacheBackend, Compose};
 use hitbox_core::{BoxContext, CacheContext, CacheKey, CacheValue, Offload};
 use smol_str::SmolStr;
@@ -77,7 +77,7 @@ async fn test_compose_with_custom_policy() {
 
     let policy = CompositionPolicy::new()
         .read(RaceReadPolicy::new())
-        .refill(NeverRefill);
+        .refill(RefillPolicy::Never);
 
     let cache = l1.clone().compose_with(l2.clone(), TestOffload, policy);
 
@@ -105,7 +105,7 @@ async fn test_compose_with_custom_policy() {
         }
     );
 
-    // With NeverRefill, L1 should NOT be populated
+    // With RefillPolicy::Never, L1 should NOT be populated
     assert!(!l1.has(&key));
 }
 
@@ -163,7 +163,7 @@ async fn test_compose_with_builder_chaining() {
         .clone()
         .compose(l2.clone(), TestOffload)
         .read(RaceReadPolicy::new())
-        .refill(NeverRefill::new());
+        .refill(RefillPolicy::Never);
 
     let key = CacheKey::from_str("test", "chained");
     let value = CacheValue::new(
@@ -188,7 +188,7 @@ async fn test_compose_with_builder_chaining() {
         }
     );
 
-    // With NeverRefill, L1 should not be populated
+    // With RefillPolicy::Never, L1 should not be populated
     assert!(!l1.has(&key));
 }
 

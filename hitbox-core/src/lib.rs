@@ -13,10 +13,9 @@ mod value;
 
 pub use cacheable::Cacheable;
 pub use context::{
-    finalize_context, BoxContext, CacheContext, CacheStatus, Context, DebugState, ReadMode,
-    ResponseSource,
+    BoxContext, CacheContext, CacheStatus, Context, DebugState, ReadMode, ResponseSource,
+    finalize_context,
 };
-pub use smallbox::space::S4;
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};
 pub use offload::Offload;
@@ -24,6 +23,7 @@ pub use policy::{CachePolicy, EntityPolicyConfig};
 pub use predicate::{Predicate, PredicateResult};
 pub use request::{CacheablePolicyData, CacheableRequest, RequestCachePolicy};
 pub use response::{CacheState, CacheableResponse, ResponseCachePolicy};
+pub use smallbox::space::S4;
 pub use smol_str::SmolStr;
 pub use time_provider::TimeProvider;
 pub use upstream::Upstream;

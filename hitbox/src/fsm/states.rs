@@ -6,7 +6,7 @@ use hitbox_core::{BoxContext, RequestCachePolicy, ResponseCachePolicy, Upstream}
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
 
-use crate::{CacheState, CacheValue, CacheableResponse};
+use crate::{CacheValue, CacheableResponse};
 
 pub type CacheResult<T> = Result<Option<CacheValue<T>>, BackendError>;
 /// Future that polls the cache and returns (result, context)
@@ -14,9 +14,10 @@ pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
 /// Future that updates the cache and returns (backend_result, response, context)
 pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
-pub type CacheStateFuture<T> = BoxFuture<'static, CacheState<T>>;
 pub type AwaitResponseFuture<T> =
     BoxFuture<'static, Result<T, crate::concurrency::ConcurrencyError>>;
+/// Future that converts cached value to response and returns (response, context)
+pub type ConvertResponseFuture<T> = BoxFuture<'static, (T, BoxContext)>;
 
 #[allow(missing_docs)]
 #[pin_project(project = StateProj)]
@@ -40,11 +41,17 @@ where
         request: Option<Req>,
         // Note: ctx is inside poll_cache future, returned with result
     },
-    /// Checking cache state (actual/stale/expired)
-    CheckCacheState {
-        cache_state: CacheStateFuture<Res>,
+    /// Converting cached value to response (cache hit, no refill needed)
+    ConvertResponse {
+        #[pin]
+        response_future: ConvertResponseFuture<Res>,
         request: Option<Req>,
-        ctx: Option<BoxContext>,
+    },
+    /// Handling stale cache hit - convert to response then apply stale policy
+    HandleStale {
+        #[pin]
+        response_future: ConvertResponseFuture<Res>,
+        request: Option<Req>,
     },
     /// Check concurrency policy
     CheckConcurrency {
@@ -107,7 +114,8 @@ where
             State::Initial { .. } => f.write_str("State::Initial"),
             State::CheckRequestCachePolicy { .. } => f.write_str("State::CheckRequestCachePolicy"),
             State::PollCache { .. } => f.write_str("State::PollCache"),
-            State::CheckCacheState { .. } => f.write_str("State::CheckCacheState"),
+            State::ConvertResponse { .. } => f.write_str("State::ConvertResponse"),
+            State::HandleStale { .. } => f.write_str("State::HandleStale"),
             State::CheckConcurrency { .. } => f.write_str("State::CheckConcurrency"),
             State::ConcurrentPollUpstream { .. } => f.write_str("State::ConcurrentPollUpstream"),
             State::AwaitResponse { .. } => f.write_str("State::AwaitResponse"),

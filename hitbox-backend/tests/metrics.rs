@@ -25,8 +25,18 @@ use metrics_util::{CompositeKey, MetricKind};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+#[cfg(feature = "rkyv_format")]
+use rkyv::{Archive, Serialize as RkyvSerialize};
+#[cfg(feature = "rkyv_format")]
+use rkyv_typename::TypeName;
+
 /// Type alias for snapshot entries
-type SnapshotEntry = (CompositeKey, Option<metrics::Unit>, Option<metrics::SharedString>, DebugValue);
+type SnapshotEntry = (
+    CompositeKey,
+    Option<metrics::Unit>,
+    Option<metrics::SharedString>,
+    DebugValue,
+);
 
 /// Test offload that spawns tasks with tokio::spawn
 #[derive(Clone, Debug)]
@@ -95,6 +105,12 @@ impl Backend for TestBackend {
 impl CacheBackend for TestBackend {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(
+    feature = "rkyv_format",
+    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+)]
+#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
+#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestData {
     id: u32,
     name: String,
@@ -141,14 +157,19 @@ fn debug_entries(entries: &[SnapshotEntry]) {
 }
 
 /// Find a counter in entries by name and label.
-fn find_counter_in_entries(entries: &[SnapshotEntry], name: &str, backend_label: &str) -> Option<u64> {
+fn find_counter_in_entries(
+    entries: &[SnapshotEntry],
+    name: &str,
+    backend_label: &str,
+) -> Option<u64> {
     for (key, _, _, value) in entries {
         if key.kind() == MetricKind::Counter && key.key().name() == name {
             for label in key.key().labels() {
-                if label.key() == "backend" && label.value() == backend_label {
-                    if let DebugValue::Counter(v) = *value {
-                        return Some(v);
-                    }
+                if label.key() == "backend"
+                    && label.value() == backend_label
+                    && let DebugValue::Counter(v) = *value
+                {
+                    return Some(v);
                 }
             }
         }
@@ -161,10 +182,11 @@ fn histogram_count_in_entries(entries: &[SnapshotEntry], name: &str, backend_lab
     for (key, _, _, value) in entries {
         if key.kind() == MetricKind::Histogram && key.key().name() == name {
             for label in key.key().labels() {
-                if label.key() == "backend" && label.value() == backend_label {
-                    if let DebugValue::Histogram(v) = value {
-                        return v.len();
-                    }
+                if label.key() == "backend"
+                    && label.value() == backend_label
+                    && let DebugValue::Histogram(v) = value
+                {
+                    return v.len();
                 }
             }
         }
@@ -179,8 +201,8 @@ fn histogram_count_in_entries(entries: &[SnapshotEntry], name: &str, backend_lab
 /// Test AtomicBucket directly to understand how histogram storage works
 #[test]
 fn test_atomic_bucket_directly() {
-    use metrics_util::registry::{AtomicStorage, Registry};
     use metrics::Key;
+    use metrics_util::registry::{AtomicStorage, Registry};
 
     // Create a registry directly
     let registry: Registry<Key, AtomicStorage> = Registry::atomic();
@@ -217,7 +239,7 @@ fn test_atomic_bucket_directly() {
 /// Test full chain: DebuggingRecorder -> register_histogram -> record -> snapshot
 #[test]
 fn test_debugging_recorder_full_chain() {
-    use metrics::{Recorder, Key, Metadata, Level, HistogramFn};
+    use metrics::{HistogramFn, Key, Level, Metadata, Recorder};
     use metrics_util::registry::{AtomicStorage, Registry};
 
     let recorder = DebuggingRecorder::new();
@@ -253,19 +275,28 @@ fn test_debugging_recorder_full_chain() {
     let test_key = Key::from_name("test_histogramfn");
 
     let arc_bucket = registry.get_or_create_histogram(&test_key, |h| h.clone());
-    println!("Got Arc<AtomicBucket>, data before record: {:?}", arc_bucket.data());
+    println!(
+        "Got Arc<AtomicBucket>, data before record: {:?}",
+        arc_bucket.data()
+    );
 
     // Call record() through the HistogramFn trait (what Histogram::record does)
     HistogramFn::record(&arc_bucket, 1.0);
     HistogramFn::record(&arc_bucket, 2.0);
-    println!("After HistogramFn::record calls, data: {:?}", arc_bucket.data());
+    println!(
+        "After HistogramFn::record calls, data: {:?}",
+        arc_bucket.data()
+    );
 
     // Now create a metrics::Histogram from this arc and test
     println!("\n=== Testing metrics::Histogram wrapper ===");
     let metrics_histogram = metrics::Histogram::from_arc(arc_bucket.clone());
     metrics_histogram.record(100.0);
     metrics_histogram.record(200.0);
-    println!("After Histogram::record calls, arc_bucket.data: {:?}", arc_bucket.data());
+    println!(
+        "After Histogram::record calls, arc_bucket.data: {:?}",
+        arc_bucket.data()
+    );
 
     // The KEY question: when DebuggingRecorder.register_histogram creates a Histogram,
     // does calling .record() on that Histogram write to the SAME bucket as in the registry?
@@ -281,7 +312,7 @@ fn test_debugging_recorder_full_chain() {
 
     // Now get the histogram handles directly from registry via another registration
     // and use a closure that reads the data
-    let data_in_registry = recorder2.register_histogram(&key2, &metadata2);
+    let _data_in_registry = recorder2.register_histogram(&key2, &metadata2);
 
     // The issue: Histogram doesn't expose the inner Arc, so we can't check it directly.
     // But we CAN check via snapshot:
@@ -323,11 +354,8 @@ fn test_basic_backend_write_metrics() {
                 id: 42,
                 name: "test".to_string(),
             };
-            let value = CacheValue::new(
-                data,
-                Some(Utc::now() + chrono::Duration::seconds(60)),
-                None,
-            );
+            let value =
+                CacheValue::new(data, Some(Utc::now() + chrono::Duration::seconds(60)), None);
 
             // Perform a cache write
             let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -373,11 +401,7 @@ fn test_basic_backend_write_metrics() {
     );
 
     assert_eq!(
-        histogram_count_in_entries(
-            &entries,
-            "hitbox_backend_compress_duration_seconds",
-            "test"
-        ),
+        histogram_count_in_entries(&entries, "hitbox_backend_compress_duration_seconds", "test"),
         1,
         "compress_duration should have 1 sample"
     );
@@ -488,11 +512,8 @@ fn test_composition_backend_write_metrics() {
                 id: 42,
                 name: "test".to_string(),
             };
-            let value = CacheValue::new(
-                data,
-                Some(Utc::now() + chrono::Duration::seconds(60)),
-                None,
-            );
+            let value =
+                CacheValue::new(data, Some(Utc::now() + chrono::Duration::seconds(60)), None);
 
             // Perform a cache write
             let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -519,7 +540,8 @@ fn test_composition_backend_write_metrics() {
     );
 
     assert!(
-        find_counter_in_entries(&entries, "hitbox_backend_write_bytes_total", "comp.test").unwrap() > 0,
+        find_counter_in_entries(&entries, "hitbox_backend_write_bytes_total", "comp.test").unwrap()
+            > 0,
         "write_bytes_total should be > 0"
     );
 
@@ -616,7 +638,8 @@ fn test_composition_backend_read_metrics() {
     );
 
     assert!(
-        find_counter_in_entries(&entries, "hitbox_backend_read_bytes_total", "comp.test").unwrap() > 0,
+        find_counter_in_entries(&entries, "hitbox_backend_read_bytes_total", "comp.test").unwrap()
+            > 0,
         "read_bytes_total should be > 0"
     );
 
@@ -678,11 +701,8 @@ fn test_dyn_composition_backend_write_metrics() {
                 id: 42,
                 name: "test".to_string(),
             };
-            let value = CacheValue::new(
-                data,
-                Some(Utc::now() + chrono::Duration::seconds(60)),
-                None,
-            );
+            let value =
+                CacheValue::new(data, Some(Utc::now() + chrono::Duration::seconds(60)), None);
 
             // Perform a cache write via trait object
             let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -708,12 +728,8 @@ fn test_dyn_composition_backend_write_metrics() {
     );
 
     assert!(
-        find_counter_in_entries(
-            &entries,
-            "hitbox_backend_write_bytes_total",
-            "dyncomp.test"
-        )
-        .unwrap()
+        find_counter_in_entries(&entries, "hitbox_backend_write_bytes_total", "dyncomp.test")
+            .unwrap()
             > 0,
         "write_bytes_total should be > 0"
     );
@@ -804,12 +820,8 @@ fn test_dyn_composition_backend_read_metrics() {
     );
 
     assert!(
-        find_counter_in_entries(
-            &entries,
-            "hitbox_backend_read_bytes_total",
-            "dyncomp.test"
-        )
-        .unwrap()
+        find_counter_in_entries(&entries, "hitbox_backend_read_bytes_total", "dyncomp.test")
+            .unwrap()
             > 0,
         "read_bytes_total should be > 0"
     );

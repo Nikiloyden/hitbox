@@ -346,11 +346,13 @@ async fn test_composition_backend_as_trait_object() {
     let backend: Box<dyn Backend> = Box::new(composition);
 
     // Test 1: Read key from L1 through trait object
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_l1, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "in_l1");
 
     // Test 2: Read key from L2 through trait object
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_l2, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "in_l2");
@@ -365,18 +367,21 @@ async fn test_composition_backend_as_trait_object() {
         Some(Utc::now() + chrono::Duration::seconds(60)),
         None,
     );
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     backend
         .set::<Value>(&key_new, &value_new, &mut ctx)
         .await
         .unwrap();
 
     // Read back the new key
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_new, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap().data.name, "nested_trait");
 
     // Test 4: Missing key should return None
     let key_missing = CacheKey::from_str("not_there", "");
+    let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_missing, &mut ctx).await.unwrap();
     assert!(result.is_none());
 }

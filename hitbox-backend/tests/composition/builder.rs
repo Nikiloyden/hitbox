@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionPolicy;
 use hitbox_backend::composition::policy::{
-    AlwaysRefill, NeverRefill, OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy,
+    OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy, RefillPolicy,
     SequentialReadPolicy, SequentialWritePolicy,
 };
 use hitbox_backend::format::{Format, JsonFormat};
@@ -130,7 +130,7 @@ async fn test_composition_policy_default() {
     // Default policies should be set
     let _ = policy.read_policy(); // SequentialReadPolicy
     let _ = policy.write_policy(); // OptimisticParallelWritePolicy
-    let _ = policy.refill_policy(); // AlwaysRefill
+    let _ = policy.refill_policy(); // RefillPolicy::Never (default)
 }
 
 #[tokio::test]
@@ -151,9 +151,9 @@ async fn test_composition_policy_with_write() {
 
 #[tokio::test]
 async fn test_composition_policy_with_refill() {
-    let policy = CompositionPolicy::new().refill(NeverRefill::new());
+    let policy = CompositionPolicy::new().refill(RefillPolicy::Never);
 
-    // Should have NeverRefill
+    // Should have RefillPolicy::Never
     let _ = policy.refill_policy();
 }
 
@@ -162,7 +162,7 @@ async fn test_composition_policy_chained() {
     let policy = CompositionPolicy::new()
         .read(ParallelReadPolicy::new())
         .write(SequentialWritePolicy::new())
-        .refill(NeverRefill::new());
+        .refill(RefillPolicy::Never);
 
     // All custom policies should be set
     let _ = policy.read_policy();
@@ -178,7 +178,7 @@ async fn test_backend_with_composition_policy() {
     let policy = CompositionPolicy::new()
         .read(RaceReadPolicy::new())
         .write(SequentialWritePolicy::new())
-        .refill(NeverRefill::new());
+        .refill(RefillPolicy::Never);
 
     let backend = CompositionBackend::new(l1, l2, TestOffload).with_policy(policy);
 
@@ -196,7 +196,7 @@ async fn test_backend_with_policy_functional() {
     let policy = CompositionPolicy::new()
         .read(SequentialReadPolicy::new())
         .write(OptimisticParallelWritePolicy::new())
-        .refill(AlwaysRefill::new());
+        .refill(RefillPolicy::Always);
 
     let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).with_policy(policy);
 

@@ -272,11 +272,64 @@ where
                         None
                     });
                     match cached {
-                        Some(cached_value) => State::CheckCacheState {
-                            cache_state: Box::pin(cached_value.cache_state()),
-                            request: request.take(),
-                            ctx: Some(ctx),
-                        },
+                        Some(cached_value) => {
+                            // Sync cache state check - no future needed
+                            let cache_state = cached_value.cache_state();
+                            ctx.set_status(CacheStatus::Hit);
+
+                            match cache_state {
+                                CacheState::Actual(value) => {
+                                    // Check if refill is needed (L2 hit in composition)
+                                    if ctx.read_mode() == hitbox_core::ReadMode::Refill {
+                                        // Refill: write to L1, then convert to response
+                                        let backend = this.backend.clone();
+                                        let cache_key =
+                                            this.cache_key.clone().expect("CacheKey not found");
+                                        let update_cache_future = Box::pin(async move {
+                                            let update_result = backend
+                                                .set::<Res>(&cache_key, &value, &mut ctx)
+                                                .await;
+                                            let response =
+                                                Res::from_cached(value.into_inner()).await;
+                                            (update_result, response, ctx)
+                                        });
+                                        State::UpdateCache {
+                                            update_cache_future,
+                                        }
+                                    } else {
+                                        // No refill: just convert to response
+                                        let response_future = Box::pin(async move {
+                                            let response =
+                                                Res::from_cached(value.into_inner()).await;
+                                            (response, ctx)
+                                        });
+                                        State::ConvertResponse {
+                                            response_future,
+                                            request: request.take(),
+                                        }
+                                    }
+                                }
+                                CacheState::Stale(value) => {
+                                    // Convert to response, then handle stale policy
+                                    let response_future = Box::pin(async move {
+                                        let response = Res::from_cached(value.into_inner()).await;
+                                        (response, ctx)
+                                    });
+                                    State::HandleStale {
+                                        response_future,
+                                        request: request.take(),
+                                    }
+                                }
+                                CacheState::Expired(_value) => {
+                                    // Treat as miss
+                                    ctx.set_status(CacheStatus::Miss);
+                                    State::CheckConcurrency {
+                                        request: request.take(),
+                                        ctx: Some(ctx),
+                                    }
+                                }
+                            }
+                        }
                         None => State::CheckConcurrency {
                             request: request.take(),
                             ctx: Some(ctx),
@@ -394,123 +447,106 @@ where
                         }
                     }
                 }
-                StateProj::CheckCacheState {
-                    cache_state,
-                    request,
-                    ctx,
+                StateProj::ConvertResponse {
+                    response_future,
+                    request: _,
                 } => {
-                    let state = ready!(cache_state.as_mut().poll(cx));
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::CheckCacheState);
-                    ctx.set_status(CacheStatus::Hit);
-                    match state {
-                        CacheState::Actual(response) => State::Response {
-                            response: Some(response),
-                            ctx: Some(ctx),
-                        },
-                        CacheState::Stale(response) => {
-                            let stale_policy = match this.policy.as_ref() {
-                                PolicyConfig::Enabled(EnabledCacheConfig { policy, .. }) => {
-                                    policy.stale
-                                }
-                                PolicyConfig::Disabled => StalePolicy::Return,
-                            };
+                    let (response, mut ctx) = ready!(response_future.poll(cx));
+                    ctx.record_state(DebugState::ConvertResponse);
+                    State::Response {
+                        response: Some(response),
+                        ctx: Some(ctx),
+                    }
+                }
+                StateProj::HandleStale {
+                    response_future,
+                    request,
+                } => {
+                    let (response, mut ctx) = ready!(response_future.poll(cx));
+                    ctx.record_state(DebugState::HandleStale);
 
-                            match stale_policy {
-                                StalePolicy::Return => {
-                                    // Just return stale data, no revalidation
-                                    ctx.set_status(CacheStatus::Stale);
-                                    State::Response {
-                                        response: Some(response),
-                                        ctx: Some(ctx),
-                                    }
-                                }
-                                StalePolicy::Revalidate => {
-                                    // Treat stale as expired - block and wait for fresh data
-                                    ctx.set_status(CacheStatus::Miss);
-                                    let upstream =
-                                        this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                                    let upstream_future = upstream
-                                        .call(request.take().expect(POLL_AFTER_READY_ERROR));
-                                    State::PollUpstream {
-                                        upstream_future,
-                                        permit: None,
-                                        ctx: Some(ctx),
-                                    }
-                                }
-                                StalePolicy::OffloadRevalidate => {
-                                    // Return stale data immediately, spawn background revalidation
-                                    match (this.offload_manager.as_ref(), this.cache_key.clone()) {
-                                        (Some(offload_manager), Some(cache_key)) => {
-                                            if let (
-                                                Some(req),
-                                                Some(upstream),
-                                                Some(response_predicates),
-                                            ) = (
-                                                request.take(),
-                                                this.upstream.take(),
-                                                this.response_predicates.take(),
-                                            ) {
-                                                let revalidation_future = CacheFuture::<
-                                                    B,
-                                                    Req,
-                                                    Res,
-                                                    U,
-                                                    ReqP,
-                                                    ResP,
-                                                    E,
-                                                    NoopConcurrencyManager,
-                                                >::revalidate(
-                                                    this.backend.clone(),
-                                                    cache_key.clone(),
-                                                    req,
-                                                    upstream,
-                                                    response_predicates,
-                                                    this.policy.clone(),
-                                                );
+                    let stale_policy = match this.policy.as_ref() {
+                        PolicyConfig::Enabled(EnabledCacheConfig { policy, .. }) => policy.stale,
+                        PolicyConfig::Disabled => StalePolicy::Return,
+                    };
 
-                                                offload_manager.spawn_with_key(
-                                                    cache_key,
-                                                    async move {
-                                                        let (_response, ctx) =
-                                                            revalidation_future.await;
-                                                        debug!(
-                                                            status = ?ctx.status,
-                                                            source = ?ctx.source,
-                                                            "Revalidation completed"
-                                                        );
-                                                    },
-                                                );
-                                            }
-                                        }
-                                        (None, _) => {
-                                            tracing::warn!(
-                                                "StalePolicy::OffloadRevalidate is configured but \
-                                                 OffloadManager is not provided. \
-                                                 Falling back to returning stale data without revalidation."
-                                            );
-                                        }
-                                        (_, None) => {
-                                            tracing::warn!(
-                                                "StalePolicy::OffloadRevalidate is configured but \
-                                                 cache_key is not available. \
-                                                 Falling back to returning stale data without revalidation."
-                                            );
-                                        }
-                                    }
-
-                                    ctx.set_status(CacheStatus::Stale);
-                                    State::Response {
-                                        response: Some(response),
-                                        ctx: Some(ctx),
-                                    }
-                                }
+                    match stale_policy {
+                        StalePolicy::Return => {
+                            // Just return stale data, no revalidation
+                            ctx.set_status(CacheStatus::Stale);
+                            State::Response {
+                                response: Some(response),
+                                ctx: Some(ctx),
                             }
                         }
-                        CacheState::Expired(_response) => {
+                        StalePolicy::Revalidate => {
+                            // Treat stale as expired - block and wait for fresh data
                             ctx.set_status(CacheStatus::Miss);
-                            State::CheckConcurrency {
-                                request: request.take(),
+                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
+                            let upstream_future =
+                                upstream.call(request.take().expect(POLL_AFTER_READY_ERROR));
+                            State::PollUpstream {
+                                upstream_future,
+                                permit: None,
+                                ctx: Some(ctx),
+                            }
+                        }
+                        StalePolicy::OffloadRevalidate => {
+                            // Return stale data immediately, spawn background revalidation
+                            match (this.offload_manager.as_ref(), this.cache_key.clone()) {
+                                (Some(offload_manager), Some(cache_key)) => {
+                                    if let (Some(req), Some(upstream), Some(response_predicates)) = (
+                                        request.take(),
+                                        this.upstream.take(),
+                                        this.response_predicates.take(),
+                                    ) {
+                                        let revalidation_future = CacheFuture::<
+                                            B,
+                                            Req,
+                                            Res,
+                                            U,
+                                            ReqP,
+                                            ResP,
+                                            E,
+                                            NoopConcurrencyManager,
+                                        >::revalidate(
+                                            this.backend.clone(),
+                                            cache_key.clone(),
+                                            req,
+                                            upstream,
+                                            response_predicates,
+                                            this.policy.clone(),
+                                        );
+
+                                        offload_manager.spawn_with_key(cache_key, async move {
+                                            let (_response, ctx) = revalidation_future.await;
+                                            debug!(
+                                                status = ?ctx.status,
+                                                source = ?ctx.source,
+                                                "Revalidation completed"
+                                            );
+                                        });
+                                    }
+                                }
+                                (None, _) => {
+                                    tracing::warn!(
+                                        "StalePolicy::OffloadRevalidate is configured but \
+                                         OffloadManager is not provided. \
+                                         Falling back to returning stale data without revalidation."
+                                    );
+                                }
+                                (_, None) => {
+                                    tracing::warn!(
+                                        "StalePolicy::OffloadRevalidate is configured but \
+                                         cache_key is not available. \
+                                         Falling back to returning stale data without revalidation."
+                                    );
+                                }
+                            }
+
+                            ctx.set_status(CacheStatus::Stale);
+                            State::Response {
+                                response: Some(response),
                                 ctx: Some(ctx),
                             }
                         }

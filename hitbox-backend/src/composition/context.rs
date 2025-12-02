@@ -66,6 +66,21 @@ impl CompositionContext {
     pub fn should_refill(&self) -> bool {
         matches!(self.layer, CompositionLayer::L2)
     }
+
+    /// Returns a reference to the inner context.
+    pub fn inner(&self) -> &BoxContext {
+        &self.inner
+    }
+
+    /// Returns a mutable reference to the inner context.
+    pub fn inner_mut(&mut self) -> &mut BoxContext {
+        &mut self.inner
+    }
+
+    /// Takes the inner context, replacing it with a default.
+    pub fn take_inner(&mut self) -> BoxContext {
+        std::mem::replace(&mut self.inner, CacheContext::default().boxed())
+    }
 }
 
 impl Context for CompositionContext {

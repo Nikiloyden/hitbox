@@ -262,6 +262,13 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
+            // Skip write if this is a refill operation reaching the source backend.
+            // The source backend already has this data - it provided it during get().
+            // CompositionBackend handles L1 refill via its own set() implementation.
+            if ctx.read_mode() == ReadMode::Refill {
+                return Ok(());
+            }
+
             let backend_name = self.name();
             let format = self.value_format();
 

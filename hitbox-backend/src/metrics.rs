@@ -179,7 +179,8 @@ pub fn record_read(_backend: &str, _duration: Duration) {}
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_read_bytes(backend: &str, bytes: usize) {
-    metrics::counter!(*BACKEND_READ_BYTES, "backend" => backend.to_string()).increment(bytes as u64);
+    metrics::counter!(*BACKEND_READ_BYTES, "backend" => backend.to_string())
+        .increment(bytes as u64);
 }
 
 #[cfg(not(feature = "metrics"))]
@@ -213,7 +214,8 @@ pub fn record_write(_backend: &str, _duration: Duration) {}
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_write_bytes(backend: &str, bytes: usize) {
-    metrics::counter!(*BACKEND_WRITE_BYTES, "backend" => backend.to_string()).increment(bytes as u64);
+    metrics::counter!(*BACKEND_WRITE_BYTES, "backend" => backend.to_string())
+        .increment(bytes as u64);
 }
 
 #[cfg(not(feature = "metrics"))]

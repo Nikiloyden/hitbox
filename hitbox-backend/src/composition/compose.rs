@@ -24,7 +24,7 @@
 //! let cache = mem_backend.compose_with(redis_backend, offload, policy);
 //! ```
 
-use super::policy::{CompositionReadPolicy, CompositionRefillPolicy, CompositionWritePolicy};
+use super::policy::{CompositionReadPolicy, CompositionWritePolicy};
 use super::{CompositionBackend, CompositionPolicy};
 use crate::Backend;
 use hitbox_core::Offload;
@@ -105,18 +105,17 @@ pub trait Compose: Backend + Sized {
     ///
     /// let cache = l1.compose_with(l2, offload, policy);
     /// ```
-    fn compose_with<L2, O, R, W, F>(
+    fn compose_with<L2, O, R, W>(
         self,
         l2: L2,
         offload: O,
-        policy: CompositionPolicy<R, W, F>,
-    ) -> CompositionBackend<Self, L2, O, R, W, F>
+        policy: CompositionPolicy<R, W>,
+    ) -> CompositionBackend<Self, L2, O, R, W>
     where
         L2: Backend,
         O: Offload,
         R: CompositionReadPolicy,
         W: CompositionWritePolicy,
-        F: CompositionRefillPolicy,
     {
         CompositionBackend::new(self, l2, offload).with_policy(policy)
     }
@@ -292,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compose_with_policy() {
-        use super::super::policy::{NeverRefill, RaceReadPolicy};
+        use super::super::policy::{RaceReadPolicy, RefillPolicy};
 
         let l1 = TestBackend::new();
         let l2 = TestBackend::new();
@@ -301,7 +300,7 @@ mod tests {
         // Use compose_with to specify custom policies
         let policy = CompositionPolicy::new()
             .read(RaceReadPolicy::new())
-            .refill(NeverRefill::new());
+            .refill(RefillPolicy::Never);
 
         let cache = l1.clone().compose_with(l2.clone(), offload, policy);
 
