@@ -3,8 +3,8 @@ use std::{future::Future, sync::Arc};
 use async_trait::async_trait;
 use bytes::Bytes;
 use hitbox_core::{
-    BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw, ReadMode,
-    ResponseSource, SmolStr,
+    BackendLabel, BoxContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse, Raw,
+    ReadMode, ResponseSource,
 };
 
 use crate::{
@@ -29,12 +29,12 @@ pub trait Backend: Sync + Send {
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus>;
 
-    /// Returns the name of this backend for source path composition.
+    /// Returns the label of this backend for source path composition.
     ///
     /// This is used to build hierarchical source paths like "composition.l1.moka"
     /// when backends are nested within CompositionBackend.
-    fn name(&self) -> &str {
-        "backend"
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("backend")
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -64,7 +64,7 @@ impl Backend for &dyn Backend {
         (*self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (*self).name()
     }
 
@@ -95,7 +95,7 @@ impl Backend for Box<dyn Backend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (**self).name()
     }
 
@@ -126,7 +126,7 @@ impl Backend for Arc<UnsyncBackend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (**self).name()
     }
 
@@ -157,7 +157,7 @@ impl Backend for Arc<SyncBackend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> BackendLabel {
         (**self).name()
     }
 
@@ -190,23 +190,26 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_name = self.name();
+            let backend_label = self.name();
 
             let read_timer = Timer::new();
             let read_result = self.read(key).await;
-            crate::metrics::record_read(backend_name, read_timer.elapsed());
+            crate::metrics::record_read(backend_label.as_str(), read_timer.elapsed());
 
             match read_result {
                 Ok(Some(value)) => {
                     let (meta, raw_data) = value.into_parts();
                     let raw_len = raw_data.len();
-                    crate::metrics::record_read_bytes(backend_name, raw_len);
+                    crate::metrics::record_read_bytes(backend_label.as_str(), raw_len);
 
                     let format = self.value_format();
 
                     let decompress_timer = Timer::new();
                     let decompressed = self.compressor().decompress(&raw_data)?;
-                    crate::metrics::record_decompress(backend_name, decompress_timer.elapsed());
+                    crate::metrics::record_decompress(
+                        backend_label.as_str(),
+                        decompress_timer.elapsed(),
+                    );
 
                     let decompressed_bytes = Bytes::from(decompressed);
 
@@ -222,7 +225,10 @@ pub trait CacheBackend: Backend {
                         },
                         ctx,
                     )?;
-                    crate::metrics::record_deserialize(backend_name, deserialize_timer.elapsed());
+                    crate::metrics::record_deserialize(
+                        backend_label.as_str(),
+                        deserialize_timer.elapsed(),
+                    );
 
                     let deserialized = deserialized_opt.ok_or_else(|| {
                         BackendError::InternalError(Box::new(std::io::Error::other(
@@ -239,12 +245,12 @@ pub trait CacheBackend: Backend {
                     }
 
                     ctx.set_status(CacheStatus::Hit);
-                    ctx.set_source(ResponseSource::Backend(SmolStr::from(backend_name)));
+                    ctx.set_source(ResponseSource::Backend(backend_label));
                     Ok(Some(cached_value))
                 }
                 Ok(None) => Ok(None),
                 Err(e) => {
-                    crate::metrics::record_read_error(backend_name);
+                    crate::metrics::record_read_error(backend_label.as_str());
                     Err(e)
                 }
             }
@@ -269,16 +275,16 @@ pub trait CacheBackend: Backend {
                 return Ok(());
             }
 
-            let backend_name = self.name();
+            let backend_label = self.name();
             let format = self.value_format();
 
             let serialize_timer = Timer::new();
             let serialized_value = format.serialize(&value.data, &**ctx)?;
-            crate::metrics::record_serialize(backend_name, serialize_timer.elapsed());
+            crate::metrics::record_serialize(backend_label.as_str(), serialize_timer.elapsed());
 
             let compress_timer = Timer::new();
             let compressed_value = self.compressor().compress(&serialized_value)?;
-            crate::metrics::record_compress(backend_name, compress_timer.elapsed());
+            crate::metrics::record_compress(backend_label.as_str(), compress_timer.elapsed());
 
             let compressed_len = compressed_value.len();
 
@@ -289,15 +295,15 @@ pub trait CacheBackend: Backend {
                     CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
                 )
                 .await;
-            crate::metrics::record_write(backend_name, write_timer.elapsed());
+            crate::metrics::record_write(backend_label.as_str(), write_timer.elapsed());
 
             match result {
                 Ok(()) => {
-                    crate::metrics::record_write_bytes(backend_name, compressed_len);
+                    crate::metrics::record_write_bytes(backend_label.as_str(), compressed_len);
                     Ok(())
                 }
                 Err(e) => {
-                    crate::metrics::record_write_error(backend_name);
+                    crate::metrics::record_write_error(backend_label.as_str());
                     Err(e)
                 }
             }

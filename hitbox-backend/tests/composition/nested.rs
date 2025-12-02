@@ -125,98 +125,6 @@ async fn test_nested_composition_static_dispatch() {
     );
 }
 
-#[tokio::test]
-#[ignore = "nested refill cascade will be implemented via CacheFuture"]
-async fn test_nested_composition_static_l1_miss() {
-    // Test that on L1 miss, it checks the nested composition (L2+L3)
-
-    let l1 = TestBackend::new();
-    let l2 = TestBackend::new();
-    let l3 = TestBackend::new();
-
-    let key = CacheKey::from_str("test", "key1");
-    let value = CacheValue::new(
-        TestValue {
-            data: "from_l3".to_string(),
-        },
-        Some(Utc::now() + chrono::Duration::seconds(60)),
-        None,
-    );
-
-    // Populate only L3
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    l3.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
-
-    // Create nested composition
-    let l2_l3 = CompositionBackend::new(l2.clone(), l3.clone(), TestOffload);
-    let cache = CompositionBackend::new(l1.clone(), l2_l3, TestOffload);
-
-    // Read should miss L1, miss L2, hit L3
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
-    assert!(result.is_some());
-    assert_eq!(
-        result.unwrap().data,
-        TestValue {
-            data: "from_l3".to_string()
-        }
-    );
-
-    // L1 should now be populated (refill from nested composition)
-    assert!(
-        l1.has(&key),
-        "L1 should be refilled from nested composition"
-    );
-    // L2 should also be populated (refill from L3)
-    assert!(l2.has(&key), "L2 should be refilled from L3");
-}
-
-#[tokio::test]
-#[ignore = "nested refill cascade will be implemented via CacheFuture"]
-async fn test_nested_composition_static_4_levels() {
-    // Test 4-level hierarchy: L1 + (L2 + (L3 + L4))
-
-    let l1 = TestBackend::new();
-    let l2 = TestBackend::new();
-    let l3 = TestBackend::new();
-    let l4 = TestBackend::new();
-
-    let key = CacheKey::from_str("test", "deep_key");
-    let value = CacheValue::new(
-        TestValue {
-            data: "from_l4".to_string(),
-        },
-        Some(Utc::now() + chrono::Duration::seconds(60)),
-        None,
-    );
-
-    // Populate only L4 (deepest level)
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    l4.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
-
-    // Build nested hierarchy
-    let l3_l4 = CompositionBackend::new(l3.clone(), l4.clone(), TestOffload);
-    let l2_l3_l4 = CompositionBackend::new(l2.clone(), l3_l4, TestOffload);
-    let cache = CompositionBackend::new(l1.clone(), l2_l3_l4, TestOffload);
-
-    // Read should cascade through all 4 levels
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
-    assert!(result.is_some());
-    assert_eq!(
-        result.unwrap().data,
-        TestValue {
-            data: "from_l4".to_string()
-        }
-    );
-
-    // All levels should now have the data (refill cascade)
-    assert!(l1.has(&key), "L1 should be refilled");
-    assert!(l2.has(&key), "L2 should be refilled");
-    assert!(l3.has(&key), "L3 should be refilled");
-    assert!(l4.has(&key), "L4 should have original data");
-}
-
 // =============================================================================
 // Deep Nested Refill Tests - Shared Test Logic
 // =============================================================================
@@ -676,7 +584,6 @@ async fn test_nested_composition_dynamic_as_trait_object() {
 struct TtlTestBackends {
     l1: TestBackend,
     l2: TestBackend,
-    l3: Option<TestBackend>,
 }
 
 impl TtlTestBackends {
@@ -684,15 +591,6 @@ impl TtlTestBackends {
         Self {
             l1: TestBackend::new(),
             l2: TestBackend::new(),
-            l3: None,
-        }
-    }
-
-    fn three_level() -> Self {
-        Self {
-            l1: TestBackend::new(),
-            l2: TestBackend::new(),
-            l3: Some(TestBackend::new()),
         }
     }
 }
@@ -801,49 +699,6 @@ async fn run_stale_preserved_test<B: CacheBackend + Send + Sync>(
     );
 }
 
-/// Test TTL/stale preservation during refill (L2 -> L1).
-async fn run_refill_ttl_stale_test<B: CacheBackend + Send + Sync>(
-    cache: B,
-    l1: &TestBackend,
-    l2: &TestBackend,
-) {
-    let key = CacheKey::from_str("test", "refill_ttl_key");
-    let expire_time = Utc::now() + chrono::Duration::seconds(300);
-    let stale_time = Utc::now() + chrono::Duration::seconds(60);
-    let value = CacheValue::new(
-        TestValue {
-            data: "refill_ttl_test".to_string(),
-        },
-        Some(expire_time),
-        Some(stale_time),
-    );
-
-    // Populate only L2 (not L1)
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    l2.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
-
-    // Verify L1 is empty
-    assert!(!l1.has(&key), "L1 should be empty initially");
-
-    // Read through composition (should trigger refill)
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
-    assert!(result.is_some());
-
-    // Verify L1 was refilled with correct TTL/stale
-    let l1_raw = l1.get_raw(&key).expect("L1 should be refilled");
-    assert_eq!(
-        l1_raw.expire,
-        Some(expire_time),
-        "L1 refilled expire time should match"
-    );
-    assert_eq!(
-        l1_raw.stale,
-        Some(stale_time),
-        "L1 refilled stale time should match"
-    );
-}
-
 /// Test no TTL/stale preservation.
 async fn run_no_ttl_no_stale_test<B: CacheBackend + Send + Sync>(cache: B, l1: &TestBackend) {
     let key = CacheKey::from_str("test", "no_ttl_key");
@@ -882,77 +737,6 @@ async fn run_no_ttl_no_stale_test<B: CacheBackend + Send + Sync>(cache: B, l1: &
     );
 }
 
-/// Test TTL/stale preservation in nested refill (L3 -> L2 -> L1).
-async fn run_nested_refill_ttl_stale_test<B: CacheBackend + Send + Sync>(
-    cache: B,
-    l1: &TestBackend,
-    l2: &TestBackend,
-    l3: &TestBackend,
-) {
-    let key = CacheKey::from_str("test", "nested_ttl_key");
-    let expire_time = Utc::now() + chrono::Duration::seconds(600);
-    let stale_time = Utc::now() + chrono::Duration::seconds(120);
-    let value = CacheValue::new(
-        TestValue {
-            data: "nested_ttl_test".to_string(),
-        },
-        Some(expire_time),
-        Some(stale_time),
-    );
-
-    // Populate only L3 (deepest level)
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    l3.set::<TestValue>(&key, &value, &mut ctx).await.unwrap();
-
-    // Verify L1 and L2 are empty
-    assert!(!l1.has(&key), "L1 should be empty initially");
-    assert!(!l2.has(&key), "L2 should be empty initially");
-
-    // Read through composition (should trigger cascade refill)
-    let mut ctx: BoxContext = CacheContext::default().boxed();
-    let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
-    assert!(result.is_some());
-    let cache_value = result.unwrap();
-
-    // Verify returned value has correct TTL/stale
-    assert_eq!(
-        cache_value.expire,
-        Some(expire_time),
-        "Returned expire time should match"
-    );
-    assert_eq!(
-        cache_value.stale,
-        Some(stale_time),
-        "Returned stale time should match"
-    );
-
-    // Verify L1 was refilled with correct TTL/stale
-    let l1_raw = l1.get_raw(&key).expect("L1 should be refilled");
-    assert_eq!(
-        l1_raw.expire,
-        Some(expire_time),
-        "L1 refilled expire time should match"
-    );
-    assert_eq!(
-        l1_raw.stale,
-        Some(stale_time),
-        "L1 refilled stale time should match"
-    );
-
-    // Verify L2 was refilled with correct TTL/stale
-    let l2_raw = l2.get_raw(&key).expect("L2 should be refilled");
-    assert_eq!(
-        l2_raw.expire,
-        Some(expire_time),
-        "L2 refilled expire time should match"
-    );
-    assert_eq!(
-        l2_raw.stale,
-        Some(stale_time),
-        "L2 refilled stale time should match"
-    );
-}
-
 // =============================================================================
 // TTL/Stale Tests - Concrete Types (TestBackend)
 // =============================================================================
@@ -972,28 +756,10 @@ async fn test_stale_preserved_concrete() {
 }
 
 #[tokio::test]
-#[ignore = "refill is now handled by CacheFuture, not CompositionBackend"]
-async fn test_refill_ttl_stale_concrete() {
-    let backends = TtlTestBackends::two_level();
-    let cache = CompositionBackend::new(backends.l1.clone(), backends.l2.clone(), TestOffload);
-    run_refill_ttl_stale_test(cache, &backends.l1, &backends.l2).await;
-}
-
-#[tokio::test]
 async fn test_no_ttl_no_stale_concrete() {
     let backends = TtlTestBackends::two_level();
     let cache = CompositionBackend::new(backends.l1.clone(), backends.l2.clone(), TestOffload);
     run_no_ttl_no_stale_test(cache, &backends.l1).await;
-}
-
-#[tokio::test]
-#[ignore = "nested refill cascade will be implemented via CacheFuture"]
-async fn test_nested_refill_ttl_stale_concrete() {
-    let backends = TtlTestBackends::three_level();
-    let l3 = backends.l3.as_ref().unwrap();
-    let l2_l3 = CompositionBackend::new(backends.l2.clone(), l3.clone(), TestOffload);
-    let cache = CompositionBackend::new(backends.l1.clone(), l2_l3, TestOffload);
-    run_nested_refill_ttl_stale_test(cache, &backends.l1, &backends.l2, l3).await;
 }
 
 // =============================================================================
@@ -1019,35 +785,12 @@ async fn test_stale_preserved_arc_sync() {
 }
 
 #[tokio::test]
-#[ignore = "refill is now handled by CacheFuture, not CompositionBackend"]
-async fn test_refill_ttl_stale_arc_sync() {
-    let backends = TtlTestBackends::two_level();
-    let l1: Arc<SyncBackend> = Arc::new(backends.l1.clone());
-    let l2: Arc<SyncBackend> = Arc::new(backends.l2.clone());
-    let cache = CompositionBackend::new(l1, l2, TestOffload);
-    run_refill_ttl_stale_test(cache, &backends.l1, &backends.l2).await;
-}
-
-#[tokio::test]
 async fn test_no_ttl_no_stale_arc_sync() {
     let backends = TtlTestBackends::two_level();
     let l1: Arc<SyncBackend> = Arc::new(backends.l1.clone());
     let l2: Arc<SyncBackend> = Arc::new(backends.l2.clone());
     let cache = CompositionBackend::new(l1, l2, TestOffload);
     run_no_ttl_no_stale_test(cache, &backends.l1).await;
-}
-
-#[tokio::test]
-#[ignore = "nested refill cascade will be implemented via CacheFuture"]
-async fn test_nested_refill_ttl_stale_arc_sync() {
-    let backends = TtlTestBackends::three_level();
-    let l3 = backends.l3.as_ref().unwrap();
-    let l1: Arc<SyncBackend> = Arc::new(backends.l1.clone());
-    let l2: Arc<SyncBackend> = Arc::new(backends.l2.clone());
-    let l3_arc: Arc<SyncBackend> = Arc::new(l3.clone());
-    let l2_l3 = CompositionBackend::new(l2, l3_arc, TestOffload);
-    let cache = CompositionBackend::new(l1, l2_l3, TestOffload);
-    run_nested_refill_ttl_stale_test(cache, &backends.l1, &backends.l2, l3).await;
 }
 
 #[tokio::test]

@@ -17,8 +17,8 @@ use hitbox_backend::{
     PassthroughCompressor, SyncBackend,
 };
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse, EntityPolicyConfig, Offload,
-    Raw,
+    BackendLabel, BoxContext, CacheContext, CacheKey, CacheValue, CacheableResponse,
+    EntityPolicyConfig, Offload, Raw,
 };
 use metrics_util::debugging::{DebugValue, DebuggingRecorder};
 use metrics_util::{CompositeKey, MetricKind};
@@ -97,8 +97,8 @@ impl Backend for TestBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> &str {
-        "test"
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("test")
     }
 }
 

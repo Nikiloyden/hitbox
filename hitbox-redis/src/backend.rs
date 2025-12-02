@@ -3,14 +3,13 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use hitbox::{CacheKey, CacheValue, Raw};
+use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
 use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
     format::{BincodeFormat, Format},
 };
 use redis::{Client, aio::ConnectionManager};
-use smol_str::SmolStr;
 use tokio::sync::OnceCell;
 use tracing::trace;
 
@@ -34,7 +33,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: SmolStr,
+    name: BackendLabel,
 }
 
 impl RedisBackend<BincodeFormat, PassthroughCompressor> {
@@ -90,7 +89,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: SmolStr,
+    name: BackendLabel,
 }
 
 impl Default for RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
@@ -100,7 +99,7 @@ impl Default for RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
             serializer: BincodeFormat,
             key_format: CacheKeyFormat::default(),
             compressor: PassthroughCompressor,
-            name: SmolStr::new_static("redis"),
+            name: BackendLabel::new_static("redis"),
         }
     }
 }
@@ -140,7 +139,7 @@ where
     ///
     /// The name is used for source path composition in multi-layer caches.
     /// For example, with name "sessions", the source path might be "composition.L1.sessions".
-    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
         self.name = name.into();
         self
     }
@@ -254,8 +253,8 @@ where
         }
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> BackendLabel {
+        self.name.clone()
     }
 
     fn value_format(&self) -> &dyn Format {

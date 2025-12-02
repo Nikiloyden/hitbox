@@ -7,7 +7,7 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheBackend, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, Raw};
+use hitbox_core::{BackendLabel, CacheKey, CacheValue, Raw};
 use std::sync::Arc;
 
 /// Simple in-memory backend for testing using DashMap.
@@ -80,8 +80,8 @@ impl Backend for TestBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> &str {
-        "test"
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("test")
     }
 }
 
@@ -123,8 +123,8 @@ impl Backend for ErrorBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> &str {
-        "error"
+    fn name(&self) -> BackendLabel {
+        BackendLabel::new_static("error")
     }
 }
 

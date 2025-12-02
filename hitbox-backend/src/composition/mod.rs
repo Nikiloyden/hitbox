@@ -57,8 +57,8 @@ use crate::{
 use async_trait::async_trait;
 use envelope::CompositionEnvelope;
 use hitbox_core::{
-    BoxContext, CacheContext, CacheKey, CacheStatus, CacheValue, Cacheable, CacheableResponse,
-    Offload, Raw, ResponseSource,
+    BackendLabel, BoxContext, CacheContext, CacheKey, CacheStatus, CacheValue, Cacheable,
+    CacheableResponse, Offload, Raw, ResponseSource,
 };
 use policy::{
     CompositionReadPolicy, CompositionWritePolicy, OptimisticParallelWritePolicy, ReadResult,
@@ -122,7 +122,7 @@ pub struct CompositionBackend<
     /// Refill policy
     refill_policy: RefillPolicy,
     /// Name of this backend for source path composition
-    name: SmolStr,
+    name: BackendLabel,
     /// Pre-computed metrics label for L1: "{name}.{l1.name()}"
     l1_label: SmolStr,
     /// Pre-computed metrics label for L2: "{name}.{l2.name()}"
@@ -153,9 +153,9 @@ where
     /// * `l2` - Second-layer backend (checked if L1 misses)
     /// * `offload` - Offload manager for background tasks (e.g., race policy losers)
     pub fn new(l1: L1, l2: L2, offload: O) -> Self {
-        let name = SmolStr::new_static("composition");
-        let l1_label = compose_label(&name, l1.name());
-        let l2_label = compose_label(&name, l2.name());
+        let name = BackendLabel::new_static("composition");
+        let l1_label = compose_label(name.as_str(), l1.name().as_str());
+        let l2_label = compose_label(name.as_str(), l2.name().as_str());
         let format = CompositionFormat::new(
             Arc::new(l1.value_format().clone_box()),
             Arc::new(l2.value_format().clone_box()),
@@ -211,11 +211,11 @@ where
     ///
     /// The name is used for source path composition in multi-layer caches.
     /// For example, with name "cache", the source path might be "cache.L1".
-    pub fn name(mut self, name: impl Into<SmolStr>) -> Self {
+    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
         self.name = name.into();
         // Recalculate labels with new name
-        self.l1_label = compose_label(&self.name, self.l1.name());
-        self.l2_label = compose_label(&self.name, self.l2.name());
+        self.l1_label = compose_label(self.name.as_str(), self.l1.name().as_str());
+        self.l2_label = compose_label(self.name.as_str(), self.l2.name().as_str());
         // Update format labels too
         self.format
             .set_labels(self.l1_label.clone(), self.l2_label.clone());
@@ -575,8 +575,8 @@ where
         }
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> BackendLabel {
+        self.name.clone()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -619,8 +619,8 @@ where
         let l2_label = self.l2_label.clone();
 
         // Use inner backend names for source path (merge_from adds composition prefix)
-        let l1_name: SmolStr = l1.name().into();
-        let l2_name: SmolStr = l2.name().into();
+        let l1_name = l1.name();
+        let l2_name = l2.name();
 
         // Clone format for each closure
         let format_for_l1 = self.format.clone();
@@ -666,7 +666,9 @@ where
                                     internal_ctx.as_any().downcast_ref::<CompositionContext>()
                                 {
                                     // Nested composition: get label from inner format
-                                    comp_ctx.format.label_for_layer(comp_ctx.layer).clone()
+                                    BackendLabel::from(
+                                        comp_ctx.format.label_for_layer(comp_ctx.layer).clone(),
+                                    )
                                 } else {
                                     // Simple backend: use backend name
                                     l1_name.clone()
@@ -733,7 +735,9 @@ where
                                     internal_ctx.as_any().downcast_ref::<CompositionContext>()
                                 {
                                     // Nested composition: get label from inner format
-                                    comp_ctx.format.label_for_layer(comp_ctx.layer).clone()
+                                    BackendLabel::from(
+                                        comp_ctx.format.label_for_layer(comp_ctx.layer).clone(),
+                                    )
                                 } else {
                                     // Simple backend: use backend name
                                     l2_name.clone()
@@ -1060,8 +1064,8 @@ mod tests {
             }
         }
 
-        fn name(&self) -> &str {
-            self.name
+        fn name(&self) -> BackendLabel {
+            BackendLabel::new(self.name)
         }
 
         fn value_format(&self) -> &dyn Format {

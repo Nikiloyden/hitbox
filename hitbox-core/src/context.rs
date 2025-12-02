@@ -3,7 +3,8 @@
 use std::any::Any;
 
 use smallbox::{SmallBox, smallbox, space::S4};
-use smol_str::SmolStr;
+
+use crate::label::BackendLabel;
 
 /// Whether the request resulted in a cache hit, miss, or stale data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -32,8 +33,8 @@ pub enum ResponseSource {
     /// Response came from upstream service (cache miss or bypass).
     #[default]
     Upstream,
-    /// Response came from cache backend with the given name.
-    Backend(SmolStr),
+    /// Response came from cache backend with the given label.
+    Backend(BackendLabel),
 }
 
 impl ResponseSource {
@@ -42,7 +43,7 @@ impl ResponseSource {
     pub fn as_str(&self) -> &str {
         match self {
             ResponseSource::Upstream => "upstream",
-            ResponseSource::Backend(name) => name.as_str(),
+            ResponseSource::Backend(label) => label.as_str(),
         }
     }
 }
@@ -128,8 +129,8 @@ pub trait Context: Send + Sync {
     ///
     /// # Arguments
     /// * `other` - The inner context to merge from
-    /// * `prefix` - Name prefix to prepend to source path (e.g., backend name)
-    fn merge_from(&mut self, other: &dyn Context, prefix: &str) {
+    /// * `prefix` - Label prefix to prepend to source path (e.g., backend label)
+    fn merge_from(&mut self, other: &dyn Context, prefix: &BackendLabel) {
         // Merge status - take the inner status if it indicates a hit
         let inner_status = other.status();
         if inner_status == CacheStatus::Hit || inner_status == CacheStatus::Stale {
@@ -138,9 +139,9 @@ pub trait Context: Send + Sync {
 
         // Merge source with path composition
         match other.source() {
-            ResponseSource::Backend(inner_name) => {
-                // Compose: prefix.inner_name (e.g., "composition.moka")
-                let composed = SmolStr::from(format!("{}.{}", prefix, inner_name));
+            ResponseSource::Backend(inner_label) => {
+                // Compose: prefix.inner_label (e.g., "composition.moka")
+                let composed = prefix.compose(inner_label);
                 self.set_source(ResponseSource::Backend(composed));
             }
             ResponseSource::Upstream => {

@@ -244,3 +244,40 @@ fn fsm_states_for_each_request(
 
     Ok(())
 }
+
+// =============================================================================
+// Composition L1/L2 Assertions
+// =============================================================================
+
+#[then(expr = "L{int} should be empty")]
+async fn layer_is_empty(world: &mut FsmWorld, layer: u8) -> Result<(), Error> {
+    let is_empty = match layer {
+        1 => world.l1_is_empty().await,
+        2 => world.l2_is_empty().await,
+        _ => return Err(anyhow!("Unknown layer: L{}", layer)),
+    };
+    if !is_empty {
+        return Err(anyhow!(
+            "Expected L{} to be empty, but it contains a value",
+            layer
+        ));
+    }
+    Ok(())
+}
+
+#[then(expr = "L{int} should contain value {int}")]
+async fn layer_contains_value(world: &mut FsmWorld, layer: u8, expected: u32) -> Result<(), Error> {
+    let contains = match layer {
+        1 => world.l1_contains_value(expected).await,
+        2 => world.l2_contains_value(expected).await,
+        _ => return Err(anyhow!("Unknown layer: L{}", layer)),
+    };
+    if !contains {
+        return Err(anyhow!(
+            "Expected L{} to contain value {}, but it doesn't",
+            layer,
+            expected
+        ));
+    }
+    Ok(())
+}

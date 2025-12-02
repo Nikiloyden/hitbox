@@ -1,6 +1,7 @@
 use crate::fsm::world::{CacheState, FsmWorld};
 use anyhow::Error;
 use cucumber::given;
+use hitbox_backend::composition::policy::RefillPolicy;
 
 // =============================================================================
 // Background/Setup Steps
@@ -125,5 +126,57 @@ fn broadcast_will_close(_world: &mut FsmWorld) -> Result<(), Error> {
 fn broadcast_will_lag(_world: &mut FsmWorld) -> Result<(), Error> {
     // TODO: This requires injecting a mock concurrency manager
     // that forces channel lagged behavior
+    Ok(())
+}
+
+// =============================================================================
+// Composition Backend Steps
+// =============================================================================
+
+#[given(expr = "composition backend is enabled")]
+fn composition_enabled(world: &mut FsmWorld) -> Result<(), Error> {
+    world.composition.enabled = true;
+    Ok(())
+}
+
+#[given(expr = "refill policy is {string}")]
+fn refill_policy(world: &mut FsmWorld, policy: String) -> Result<(), Error> {
+    world.composition.refill_policy = match policy.as_str() {
+        "Always" => RefillPolicy::Always,
+        "Never" => RefillPolicy::Never,
+        _ => return Err(anyhow::anyhow!("Unknown refill policy: {}", policy)),
+    };
+    Ok(())
+}
+
+#[given(expr = "L{int} is empty")]
+fn layer_empty(world: &mut FsmWorld, layer: u8) -> Result<(), Error> {
+    match layer {
+        1 => world.composition.l1_state = CacheState::Empty,
+        2 => world.composition.l2_state = CacheState::Empty,
+        _ => return Err(anyhow::anyhow!("Unknown layer: L{}", layer)),
+    }
+    Ok(())
+}
+
+#[given(expr = "L{int} contains fresh value {int}")]
+fn layer_fresh(world: &mut FsmWorld, layer: u8, value: u32) -> Result<(), Error> {
+    let state = CacheState::Fresh(value);
+    match layer {
+        1 => world.composition.l1_state = state,
+        2 => world.composition.l2_state = state,
+        _ => return Err(anyhow::anyhow!("Unknown layer: L{}", layer)),
+    }
+    Ok(())
+}
+
+#[given(expr = "L{int} contains stale value {int}")]
+fn layer_stale(world: &mut FsmWorld, layer: u8, value: u32) -> Result<(), Error> {
+    let state = CacheState::Stale(value);
+    match layer {
+        1 => world.composition.l1_state = state,
+        2 => world.composition.l2_state = state,
+        _ => return Err(anyhow::anyhow!("Unknown layer: L{}", layer)),
+    }
     Ok(())
 }

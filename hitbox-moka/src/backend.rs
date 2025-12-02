@@ -1,13 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use hitbox::{CacheKey, CacheValue, Raw};
+use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
 use hitbox_backend::Backend;
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     BackendResult, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
 use moka::{Expiry, future::Cache};
-use smol_str::SmolStr;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,7 +36,7 @@ where
     pub key_format: CacheKeyFormat,
     pub serializer: S,
     pub compressor: C,
-    pub name: SmolStr,
+    pub name: BackendLabel,
 }
 
 impl<S, C> std::fmt::Debug for MokaBackend<S, C>
@@ -88,8 +87,8 @@ where
         }
     }
 
-    fn name(&self) -> &str {
-        &self.name
+    fn name(&self) -> BackendLabel {
+        self.name.clone()
     }
 
     fn value_format(&self) -> &dyn Format {
