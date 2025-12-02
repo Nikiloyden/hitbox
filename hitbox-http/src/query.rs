@@ -1,6 +1,11 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+/// Maximum nesting depth for query string parsing.
+/// Limits structures like `a[b][c][d][e][f]=value` to prevent DoS attacks
+/// via deeply nested queries that could cause stack overflow or memory exhaustion.
+const MAX_QUERY_DEPTH: usize = 5;
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum Value {
@@ -24,7 +29,9 @@ impl Value {
 ///
 /// Returns `None` if the query string is malformed.
 pub fn parse(value: &str) -> Option<HashMap<String, Value>> {
-    serde_qs::Config::new(5, false).deserialize_str(value).ok()
+    serde_qs::Config::new(MAX_QUERY_DEPTH, false)
+        .deserialize_str(value)
+        .ok()
 }
 
 #[cfg(test)]
