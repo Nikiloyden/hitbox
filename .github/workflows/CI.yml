@@ -65,7 +65,7 @@ jobs:
 
       - name: Publish unit test report
         if: always()
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         with:
           report_paths: "target/nextest/ci/junit.xml"
           check_name: "Unit Test Report (${{ matrix.rust }})"
@@ -75,7 +75,7 @@ jobs:
 
       - name: Publish BDD test report
         if: always()
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         with:
           report_paths: "target/cucumber-*-junit.xml"
           check_name: "BDD Test Report (${{ matrix.rust }})"
