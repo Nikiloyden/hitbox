@@ -39,9 +39,6 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let _redis_backend = RedisBackend::new().unwrap();
-    // let memory_backend = hitbox_stretto::StrettoBackend::builder(10)
-    //     .finalize()
-    //     .unwrap();
     let memory_backend = hitbox_moka::MokaBackend::builder(1024 * 1024).build();
 
     // let json_config = EndpointConfig::builder()
