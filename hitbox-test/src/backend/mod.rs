@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use hitbox_backend::format::FormatExt;
 use hitbox_backend::{Backend, CacheBackend, CacheKeyFormat, DeleteStatus};
@@ -37,7 +36,6 @@ impl TestResponse {
     }
 }
 
-#[async_trait]
 impl CacheableResponse for TestResponse {
     type Cached = Self;
     type Subject = Self;

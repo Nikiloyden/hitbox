@@ -21,7 +21,6 @@ impl TestResponse {
     }
 }
 
-#[async_trait]
 impl CacheableResponse for TestResponse {
     type Cached = Self;
     type Subject = Self;

@@ -87,7 +87,6 @@ struct Value {
     index: u8,
 }
 
-#[async_trait]
 impl CacheableResponse for Value {
     type Cached = Self;
     type Subject = Self;

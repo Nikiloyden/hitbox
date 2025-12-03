@@ -47,7 +47,6 @@ pub(super) struct TestValue {
     pub data: String,
 }
 
-#[async_trait]
 impl CacheableResponse for TestValue {
     type Cached = Self;
     type Subject = Self;

@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -26,7 +25,6 @@ use hitbox_moka::MokaBackend;
 #[derive(Clone, Debug)]
 pub struct SimpleRequest(pub u32);
 
-#[async_trait::async_trait]
 impl CacheableRequest for SimpleRequest {
     async fn cache_policy<P, E>(self, predicates: P, extractors: E) -> RequestCachePolicy<Self>
     where
@@ -50,7 +48,6 @@ impl CacheableRequest for SimpleRequest {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SimpleResponse(pub u32);
 
-#[async_trait::async_trait]
 impl CacheableResponse for SimpleResponse {
     type Cached = u32;
     type Subject = SimpleResponse;

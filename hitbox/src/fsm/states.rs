@@ -39,10 +39,11 @@ pub type CacheResult<T> = Result<Option<CacheValue<T>>, BackendError>;
 pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
 /// Future that updates the cache and returns (backend_result, response, context)
 pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
-pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 pub type AwaitResponseFuture<T> = BoxFuture<'static, Result<T, ConcurrencyError>>;
 /// Future that converts cached value to response and returns (response, context)
 pub type ConvertResponseFuture<T> = BoxFuture<'static, (T, BoxContext)>;
+/// Future that checks request cache policy
+pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
 
 // =============================================================================
 // State Enum
@@ -166,9 +167,9 @@ where
         self.ctx.record_state(DebugState::Initial);
         match policy {
             PolicyConfig::Enabled(_) => {
-                // cache_policy returns BoxFuture via async_trait, no need to wrap again
+                // Box the RPITIT future for storage in FSM state
                 let cache_policy_future =
-                    self.request.cache_policy(self.predicates, self.extractors);
+                    Box::pin(self.request.cache_policy(self.predicates, self.extractors));
                 InitialTransition::CheckRequestCachePolicy {
                     cache_policy_future,
                     ctx: self.ctx,

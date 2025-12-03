@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use hitbox::{
@@ -207,7 +206,6 @@ pub struct SerializableHttpResponse {
     headers: HeaderMap,
 }
 
-#[async_trait]
 impl<ResBody> CacheableResponse for CacheableHttpResponse<ResBody>
 where
     ResBody: HttpBody + Send + 'static,

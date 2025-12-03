@@ -21,6 +21,7 @@ use crate::{CacheKey, CacheableRequest, CacheableResponse, Extractor, Predicate}
 /// Transitions from Initial state.
 pub enum InitialTransition<Req, U>
 where
+    Req: CacheableRequest,
     U: Upstream<Req>,
 {
     /// Cache is enabled - check request cache policy
@@ -38,12 +39,12 @@ where
 
 impl<Req, U> InitialTransition<Req, U>
 where
+    Req: CacheableRequest,
     U: Upstream<Req>,
 {
     pub fn into_state<Res, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
     where
         Res: CacheableResponse,
-        Req: CacheableRequest,
         U: Upstream<Req, Response = Res>,
         ReqP: Predicate<Subject = Req>,
         E: Extractor<Subject = Req>,
@@ -74,6 +75,7 @@ where
 
 impl<Req, U> std::fmt::Debug for InitialTransition<Req, U>
 where
+    Req: CacheableRequest,
     U: Upstream<Req>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -1100,7 +1100,6 @@ mod tests {
 
     // Note: This is a minimal implementation just for testing CacheBackend.
     // The methods are not actually called in these tests.
-    #[async_trait]
     impl CacheableResponse for MockResponse {
         type Cached = CachedData;
         type Subject = MockResponse;

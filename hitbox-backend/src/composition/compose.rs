@@ -221,7 +221,6 @@ mod tests {
 
     struct MockResponse;
 
-    #[async_trait]
     impl CacheableResponse for MockResponse {
         type Cached = CachedData;
         type Subject = MockResponse;

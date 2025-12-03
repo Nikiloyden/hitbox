@@ -93,7 +93,6 @@ struct TestValue {
     data: String,
 }
 
-#[async_trait]
 impl CacheableResponse for TestValue {
     type Cached = Self;
     type Subject = Self;

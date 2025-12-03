@@ -1,6 +1,5 @@
 use std::fmt::Debug;
-
-use async_trait::async_trait;
+use std::future::Future;
 
 use crate::{
     CachePolicy, EntityPolicyConfig,
@@ -27,7 +26,6 @@ pub enum CacheState<Cached> {
     Expired(Cached),
 }
 
-#[async_trait]
 pub trait CacheableResponse
 where
     Self: Sized + Send + 'static,
@@ -36,20 +34,19 @@ where
     type Cached;
     type Subject: CacheableResponse;
 
-    async fn cache_policy<P>(
+    fn cache_policy<P>(
         self,
         predicates: P,
         config: &EntityPolicyConfig,
-    ) -> ResponseCachePolicy<Self>
+    ) -> impl Future<Output = ResponseCachePolicy<Self>> + Send
     where
         P: Predicate<Subject = Self::Subject> + Send + Sync;
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self>;
+    fn into_cached(self) -> impl Future<Output = CachePolicy<Self::Cached, Self>> + Send;
 
-    async fn from_cached(cached: Self::Cached) -> Self;
+    fn from_cached(cached: Self::Cached) -> impl Future<Output = Self> + Send;
 }
 
-#[async_trait]
 impl<T, E> CacheableResponse for Result<T, E>
 where
     T: CacheableResponse + 'static,
