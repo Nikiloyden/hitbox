@@ -23,6 +23,7 @@ bitcode = { workspace = true, features = ["derive"] }
 bytes = { version = "1", features = ["serde"] }
 smol_str = { workspace = true }
 smallbox = { workspace = true }
+pin-project = { workspace = true }
 
 # Optional rkyv support
 rkyv = { workspace = true, optional = true }

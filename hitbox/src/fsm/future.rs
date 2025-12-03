@@ -4,30 +4,25 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{self, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crate::{
-    CacheContext, CachePolicy, CacheState, CacheStatus, CacheableResponse, ResponseSource,
-    offload::OffloadManager,
-    policy::{EnabledCacheConfig, PolicyConfig, StalePolicy},
+    CacheContext, CacheStatus, CacheableResponse, ResponseSource, offload::OffloadManager,
 };
 use futures::ready;
-use hitbox_core::DebugState;
-use hitbox_core::{Cacheable, CacheablePolicyData, EntityPolicyConfig, Upstream};
+use hitbox_core::{Cacheable, DebugState, Upstream};
 use pin_project::pin_project;
 use tracing::debug;
 
 use crate::{
     CacheKey, CacheableRequest, Extractor, Predicate,
     backend::CacheBackend,
-    concurrency::{ConcurrencyDecision, ConcurrencyManager, NoopConcurrencyManager},
-    fsm::{PollCacheFuture, State, states::StateProj},
+    concurrency::{ConcurrencyManager, NoopConcurrencyManager},
+    fsm::states::{self, PollUpstream, State, StateProj},
 };
 
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
-const CONTEXT_TAKEN_ERROR: &str = "Context already taken from state";
-const UPSTREAM_TAKEN_ERROR: &str = "Upstream already taken (used for offload revalidation)";
 
 #[pin_project(project = CacheFutureProj)]
 pub struct CacheFuture<B, Req, Res, U, ReqP, ResP, E, C>
@@ -41,17 +36,11 @@ where
     E: Extractor<Subject = Req> + Send + Sync,
     C: ConcurrencyManager<Res>,
 {
-    upstream: Option<U>,
     backend: Arc<B>,
-    request: Option<Req>,
     cache_key: Option<CacheKey>,
     #[pin]
-    state: State<Res, Req, U>,
-    #[pin]
-    poll_cache: Option<PollCacheFuture<Res>>,
-    request_predicates: Option<ReqP>,
+    state: State<Res, Req, U, ReqP, E>,
     response_predicates: Option<ResP>,
-    key_extractors: Option<E>,
     policy: Arc<crate::policy::PolicyConfig>,
     /// Optional offload manager for background revalidation (SWR).
     offload_manager: Option<OffloadManager>,
@@ -84,18 +73,18 @@ where
         offload_manager: Option<OffloadManager>,
         concurrency_manager: C,
     ) -> Self {
+        let initial_state = states::Initial {
+            request,
+            predicates: request_predicates,
+            extractors: key_extractors,
+            ctx: CacheContext::default().boxed(),
+            upstream,
+        };
         CacheFuture {
-            upstream: Some(upstream),
             backend,
             cache_key: None,
-            request: Some(request),
-            state: State::Initial {
-                ctx: Some(CacheContext::default().boxed()),
-            },
-            poll_cache: None,
-            request_predicates: Some(request_predicates),
+            state: State::Initial(Some(initial_state)),
             response_predicates: Some(response_predicates),
-            key_extractors: Some(key_extractors),
             policy,
             offload_manager,
             is_revalidation: false,
@@ -144,19 +133,17 @@ where
         let upstream_future = upstream.call(request);
 
         CacheFuture {
-            upstream: Some(upstream),
             backend,
-            cache_key: Some(cache_key),
-            request: None,
+            cache_key: Some(cache_key.clone()),
             state: State::PollUpstream {
                 upstream_future,
-                permit: None,
-                ctx: Some(CacheContext::default().boxed()),
+                state: Some(PollUpstream {
+                    permit: None,
+                    ctx: CacheContext::default().boxed(),
+                    cache_key: Some(cache_key),
+                }),
             },
-            poll_cache: None,
-            request_predicates: None,
             response_predicates: Some(response_predicates),
-            key_extractors: None,
             policy,
             // Revalidation tasks don't spawn further revalidation
             offload_manager: None,
@@ -164,6 +151,60 @@ where
             // Revalidation tasks don't need concurrency control
             concurrency_manager: NoopConcurrencyManager,
             start_time: Instant::now(),
+        }
+    }
+}
+
+impl<'pin, B, Req, Res, U, ReqP, ResP, E, C> CacheFutureProj<'pin, B, Req, Res, U, ReqP, ResP, E, C>
+where
+    U: Upstream<Req, Response = Res> + Send + 'static,
+    U::Future: Send + 'static,
+    B: CacheBackend + Send + Sync + 'static,
+    Res: CacheableResponse + Send,
+    Res::Cached: Cacheable + Send + Debug,
+    Req: CacheableRequest + Send + Debug + 'static,
+    ReqP: Predicate<Subject = Req> + Send + Sync + 'static,
+    ResP: Predicate<Subject = Res::Subject> + Send + Sync + 'static,
+    E: Extractor<Subject = Req> + Send + Sync + 'static,
+    C: ConcurrencyManager<Res>,
+{
+    /// Spawns a background revalidation task if offload_manager is available.
+    fn spawn_revalidation(&mut self, offload_data: states::OffloadData<Req, U>) {
+        if let Some(offload_manager) = self.offload_manager.as_ref() {
+            if let Some(response_predicates) = self.response_predicates.take() {
+                let revalidation_future = CacheFuture::<
+                    B,
+                    Req,
+                    Res,
+                    U,
+                    ReqP,
+                    ResP,
+                    E,
+                    NoopConcurrencyManager,
+                >::revalidate(
+                    self.backend.clone(),
+                    offload_data.cache_key.clone(),
+                    offload_data.request,
+                    offload_data.upstream,
+                    response_predicates,
+                    self.policy.clone(),
+                );
+
+                offload_manager.spawn_with_key(offload_data.cache_key, async move {
+                    let (_response, ctx) = revalidation_future.await;
+                    debug!(
+                        status = ?ctx.status,
+                        source = ?ctx.source,
+                        "Revalidation completed"
+                    );
+                });
+            }
+        } else {
+            tracing::warn!(
+                "StalePolicy::OffloadRevalidate is configured but \
+                 OffloadManager is not provided. \
+                 Falling back to returning stale data without revalidation."
+            );
         }
     }
 }
@@ -191,487 +232,120 @@ where
 
         loop {
             let state = match this.state.as_mut().project() {
-                StateProj::Initial { ctx } => {
-                    let predicates = this
-                        .request_predicates
-                        .take()
-                        .expect("Request predicates already taken");
-                    let extractors = this
-                        .key_extractors
-                        .take()
-                        .expect("Key extractors already taken");
-                    let request = this.request.take().expect(POLL_AFTER_READY_ERROR);
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::Initial);
-                    match this.policy.as_ref() {
-                        PolicyConfig::Enabled(_) => {
-                            let cache_policy_future = Box::pin(async move {
-                                request.cache_policy(predicates, extractors).await
-                            });
-                            State::CheckRequestCachePolicy {
-                                cache_policy_future,
-                                ctx: Some(ctx),
-                            }
-                        }
-                        PolicyConfig::Disabled => {
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                    }
+                StateProj::Initial(initial_state) => {
+                    let initial = initial_state.take().expect(POLL_AFTER_READY_ERROR);
+                    initial.transition(this.policy.as_ref()).into_state()
                 }
                 StateProj::CheckRequestCachePolicy {
                     cache_policy_future,
-                    ctx,
+                    state,
                 } => {
                     let policy = ready!(cache_policy_future.poll(cx));
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::CheckRequestCachePolicy);
-                    match policy {
-                        CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
-                            let backend = this.backend.clone();
-                            let cache_key = key.clone();
-                            debug!(?cache_key, "FSM looking up cache key");
-                            let _ = this.cache_key.insert(key);
-                            let poll_cache = Box::pin(async move {
-                                let result = backend.get::<Res>(&cache_key, &mut ctx).await;
-                                debug!(
-                                    found = result.as_ref().map(|r| r.is_some()).unwrap_or(false),
-                                    "FSM cache lookup result"
-                                );
-                                (result, ctx)
-                            });
-                            State::PollCache {
-                                poll_cache,
-                                request: Some(request),
-                            }
-                        }
-                        CachePolicy::NonCacheable(request) => {
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                    }
-                }
-                StateProj::PollCache {
-                    poll_cache,
-                    request,
-                } => {
-                    let (cache_result, mut ctx) = ready!(poll_cache.poll(cx));
-                    ctx.record_state(DebugState::PollCache);
-                    let cached = cache_result.unwrap_or_else(|_err| {
-                        //println!("cache backend error: {err}");
-                        None
-                    });
-                    match cached {
-                        Some(cached_value) => {
-                            // Sync cache state check - no future needed
-                            let cache_state = cached_value.cache_state();
-                            ctx.set_status(CacheStatus::Hit);
+                    let check_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
-                            match cache_state {
-                                CacheState::Actual(value) => {
-                                    // Check if refill is needed (L2 hit in composition)
-                                    if ctx.read_mode() == hitbox_core::ReadMode::Refill {
-                                        // Refill: write to L1, then convert to response
-                                        let backend = this.backend.clone();
-                                        let cache_key =
-                                            this.cache_key.clone().expect("CacheKey not found");
-                                        let update_cache_future = Box::pin(async move {
-                                            let update_result = backend
-                                                .set::<Res>(&cache_key, &value, &mut ctx)
-                                                .await;
-                                            let response =
-                                                Res::from_cached(value.into_inner()).await;
-                                            (update_result, response, ctx)
-                                        });
-                                        State::UpdateCache {
-                                            update_cache_future,
-                                        }
-                                    } else {
-                                        // No refill: just convert to response
-                                        let response_future = Box::pin(async move {
-                                            let response =
-                                                Res::from_cached(value.into_inner()).await;
-                                            (response, ctx)
-                                        });
-                                        State::ConvertResponse {
-                                            response_future,
-                                            request: request.take(),
-                                        }
-                                    }
-                                }
-                                CacheState::Stale(value) => {
-                                    // Convert to response, then handle stale policy
-                                    let response_future = Box::pin(async move {
-                                        let response = Res::from_cached(value.into_inner()).await;
-                                        (response, ctx)
-                                    });
-                                    State::HandleStale {
-                                        response_future,
-                                        request: request.take(),
-                                    }
-                                }
-                                CacheState::Expired(_value) => {
-                                    // Treat as miss
-                                    ctx.set_status(CacheStatus::Miss);
-                                    State::CheckConcurrency {
-                                        request: request.take(),
-                                        ctx: Some(ctx),
-                                    }
-                                }
-                            }
-                        }
-                        None => State::CheckConcurrency {
-                            request: request.take(),
-                            ctx: Some(ctx),
-                        },
-                    }
+                    check_state
+                        .transition(policy, this.backend.clone(), this.cache_key)
+                        .into_state()
                 }
-                StateProj::CheckConcurrency { request, ctx } => {
-                    let request = request.take().expect(POLL_AFTER_READY_ERROR);
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::CheckConcurrency);
-                    match this.policy.as_ref() {
-                        PolicyConfig::Enabled(crate::policy::EnabledCacheConfig {
-                            concurrency: Some(concurrency),
-                            ..
-                        }) => State::ConcurrentPollUpstream {
-                            request: Some(request),
-                            concurrency: *concurrency as usize,
-                            ctx: Some(ctx),
-                        },
-                        _ => {
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                    }
-                }
-                StateProj::ConcurrentPollUpstream {
-                    request,
-                    concurrency,
-                    ctx,
-                } => {
-                    let request = request.take().expect(POLL_AFTER_READY_ERROR);
-                    let concurrency = *concurrency;
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::ConcurrentPollUpstream);
-                    let cache_key = this
-                        .cache_key
-                        .as_ref()
-                        .expect("CacheKey not found for concurrency check");
-                    match this.concurrency_manager.check(cache_key, concurrency) {
-                        ConcurrencyDecision::Proceed(permit) => {
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: Some(permit),
-                                ctx: Some(ctx),
-                            }
-                        }
-                        ConcurrencyDecision::ProceedWithoutPermit => {
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                        ConcurrencyDecision::Await(await_future) => State::AwaitResponse {
-                            await_response_future: await_future,
-                            request: Some(request),
-                            ctx: Some(ctx),
-                        },
-                    }
+                StateProj::PollCache { poll_cache, state } => {
+                    let (cache_result, ctx) = ready!(poll_cache.poll(cx));
+                    let poll_cache_state = state.take().expect(POLL_AFTER_READY_ERROR);
+
+                    poll_cache_state
+                        .transition(
+                            cache_result,
+                            ctx,
+                            this.backend.clone(),
+                            this.policy.as_ref(),
+                            &*this.concurrency_manager,
+                        )
+                        .into_state()
                 }
                 StateProj::AwaitResponse {
                     await_response_future,
-                    request,
-                    ctx,
+                    state,
                 } => {
                     let result = ready!(await_response_future.poll(cx));
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::AwaitResponse);
-                    match result {
-                        Ok(response) => {
-                            // Successfully received response from concurrent request
-                            State::Response {
-                                response: Some(response),
-                                ctx: Some(ctx),
-                            }
-                        }
-                        Err(concurrency_error) => {
-                            // Concurrency error (Lagged or Closed)
-                            // Fallback to direct upstream call and cache the result normally
-                            match &concurrency_error {
-                                crate::concurrency::ConcurrencyError::Lagged(n) => {
-                                    debug!(
-                                        "Concurrency channel lagged by {} messages, falling back to upstream",
-                                        n
-                                    );
-                                }
-                                crate::concurrency::ConcurrencyError::Closed => {
-                                    debug!(
-                                        "Concurrency channel closed, cleaning up stale entry and falling back to upstream"
-                                    );
-                                    // Cleanup stale entry from in-flight map (permit holder likely crashed)
-                                    if let Some(cache_key) = this.cache_key.as_ref() {
-                                        this.concurrency_manager.cleanup(cache_key);
-                                    }
-                                }
-                            }
+                    let await_response_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
-                            let request = request.take().expect(POLL_AFTER_READY_ERROR);
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future = upstream.call(request);
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                    }
+                    await_response_state
+                        .transition(result, &*this.concurrency_manager)
+                        .into_state()
                 }
                 StateProj::ConvertResponse {
                     response_future,
-                    request: _,
+                    state,
                 } => {
-                    let (response, mut ctx) = ready!(response_future.poll(cx));
-                    ctx.record_state(DebugState::ConvertResponse);
-                    State::Response {
-                        response: Some(response),
-                        ctx: Some(ctx),
-                    }
+                    let (response, ctx) = ready!(response_future.poll(cx));
+                    let convert_response_state = state.take().expect(POLL_AFTER_READY_ERROR);
+                    convert_response_state
+                        .transition(response, ctx)
+                        .into_state()
                 }
                 StateProj::HandleStale {
                     response_future,
-                    request,
+                    state,
                 } => {
-                    let (response, mut ctx) = ready!(response_future.poll(cx));
-                    ctx.record_state(DebugState::HandleStale);
+                    let (response, ctx) = ready!(response_future.poll(cx));
+                    let handle_stale_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
-                    let stale_policy = match this.policy.as_ref() {
-                        PolicyConfig::Enabled(EnabledCacheConfig { policy, .. }) => policy.stale,
-                        PolicyConfig::Disabled => StalePolicy::Return,
-                    };
+                    let result = handle_stale_state.transition(response, ctx, this.policy.as_ref());
 
-                    match stale_policy {
-                        StalePolicy::Return => {
-                            // Just return stale data, no revalidation
-                            ctx.set_status(CacheStatus::Stale);
-                            State::Response {
-                                response: Some(response),
-                                ctx: Some(ctx),
-                            }
-                        }
-                        StalePolicy::Revalidate => {
-                            // Treat stale as expired - block and wait for fresh data
-                            ctx.set_status(CacheStatus::Miss);
-                            let upstream = this.upstream.as_mut().expect(UPSTREAM_TAKEN_ERROR);
-                            let upstream_future =
-                                upstream.call(request.take().expect(POLL_AFTER_READY_ERROR));
-                            State::PollUpstream {
-                                upstream_future,
-                                permit: None,
-                                ctx: Some(ctx),
-                            }
-                        }
-                        StalePolicy::OffloadRevalidate => {
-                            // Return stale data immediately, spawn background revalidation
-                            match (this.offload_manager.as_ref(), this.cache_key.clone()) {
-                                (Some(offload_manager), Some(cache_key)) => {
-                                    if let (Some(req), Some(upstream), Some(response_predicates)) = (
-                                        request.take(),
-                                        this.upstream.take(),
-                                        this.response_predicates.take(),
-                                    ) {
-                                        let revalidation_future = CacheFuture::<
-                                            B,
-                                            Req,
-                                            Res,
-                                            U,
-                                            ReqP,
-                                            ResP,
-                                            E,
-                                            NoopConcurrencyManager,
-                                        >::revalidate(
-                                            this.backend.clone(),
-                                            cache_key.clone(),
-                                            req,
-                                            upstream,
-                                            response_predicates,
-                                            this.policy.clone(),
-                                        );
-
-                                        offload_manager.spawn_with_key(cache_key, async move {
-                                            let (_response, ctx) = revalidation_future.await;
-                                            debug!(
-                                                status = ?ctx.status,
-                                                source = ?ctx.source,
-                                                "Revalidation completed"
-                                            );
-                                        });
-                                    }
-                                }
-                                (None, _) => {
-                                    tracing::warn!(
-                                        "StalePolicy::OffloadRevalidate is configured but \
-                                         OffloadManager is not provided. \
-                                         Falling back to returning stale data without revalidation."
-                                    );
-                                }
-                                (_, None) => {
-                                    tracing::warn!(
-                                        "StalePolicy::OffloadRevalidate is configured but \
-                                         cache_key is not available. \
-                                         Falling back to returning stale data without revalidation."
-                                    );
-                                }
-                            }
-
-                            ctx.set_status(CacheStatus::Stale);
-                            State::Response {
-                                response: Some(response),
-                                ctx: Some(ctx),
-                            }
-                        }
+                    // Handle offload revalidation if requested
+                    if let Some(offload_data) = result.offload_data {
+                        this.spawn_revalidation(offload_data);
                     }
+
+                    result.transition.into_state()
                 }
                 StateProj::PollUpstream {
-                    mut upstream_future,
-                    permit,
-                    ctx,
+                    upstream_future,
+                    state,
                 } => {
-                    let res = ready!(upstream_future.as_mut().poll(cx));
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::PollUpstream);
-                    State::UpstreamPolled {
-                        upstream_result: Some(res),
-                        permit: permit.take(),
-                        ctx: Some(ctx),
-                    }
-                }
-                StateProj::UpstreamPolled {
-                    upstream_result,
-                    permit,
-                    ctx,
-                } => {
-                    let upstream_result = upstream_result.take().expect(POLL_AFTER_READY_ERROR);
-                    let permit = permit.take();
+                    let upstream_result = ready!(upstream_future.poll(cx));
+                    let poll_upstream = state.take().expect(POLL_AFTER_READY_ERROR);
                     let predicates = this
                         .response_predicates
                         .take()
                         .expect("Response predicates already taken");
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::UpstreamPolled);
-                    match this.cache_key {
-                        Some(_cache_key) => {
-                            let entity_config = match this.policy.as_ref() {
-                                PolicyConfig::Enabled(config) => EntityPolicyConfig {
-                                    ttl: config.ttl.map(|s| Duration::from_secs(s as u64)),
-                                    stale_ttl: config.stale.map(|s| Duration::from_secs(s as u64)),
-                                },
-                                PolicyConfig::Disabled => EntityPolicyConfig::default(),
-                            };
-                            State::CheckResponseCachePolicy {
-                                cache_policy: Box::pin(async move {
-                                    upstream_result
-                                        .cache_policy(predicates, &entity_config)
-                                        .await
-                                }),
-                                permit,
-                                ctx: Some(ctx),
-                            }
-                        }
-                        None => State::Response {
-                            response: Some(upstream_result),
-                            ctx: Some(ctx),
-                        },
-                    }
+
+                    poll_upstream
+                        .transition(upstream_result, predicates, this.policy.as_ref())
+                        .into_state()
                 }
                 StateProj::CheckResponseCachePolicy {
                     cache_policy,
-                    permit,
-                    ctx,
+
+                    state,
                 } => {
-                    // Permit drops here naturally
                     let policy = ready!(cache_policy.poll(cx));
-                    let backend = this.backend.clone();
-                    let cache_key = this.cache_key.take().expect("CacheKey not found");
-                    let permit = permit.take();
-                    let mut ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    ctx.record_state(DebugState::CheckResponseCachePolicy);
-                    match policy {
-                        CachePolicy::Cacheable(cache_value) => {
-                            // Only resolve if we have a permit (we're the winner of the race)
-                            if permit.is_some() {
-                                this.concurrency_manager.resolve(&cache_key, &cache_value);
-                            }
-                            let update_cache_future = Box::pin(async move {
-                                let update_cache_result =
-                                    backend.set::<Res>(&cache_key, &cache_value, &mut ctx).await;
-                                let upstream_result =
-                                    Res::from_cached(cache_value.into_inner()).await;
-                                (update_cache_result, upstream_result, ctx)
-                            });
-                            State::UpdateCache {
-                                update_cache_future,
-                            }
-                        }
-                        CachePolicy::NonCacheable(response) => {
-                            // Close the channel if we have a permit (permit holder cleans up)
-                            // This allows waiters to fall back to independent upstream calls
-                            if permit.is_some() {
-                                this.concurrency_manager.cleanup(&cache_key);
-                            }
-                            State::Response {
-                                response: Some(response),
-                                ctx: Some(ctx),
-                            }
-                        }
-                    }
+                    let check_state = state.take().expect(POLL_AFTER_READY_ERROR);
+
+                    check_state
+                        .transition(policy, this.backend.clone(), &*this.concurrency_manager)
+                        .into_state()
                 }
                 StateProj::UpdateCache {
                     update_cache_future,
                 } => {
                     // TODO: check backend result
-                    let (_backend_result, upstream_result, mut ctx) =
-                        ready!(update_cache_future.poll(cx));
-                    ctx.record_state(DebugState::UpdateCache);
-                    State::Response {
-                        response: Some(upstream_result),
-                        ctx: Some(ctx),
-                    }
+                    let (_backend_result, response, ctx) = ready!(update_cache_future.poll(cx));
+                    states::UpdateCacheState { response, ctx }
+                        .transition()
+                        .into_state()
                 }
-                StateProj::Response { response, ctx } => {
-                    let upstream_response = response.take().expect(POLL_AFTER_READY_ERROR);
-                    let ctx_ref = ctx.as_mut().expect(CONTEXT_TAKEN_ERROR);
-                    ctx_ref.record_state(DebugState::Response);
+                StateProj::Response(response_state) => {
+                    let mut state = response_state.take().expect(POLL_AFTER_READY_ERROR);
+                    state.ctx.record_state(DebugState::Response);
                     // For cache miss, set source to Upstream.
                     // For hit/stale, the backend has already set the correct source.
-                    if ctx_ref.status() == CacheStatus::Miss {
-                        ctx_ref.set_source(ResponseSource::Upstream);
+                    if state.ctx.status() == CacheStatus::Miss {
+                        state.ctx.set_source(ResponseSource::Upstream);
                     }
-                    let ctx = ctx.take().expect(CONTEXT_TAKEN_ERROR);
-                    let ctx = hitbox_core::finalize_context(ctx);
+                    let ctx = hitbox_core::finalize_context(state.ctx);
                     let duration = this.start_time.elapsed();
                     crate::metrics::record_context_metrics(&ctx, duration, *this.is_revalidation);
-                    return Poll::Ready((upstream_response, ctx));
+                    return Poll::Ready((state.response, ctx));
                 }
             };
             debug!("{:?}", &state);

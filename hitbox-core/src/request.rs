@@ -1,4 +1,4 @@
-use async_trait::async_trait;
+use std::future::Future;
 
 use crate::{CacheKey, CachePolicy, extractor::Extractor, predicate::Predicate};
 
@@ -15,12 +15,12 @@ impl<T> CacheablePolicyData<T> {
 
 pub type RequestCachePolicy<T> = CachePolicy<CacheablePolicyData<T>, T>;
 
-#[async_trait]
-pub trait CacheableRequest
-where
-    Self: Sized,
-{
-    async fn cache_policy<P, E>(self, predicates: P, extractors: E) -> RequestCachePolicy<Self>
+pub trait CacheableRequest: Sized {
+    fn cache_policy<P, E>(
+        self,
+        predicates: P,
+        extractors: E,
+    ) -> impl Future<Output = RequestCachePolicy<Self>> + Send
     where
         P: Predicate<Subject = Self> + Send + Sync,
         E: Extractor<Subject = Self> + Send + Sync;

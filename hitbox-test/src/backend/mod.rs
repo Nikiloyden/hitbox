@@ -1,4 +1,5 @@
-use async_trait::async_trait;
+use std::future::Ready;
+
 use chrono::{DateTime, Utc};
 use hitbox_backend::format::FormatExt;
 use hitbox_backend::{Backend, CacheBackend, CacheKeyFormat, DeleteStatus};
@@ -37,10 +38,11 @@ impl TestResponse {
     }
 }
 
-#[async_trait]
 impl CacheableResponse for TestResponse {
     type Cached = Self;
     type Subject = Self;
+    type IntoCachedFuture = Ready<CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = Ready<Self>;
 
     async fn cache_policy<P>(
         self,
@@ -54,12 +56,12 @@ impl CacheableResponse for TestResponse {
         CachePolicy::Cacheable(CacheValue::new(self.clone(), None, None))
     }
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
-        CachePolicy::Cacheable(self)
+    fn into_cached(self) -> Self::IntoCachedFuture {
+        std::future::ready(CachePolicy::Cacheable(self))
     }
 
-    async fn from_cached(cached: Self::Cached) -> Self {
-        cached
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture {
+        std::future::ready(cached)
     }
 }
 

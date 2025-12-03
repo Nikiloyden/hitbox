@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use hitbox::{
     CacheablePolicyData, RequestCachePolicy,
     predicate::{Predicate, PredicateResult},
@@ -67,7 +66,6 @@ where
     }
 }
 
-#[async_trait]
 impl<ReqBody> CacheableRequest for CacheableHttpRequest<ReqBody>
 where
     ReqBody: HttpBody + Send + 'static,
@@ -78,7 +76,6 @@ where
         P: Predicate<Subject = Self> + Send + Sync,
         E: Extractor<Subject = Self> + Send + Sync,
     {
-        //dbg!("CacheableHttpRequest::cache_policy");
         let (request, key) = extractors.get(self).await.into_cache_key();
 
         match predicates.check(request).await {

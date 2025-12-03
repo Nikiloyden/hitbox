@@ -116,10 +116,11 @@ struct TestData {
     name: String,
 }
 
-#[async_trait]
 impl CacheableResponse for TestData {
     type Cached = Self;
     type Subject = Self;
+    type IntoCachedFuture = std::future::Ready<hitbox_core::CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = std::future::Ready<Self>;
 
     async fn cache_policy<P>(
         self,
@@ -132,11 +133,11 @@ impl CacheableResponse for TestData {
         todo!()
     }
 
-    async fn into_cached(self) -> hitbox_core::CachePolicy<Self::Cached, Self> {
+    fn into_cached(self) -> Self::IntoCachedFuture {
         todo!()
     }
 
-    async fn from_cached(_cached: Self::Cached) -> Self {
+    fn from_cached(_cached: Self::Cached) -> Self::FromCachedFuture {
         todo!()
     }
 }
