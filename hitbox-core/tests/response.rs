@@ -24,6 +24,8 @@ impl TestResponse {
 impl CacheableResponse for TestResponse {
     type Cached = Self;
     type Subject = Self;
+    type IntoCachedFuture = std::future::Ready<CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = std::future::Ready<Self>;
 
     async fn cache_policy<P>(
         self,
@@ -44,11 +46,12 @@ impl CacheableResponse for TestResponse {
         }
     }
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
-        CachePolicy::Cacheable(self)
+    fn into_cached(self) -> Self::IntoCachedFuture {
+        std::future::ready(CachePolicy::Cacheable(self))
     }
-    async fn from_cached(cached: Self::Cached) -> Self {
-        cached
+
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture {
+        std::future::ready(cached)
     }
 }
 

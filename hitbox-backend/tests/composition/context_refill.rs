@@ -5,7 +5,6 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use chrono::Utc;
 use hitbox_backend::composition::CompositionBackend;
 use hitbox_backend::{CacheBackend, SyncBackend};
@@ -50,6 +49,8 @@ struct TestValue {
 impl CacheableResponse for TestValue {
     type Cached = Self;
     type Subject = Self;
+    type IntoCachedFuture = std::future::Ready<hitbox_core::CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = std::future::Ready<Self>;
 
     async fn cache_policy<P: Predicate<Subject = Self::Subject> + Send + Sync>(
         self,
@@ -59,11 +60,11 @@ impl CacheableResponse for TestValue {
         unimplemented!()
     }
 
-    async fn into_cached(self) -> hitbox_core::CachePolicy<Self::Cached, Self> {
+    fn into_cached(self) -> Self::IntoCachedFuture {
         unimplemented!()
     }
 
-    async fn from_cached(_cached: Self::Cached) -> Self {
+    fn from_cached(_cached: Self::Cached) -> Self::FromCachedFuture {
         unimplemented!()
     }
 }

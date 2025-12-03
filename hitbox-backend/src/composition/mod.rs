@@ -1103,6 +1103,8 @@ mod tests {
     impl CacheableResponse for MockResponse {
         type Cached = CachedData;
         type Subject = MockResponse;
+        type IntoCachedFuture = std::future::Ready<CachePolicy<Self::Cached, Self>>;
+        type FromCachedFuture = std::future::Ready<Self>;
 
         async fn cache_policy<P: Predicate<Subject = Self::Subject> + Send + Sync>(
             self,
@@ -1112,11 +1114,11 @@ mod tests {
             unimplemented!("Not used in these tests")
         }
 
-        async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
+        fn into_cached(self) -> Self::IntoCachedFuture {
             unimplemented!("Not used in these tests")
         }
 
-        async fn from_cached(_cached: Self::Cached) -> Self {
+        fn from_cached(_cached: Self::Cached) -> Self::FromCachedFuture {
             unimplemented!("Not used in these tests")
         }
     }

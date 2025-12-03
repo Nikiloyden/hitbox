@@ -1,12 +1,16 @@
+use std::fmt::Debug;
+use std::future::Ready;
+
 use bytes::Bytes;
 use chrono::Utc;
+use futures::FutureExt;
+use futures::future::BoxFuture;
 use hitbox::{
     CachePolicy, CacheValue, CacheableResponse, EntityPolicyConfig, predicate::PredicateResult,
 };
 use http::{HeaderMap, Response, response::Parts};
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
 
 use crate::CacheableSubject;
 use crate::body::BufferedBody;
@@ -215,6 +219,8 @@ where
 {
     type Cached = SerializableHttpResponse;
     type Subject = Self;
+    type IntoCachedFuture = BoxFuture<'static, CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = Ready<Self>;
 
     async fn cache_policy<P>(
         self,
@@ -237,34 +243,37 @@ where
         }
     }
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
-        let body_bytes = match self.body.collect().await {
-            Ok(bytes) => bytes,
-            Err(error_body) => {
-                // If collection fails, return NonCacheable with error body
-                return CachePolicy::NonCacheable(CacheableHttpResponse {
-                    parts: self.parts,
-                    body: error_body,
-                });
-            }
-        };
+    fn into_cached(self) -> Self::IntoCachedFuture {
+        async move {
+            let body_bytes = match self.body.collect().await {
+                Ok(bytes) => bytes,
+                Err(error_body) => {
+                    // If collection fails, return NonCacheable with error body
+                    return CachePolicy::NonCacheable(CacheableHttpResponse {
+                        parts: self.parts,
+                        body: error_body,
+                    });
+                }
+            };
 
-        // We can store the HeaderMap directly, including pseudo-headers
-        // HeaderMap is designed to handle pseudo-headers and http-serde will serialize them correctly
-        CachePolicy::Cacheable(SerializableHttpResponse {
-            status: self.parts.status,
-            version: format!("{:?}", self.parts.version),
-            body: body_bytes,
-            headers: self.parts.headers,
-        })
+            // We can store the HeaderMap directly, including pseudo-headers
+            // HeaderMap is designed to handle pseudo-headers and http-serde will serialize them correctly
+            CachePolicy::Cacheable(SerializableHttpResponse {
+                status: self.parts.status,
+                version: format!("{:?}", self.parts.version),
+                body: body_bytes,
+                headers: self.parts.headers,
+            })
+        }
+        .boxed()
     }
 
-    async fn from_cached(cached: Self::Cached) -> Self {
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture {
         let body = BufferedBody::Complete(Some(cached.body));
         let mut response = Response::new(body);
         *response.status_mut() = cached.status;
         *response.headers_mut() = cached.headers;
 
-        CacheableHttpResponse::from_response(response)
+        std::future::ready(CacheableHttpResponse::from_response(response))
     }
 }

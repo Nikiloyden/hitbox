@@ -7,10 +7,13 @@
 //! Flow: poll future → create state struct → `.transition()` → `.into_state()`
 
 use std::fmt::Debug;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::future::BoxFuture;
+use futures::ready;
 use hitbox_backend::BackendError;
 use hitbox_core::{
     BoxContext, CachePolicy, CacheValue, Cacheable, CacheablePolicyData, DebugState,
@@ -40,10 +43,44 @@ pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
 /// Future that updates the cache and returns (backend_result, response, context)
 pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
 pub type AwaitResponseFuture<T> = BoxFuture<'static, Result<T, ConcurrencyError>>;
-/// Future that converts cached value to response and returns (response, context)
-pub type ConvertResponseFuture<T> = BoxFuture<'static, (T, BoxContext)>;
 /// Future that checks request cache policy
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
+
+// =============================================================================
+// ConvertResponseFuture - Zero-cost wrapper using GAT
+// =============================================================================
+
+/// Future that converts cached value to response using the GAT `FromCachedFuture`.
+///
+/// This wrapper avoids boxing by directly using the response type's `FromCachedFuture`.
+/// For types where `FromCachedFuture = Ready<Self>` (like `CacheableHttpResponse`),
+/// this provides zero-cost cache hits with no allocation.
+#[pin_project]
+pub struct ConvertResponseFuture<Res: CacheableResponse> {
+    #[pin]
+    inner: Res::FromCachedFuture,
+    ctx: Option<BoxContext>,
+}
+
+impl<Res: CacheableResponse> ConvertResponseFuture<Res> {
+    /// Create a new ConvertResponseFuture from a cached value and context.
+    pub fn new(cached: Res::Cached, ctx: BoxContext) -> Self {
+        Self {
+            inner: Res::from_cached(cached),
+            ctx: Some(ctx),
+        }
+    }
+}
+
+impl<Res: CacheableResponse> std::future::Future for ConvertResponseFuture<Res> {
+    type Output = (Res, BoxContext);
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let response = ready!(this.inner.poll(cx));
+        Poll::Ready((response, this.ctx.take().expect("polled after completion")))
+    }
+}
 
 // =============================================================================
 // State Enum
@@ -472,10 +509,9 @@ impl<Req, U> PollCache<Req, U> {
                             }
                         } else {
                             let cache_key = self.cache_key;
-                            let response_future = Box::pin(async move {
-                                let response = Res::from_cached(value.into_inner()).await;
-                                (response, ctx)
-                            });
+                            // Zero-cost conversion using GAT - no boxing!
+                            let response_future =
+                                ConvertResponseFuture::new(value.into_inner(), ctx);
                             PollCacheTransition::ConvertResponse {
                                 response_future,
                                 cache_key,
@@ -486,10 +522,8 @@ impl<Req, U> PollCache<Req, U> {
                         let cache_key = self.cache_key;
                         let request = self.request;
                         let upstream = self.upstream;
-                        let response_future = Box::pin(async move {
-                            let response = Res::from_cached(value.into_inner()).await;
-                            (response, ctx)
-                        });
+                        // Zero-cost conversion using GAT - no boxing!
+                        let response_future = ConvertResponseFuture::new(value.into_inner(), ctx);
                         PollCacheTransition::HandleStale {
                             response_future,
                             request,
@@ -519,38 +553,43 @@ impl<Req, U> PollCache<Req, U> {
         U: Upstream<Req, Response = Res>,
         C: ConcurrencyManager<Res>,
     {
-        ctx.record_state(DebugState::ConcurrentPollUpstream);
+        ctx.record_state(DebugState::CheckConcurrency);
         match policy {
             PolicyConfig::Enabled(EnabledCacheConfig {
                 concurrency: Some(concurrency),
                 ..
-            }) => match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
-                ConcurrencyDecision::Proceed(permit) => {
-                    let upstream_future = self.upstream.call(self.request);
-                    PollCacheTransition::PollUpstream {
-                        upstream_future,
-                        permit: Some(permit),
-                        ctx,
-                        cache_key: self.cache_key,
+            }) => {
+                ctx.record_state(DebugState::ConcurrentPollUpstream);
+                match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
+                    ConcurrencyDecision::Proceed(permit) => {
+                        let upstream_future = self.upstream.call(self.request);
+                        PollCacheTransition::PollUpstream {
+                            upstream_future,
+                            permit: Some(permit),
+                            ctx,
+                            cache_key: self.cache_key,
+                        }
+                    }
+                    ConcurrencyDecision::ProceedWithoutPermit => {
+                        let upstream_future = self.upstream.call(self.request);
+                        PollCacheTransition::PollUpstream {
+                            upstream_future,
+                            permit: None,
+                            ctx,
+                            cache_key: self.cache_key,
+                        }
+                    }
+                    ConcurrencyDecision::Await(await_future) => {
+                        PollCacheTransition::AwaitResponse {
+                            await_response_future: await_future,
+                            request: self.request,
+                            ctx,
+                            cache_key: self.cache_key,
+                            upstream: self.upstream,
+                        }
                     }
                 }
-                ConcurrencyDecision::ProceedWithoutPermit => {
-                    let upstream_future = self.upstream.call(self.request);
-                    PollCacheTransition::PollUpstream {
-                        upstream_future,
-                        permit: None,
-                        ctx,
-                        cache_key: self.cache_key,
-                    }
-                }
-                ConcurrencyDecision::Await(await_future) => PollCacheTransition::AwaitResponse {
-                    await_response_future: await_future,
-                    request: self.request,
-                    ctx,
-                    cache_key: self.cache_key,
-                    upstream: self.upstream,
-                },
-            },
+            }
             _ => {
                 let upstream_future = self.upstream.call(self.request);
                 PollCacheTransition::PollUpstream {

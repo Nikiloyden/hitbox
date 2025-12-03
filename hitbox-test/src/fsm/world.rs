@@ -1,3 +1,4 @@
+use std::future::Ready;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -51,6 +52,8 @@ pub struct SimpleResponse(pub u32);
 impl CacheableResponse for SimpleResponse {
     type Cached = u32;
     type Subject = SimpleResponse;
+    type IntoCachedFuture = Ready<CachePolicy<Self::Cached, Self>>;
+    type FromCachedFuture = Ready<Self>;
 
     async fn cache_policy<P>(
         self,
@@ -68,12 +71,12 @@ impl CacheableResponse for SimpleResponse {
         }
     }
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
-        CachePolicy::Cacheable(self.0)
+    fn into_cached(self) -> Self::IntoCachedFuture {
+        std::future::ready(CachePolicy::Cacheable(self.0))
     }
 
-    async fn from_cached(cached: Self::Cached) -> Self {
-        SimpleResponse(cached)
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture {
+        std::future::ready(SimpleResponse(cached))
     }
 }
 

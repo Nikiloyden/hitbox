@@ -1,5 +1,10 @@
 use std::fmt::Debug;
 use std::future::Future;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use pin_project::pin_project;
 
 use crate::{
     CachePolicy, EntityPolicyConfig,
@@ -34,6 +39,11 @@ where
     type Cached;
     type Subject: CacheableResponse;
 
+    /// Future type for `into_cached` method
+    type IntoCachedFuture: Future<Output = CachePolicy<Self::Cached, Self>> + Send;
+    /// Future type for `from_cached` method
+    type FromCachedFuture: Future<Output = Self> + Send;
+
     fn cache_policy<P>(
         self,
         predicates: P,
@@ -42,10 +52,71 @@ where
     where
         P: Predicate<Subject = Self::Subject> + Send + Sync;
 
-    fn into_cached(self) -> impl Future<Output = CachePolicy<Self::Cached, Self>> + Send;
+    fn into_cached(self) -> Self::IntoCachedFuture;
 
-    fn from_cached(cached: Self::Cached) -> impl Future<Output = Self> + Send;
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture;
 }
+
+// =============================================================================
+// Result<T, E> wrapper futures
+// =============================================================================
+
+/// Future for `Result<T, E>::into_cached` that wraps `T::IntoCachedFuture`.
+#[pin_project(project = ResultIntoCachedProj)]
+pub enum ResultIntoCachedFuture<T, E>
+where
+    T: CacheableResponse,
+{
+    /// Ok variant - wraps the inner type's future
+    Ok(#[pin] T::IntoCachedFuture),
+    /// Err variant - contains the error to return immediately
+    Err(Option<E>),
+}
+
+impl<T, E> Future for ResultIntoCachedFuture<T, E>
+where
+    T: CacheableResponse,
+{
+    type Output = CachePolicy<T::Cached, Result<T, E>>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            ResultIntoCachedProj::Ok(fut) => fut.poll(cx).map(|policy| match policy {
+                CachePolicy::Cacheable(res) => CachePolicy::Cacheable(res),
+                CachePolicy::NonCacheable(res) => CachePolicy::NonCacheable(Ok(res)),
+            }),
+            ResultIntoCachedProj::Err(e) => {
+                Poll::Ready(CachePolicy::NonCacheable(Err(e.take().unwrap())))
+            }
+        }
+    }
+}
+
+/// Future for `Result<T, E>::from_cached` that wraps `T::FromCachedFuture`.
+#[pin_project]
+pub struct ResultFromCachedFuture<T, E>
+where
+    T: CacheableResponse,
+{
+    #[pin]
+    inner: T::FromCachedFuture,
+    _marker: PhantomData<E>,
+}
+
+impl<T, E> Future for ResultFromCachedFuture<T, E>
+where
+    T: CacheableResponse,
+{
+    type Output = Result<T, E>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.project().inner.poll(cx).map(Ok)
+    }
+}
+
+// =============================================================================
+// Result<T, E> implementation
+// =============================================================================
 
 impl<T, E> CacheableResponse for Result<T, E>
 where
@@ -55,6 +126,8 @@ where
 {
     type Cached = <T as CacheableResponse>::Cached;
     type Subject = T;
+    type IntoCachedFuture = ResultIntoCachedFuture<T, E>;
+    type FromCachedFuture = ResultFromCachedFuture<T, E>;
 
     async fn cache_policy<P>(
         self,
@@ -80,17 +153,17 @@ where
         }
     }
 
-    async fn into_cached(self) -> CachePolicy<Self::Cached, Self> {
+    fn into_cached(self) -> Self::IntoCachedFuture {
         match self {
-            Ok(response) => match response.into_cached().await {
-                CachePolicy::Cacheable(res) => CachePolicy::Cacheable(res),
-                CachePolicy::NonCacheable(res) => CachePolicy::NonCacheable(Ok(res)),
-            },
-            Err(error) => CachePolicy::NonCacheable(Err(error)),
+            Ok(response) => ResultIntoCachedFuture::Ok(response.into_cached()),
+            Err(error) => ResultIntoCachedFuture::Err(Some(error)),
         }
     }
 
-    async fn from_cached(cached: Self::Cached) -> Self {
-        Ok(T::from_cached(cached).await)
+    fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture {
+        ResultFromCachedFuture {
+            inner: T::from_cached(cached),
+            _marker: PhantomData,
+        }
     }
 }
