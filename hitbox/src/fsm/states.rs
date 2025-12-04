@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use futures::ready;
@@ -21,7 +21,7 @@ use hitbox_core::{
 };
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::backend::CacheBackend;
 use crate::concurrency::{ConcurrencyDecision, ConcurrencyError, ConcurrencyManager};
@@ -258,6 +258,8 @@ pub struct PollUpstream {
     pub permit: Option<OwnedSemaphorePermit>,
     pub ctx: BoxContext,
     pub cache_key: Option<CacheKey>,
+    /// Start time for measuring upstream call duration.
+    pub upstream_start: Instant,
 }
 
 impl PollUpstream {
@@ -275,6 +277,9 @@ impl PollUpstream {
         Res: CacheableResponse + Send + 'static,
         ResP: Predicate<Subject = Res::Subject> + Send + Sync + 'static,
     {
+        // Record upstream duration metric
+        crate::metrics::record_upstream_duration(self.upstream_start.elapsed());
+
         self.ctx.record_state(DebugState::PollUpstream);
         self.ctx.record_state(DebugState::UpstreamPolled);
 
@@ -487,7 +492,9 @@ impl<Req, U> PollCache<Req, U> {
         C: ConcurrencyManager<Res>,
     {
         ctx.record_state(DebugState::PollCache);
-        let cached = cache_result.unwrap_or_else(|_err| None);
+        let cached = cache_result
+            .inspect_err(|err| warn!("Cache error: {err:?}"))
+            .unwrap_or_default();
 
         match cached {
             Some(cached_value) => {

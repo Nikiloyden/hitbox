@@ -121,57 +121,28 @@ lazy_static! {
         "hitbox_offload_revalidation_completed_total"
     };
 
-    // Per-backend cache metrics
-
-    /// Track cache backend reads per backend.
-    pub static ref CACHE_BACKEND_READS: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_reads_total",
-            "Total number of cache reads per backend."
-        );
-        "hitbox_backend_reads_total"
-    };
-    /// Track cache backend writes per backend.
-    pub static ref CACHE_BACKEND_WRITES: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_writes_total",
-            "Total number of cache writes per backend."
-        );
-        "hitbox_backend_writes_total"
-    };
-    /// Track bytes read per backend.
-    pub static ref CACHE_BACKEND_BYTES_READ: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_bytes_read_total",
-            "Total bytes read from cache per backend."
-        );
-        "hitbox_backend_bytes_read_total"
-    };
-    /// Track bytes written per backend.
-    pub static ref CACHE_BACKEND_BYTES_WRITTEN: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_bytes_written_total",
-            "Total bytes written to cache per backend."
-        );
-        "hitbox_backend_bytes_written_total"
-    };
-    /// Track read errors per backend.
-    pub static ref CACHE_BACKEND_READ_ERRORS: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_read_errors_total",
-            "Total number of cache read errors per backend."
-        );
-        "hitbox_backend_read_errors_total"
-    };
-    /// Track write errors per backend.
-    pub static ref CACHE_BACKEND_WRITE_ERRORS: &'static str = {
-        metrics::describe_counter!(
-            "hitbox_backend_write_errors_total",
-            "Total number of cache write errors per backend."
-        );
-        "hitbox_backend_write_errors_total"
-    };
+    // Note: Per-backend cache metrics (read/write totals, bytes, errors) are defined
+    // in hitbox-backend/src/metrics.rs and recorded there. They are not duplicated here.
 }
+
+/// Record upstream call duration.
+///
+/// This records the time spent calling the upstream service.
+///
+/// # Arguments
+/// * `duration` - Duration of the upstream call
+///
+/// When the `metrics` feature is disabled, this function is a no-op.
+#[cfg(feature = "metrics")]
+#[inline]
+pub fn record_upstream_duration(duration: Duration) {
+    metrics::histogram!(*CACHE_UPSTREAM_HANDLING_HISTOGRAM).record(duration.as_secs_f64());
+}
+
+/// No-op version when metrics feature is disabled.
+#[cfg(not(feature = "metrics"))]
+#[inline]
+pub fn record_upstream_duration(_duration: Duration) {}
 
 /// Record metrics from a CacheContext after a cache operation.
 ///

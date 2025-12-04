@@ -13,7 +13,7 @@ use crate::{
 use futures::ready;
 use hitbox_core::{Cacheable, DebugState, Upstream};
 use pin_project::pin_project;
-use tracing::debug;
+use tracing::{Level, Span, debug, span, trace};
 
 use crate::{
     CacheKey, CacheableRequest, Extractor, Predicate,
@@ -141,6 +141,7 @@ where
                     permit: None,
                     ctx: CacheContext::default().boxed(),
                     cache_key: Some(cache_key),
+                    upstream_start: Instant::now(),
                 }),
             },
             response_predicates: Some(response_predicates),

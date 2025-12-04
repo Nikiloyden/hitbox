@@ -3,6 +3,8 @@
 //! Transition enums represent the possible outcomes from each state's `.transition()` method.
 //! Each transition enum has an `.into_state()` method to convert to the outer `State` enum.
 
+use std::time::Instant;
+
 use futures::future::BoxFuture;
 use hitbox_core::{BoxContext, ResponseCachePolicy, Upstream};
 use tokio::sync::OwnedSemaphorePermit;
@@ -67,6 +69,7 @@ where
                     permit: None,
                     ctx,
                     cache_key: None,
+                    upstream_start: Instant::now(),
                 }),
             },
         }
@@ -146,6 +149,7 @@ where
                     permit: None,
                     ctx,
                     cache_key: None,
+                    upstream_start: Instant::now(),
                 }),
             },
         }
@@ -258,6 +262,7 @@ where
                     permit,
                     ctx,
                     cache_key: Some(cache_key),
+                    upstream_start: Instant::now(),
                 }),
             },
             PollCacheTransition::AwaitResponse {
@@ -372,6 +377,7 @@ where
                     permit: None,
                     ctx,
                     cache_key: Some(cache_key),
+                    upstream_start: Instant::now(),
                 }),
             },
         }
@@ -430,6 +436,7 @@ where
                     permit: None,
                     ctx,
                     cache_key: Some(cache_key),
+                    upstream_start: Instant::now(),
                 }),
             },
         }

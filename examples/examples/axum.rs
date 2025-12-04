@@ -59,15 +59,16 @@ async fn main() {
     - Method: GET
     - Path: '/{path}*'
     - Query:
-        operation: Eq
         cache: 'true'
-    extractor:
-    - Method
+    extractors:
+    - Method: {}
     - Query: cache
     - Path: "/{path}*"
-    policy: !Enabled
+    policy:
+      Enabled:
+        ttl: 60
     "#;
-    let json_config = serde_yaml::from_str::<ConfigEndpoint>(json_cfg)
+    let json_config = serde_saphyr::from_str::<ConfigEndpoint>(json_cfg)
         .unwrap()
         .into_endpoint()
         .unwrap();
@@ -80,9 +81,9 @@ async fn main() {
     request:
         - Path: "/health"
         - Method: GET
-    policy: !Disabled
+    policy: Disabled
     "#;
-    let health_config = serde_yaml::from_str::<ConfigEndpoint>(health_cfg)
+    let health_config = serde_saphyr::from_str::<ConfigEndpoint>(health_cfg)
         .unwrap()
         .into_endpoint()
         .unwrap();
