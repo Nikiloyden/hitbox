@@ -13,7 +13,7 @@ use crate::{
 use futures::ready;
 use hitbox_core::{Cacheable, DebugState, Upstream};
 use pin_project::pin_project;
-use tracing::{Level, Span, debug, span, trace};
+use tracing::{Instrument, Level, Span, debug, span, trace};
 
 use crate::{
     CacheKey, CacheableRequest, Extractor, Predicate,
@@ -49,6 +49,8 @@ where
     concurrency_manager: C,
     /// Start time for latency measurement.
     start_time: Instant,
+    /// Parent span for the entire cache operation (DEBUG level).
+    span: Span,
 }
 
 impl<B, Req, Res, U, ReqP, ResP, E, C> CacheFuture<B, Req, Res, U, ReqP, ResP, E, C>
@@ -90,6 +92,7 @@ where
             is_revalidation: false,
             concurrency_manager,
             start_time: Instant::now(),
+            span: span!(Level::DEBUG, "hitbox.cache"),
         }
     }
 }
@@ -131,17 +134,20 @@ where
         policy: Arc<crate::policy::PolicyConfig>,
     ) -> Self {
         let upstream_future = upstream.call(request);
+        let parent_span = span!(Level::DEBUG, "hitbox.cache.revalidate");
+        let state_span = span!(parent: &parent_span, Level::TRACE, "fsm.poll_upstream");
 
         CacheFuture {
             backend,
             cache_key: Some(cache_key.clone()),
             state: State::PollUpstream {
-                upstream_future,
+                upstream_future: upstream_future.instrument(state_span.clone()),
                 state: Some(PollUpstream {
                     permit: None,
                     ctx: CacheContext::default().boxed(),
                     cache_key: Some(cache_key),
                     upstream_start: Instant::now(),
+                    span: state_span,
                 }),
             },
             response_predicates: Some(response_predicates),
@@ -152,6 +158,7 @@ where
             // Revalidation tasks don't need concurrency control
             concurrency_manager: NoopConcurrencyManager,
             start_time: Instant::now(),
+            span: parent_span,
         }
     }
 }
@@ -234,21 +241,30 @@ where
         loop {
             let state = match this.state.as_mut().project() {
                 StateProj::Initial(initial_state) => {
+                    let _state_span =
+                        span!(parent: &*this.span, Level::TRACE, "fsm.initial").entered();
+                    trace!("FSM state: Initial");
                     let initial = initial_state.take().expect(POLL_AFTER_READY_ERROR);
-                    initial.transition(this.policy.as_ref()).into_state()
+                    initial
+                        .transition(this.policy.as_ref())
+                        .into_state(&*this.span)
                 }
                 StateProj::CheckRequestCachePolicy {
                     cache_policy_future,
                     state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: CheckRequestCachePolicy");
                     let policy = ready!(cache_policy_future.poll(cx));
                     let check_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
                     check_state
                         .transition(policy, this.backend.clone(), this.cache_key)
-                        .into_state()
+                        .into_state(&*this.span)
                 }
                 StateProj::PollCache { poll_cache, state } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: PollCache");
                     let (cache_result, ctx) = ready!(poll_cache.poll(cx));
                     let poll_cache_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
@@ -260,33 +276,39 @@ where
                             this.policy.as_ref(),
                             &*this.concurrency_manager,
                         )
-                        .into_state()
+                        .into_state(&*this.span)
                 }
                 StateProj::AwaitResponse {
                     await_response_future,
                     state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: AwaitResponse");
                     let result = ready!(await_response_future.poll(cx));
                     let await_response_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
                     await_response_state
                         .transition(result, &*this.concurrency_manager)
-                        .into_state()
+                        .into_state(&*this.span)
                 }
                 StateProj::ConvertResponse {
                     response_future,
                     state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: ConvertResponse");
                     let (response, ctx) = ready!(response_future.poll(cx));
                     let convert_response_state = state.take().expect(POLL_AFTER_READY_ERROR);
                     convert_response_state
                         .transition(response, ctx)
-                        .into_state()
+                        .into_state(&*this.span)
                 }
                 StateProj::HandleStale {
                     response_future,
                     state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: HandleStale");
                     let (response, ctx) = ready!(response_future.poll(cx));
                     let handle_stale_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
@@ -297,12 +319,14 @@ where
                         this.spawn_revalidation(offload_data);
                     }
 
-                    result.transition.into_state()
+                    result.transition.into_state(&*this.span)
                 }
                 StateProj::PollUpstream {
                     upstream_future,
                     state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: PollUpstream");
                     let upstream_result = ready!(upstream_future.poll(cx));
                     let poll_upstream = state.take().expect(POLL_AFTER_READY_ERROR);
                     let predicates = this
@@ -312,30 +336,34 @@ where
 
                     poll_upstream
                         .transition(upstream_result, predicates, this.policy.as_ref())
-                        .into_state()
+                        .into_state(&*this.span)
                 }
-                StateProj::CheckResponseCachePolicy {
-                    cache_policy,
-
-                    state,
-                } => {
+                StateProj::CheckResponseCachePolicy { cache_policy, state } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: CheckResponseCachePolicy");
                     let policy = ready!(cache_policy.poll(cx));
                     let check_state = state.take().expect(POLL_AFTER_READY_ERROR);
 
                     check_state
                         .transition(policy, this.backend.clone(), &*this.concurrency_manager)
-                        .into_state()
+                        .into_state(&*this.span)
                 }
                 StateProj::UpdateCache {
                     update_cache_future,
+                    state,
                 } => {
+                    let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: UpdateCache");
                     // TODO: check backend result
                     let (_backend_result, response, ctx) = ready!(update_cache_future.poll(cx));
-                    states::UpdateCacheState { response, ctx }
-                        .transition()
-                        .into_state()
+                    let update_cache_state = state.take().expect(POLL_AFTER_READY_ERROR);
+                    update_cache_state
+                        .transition(response, ctx)
+                        .into_state(&*this.span)
                 }
                 StateProj::Response(response_state) => {
+                    let state_ref = response_state.as_ref().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &state_ref.span, "FSM state: Response");
                     let mut state = response_state.take().expect(POLL_AFTER_READY_ERROR);
                     state.ctx.record_state(DebugState::Response);
                     // For cache miss, set source to Upstream.
@@ -346,10 +374,10 @@ where
                     let ctx = hitbox_core::finalize_context(state.ctx);
                     let duration = this.start_time.elapsed();
                     crate::metrics::record_context_metrics(&ctx, duration, *this.is_revalidation);
+                    debug!(parent: &*this.span, status = ?ctx.status, source = ?ctx.source, "Cache operation completed");
                     return Poll::Ready((state.response, ctx));
                 }
             };
-            debug!("{:?}", &state);
             this.state.set(state);
         }
     }

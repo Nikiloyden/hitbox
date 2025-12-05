@@ -21,7 +21,7 @@ use hitbox_core::{
 };
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
-use tracing::{debug, warn};
+use tracing::{Span, debug, instrument::Instrumented, warn};
 
 use crate::backend::CacheBackend;
 use crate::concurrency::{ConcurrencyDecision, ConcurrencyError, ConcurrencyManager};
@@ -41,7 +41,7 @@ pub type CacheResult<T> = Result<Option<CacheValue<T>>, BackendError>;
 /// Future that polls the cache and returns (result, context)
 pub type PollCacheFuture<T> = BoxFuture<'static, (CacheResult<T>, BoxContext)>;
 /// Future that updates the cache and returns (backend_result, response, context)
-pub type UpdateCache<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
+pub type UpdateCacheFuture<T> = BoxFuture<'static, (Result<(), BackendError>, T, BoxContext)>;
 pub type AwaitResponseFuture<T> = BoxFuture<'static, Result<T, ConcurrencyError>>;
 /// Future that checks request cache policy
 pub type RequestCachePolicyFuture<T> = BoxFuture<'static, RequestCachePolicy<T>>;
@@ -131,7 +131,7 @@ where
     /// Polling upstream service
     PollUpstream {
         #[pin]
-        upstream_future: U::Future,
+        upstream_future: Instrumented<U::Future>,
         state: Option<PollUpstream>,
     },
     /// Checking if response should be cached
@@ -143,7 +143,8 @@ where
     /// Updating cache with response - context is captured in the future
     UpdateCache {
         #[pin]
-        update_cache_future: UpdateCache<Res>,
+        update_cache_future: UpdateCacheFuture<Res>,
+        state: Option<UpdateCache>,
     },
     /// Final state with response
     Response(Option<Response<Res>>),
@@ -238,6 +239,8 @@ impl<Req, ReqP, E, U> std::fmt::Debug for Initial<Req, ReqP, E, U> {
 pub struct Response<Res> {
     pub response: Res,
     pub ctx: BoxContext,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl<Res> std::fmt::Debug for Response<Res> {
@@ -260,6 +263,8 @@ pub struct PollUpstream {
     pub cache_key: Option<CacheKey>,
     /// Start time for measuring upstream call duration.
     pub upstream_start: Instant,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl PollUpstream {
@@ -306,6 +311,7 @@ impl PollUpstream {
             None => PollUpstreamTransition::Response(Response {
                 response: upstream_result,
                 ctx: self.ctx,
+                span: Span::none(),
             }),
         }
     }
@@ -332,6 +338,8 @@ pub struct CheckResponseCachePolicy {
     pub permit: Option<OwnedSemaphorePermit>,
     pub ctx: BoxContext,
     pub cache_key: CacheKey,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl CheckResponseCachePolicy {
@@ -374,6 +382,7 @@ impl CheckResponseCachePolicy {
                 CheckResponseCachePolicyTransition::Response(Response {
                     response,
                     ctx: self.ctx,
+                    span: Span::none(),
                 })
             }
         }
@@ -400,6 +409,8 @@ impl std::fmt::Debug for CheckResponseCachePolicy {
 pub struct CheckRequestCachePolicy<U> {
     pub ctx: BoxContext,
     pub upstream: U,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl<U> CheckRequestCachePolicy<U> {
@@ -469,6 +480,8 @@ pub struct PollCache<Req, U> {
     pub request: Req,
     pub cache_key: CacheKey,
     pub upstream: U,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl<Req, U> PollCache<Req, U> {
@@ -629,6 +642,8 @@ impl<Req, U> std::fmt::Debug for PollCache<Req, U> {
 pub struct ConvertResponse {
     /// Cache key for logging/tracing purposes.
     pub cache_key: CacheKey,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl ConvertResponse {
@@ -640,7 +655,11 @@ impl ConvertResponse {
     ) -> ConvertResponseTransition<Res> {
         ctx.record_state(DebugState::ConvertResponse);
         debug!(cache_key = ?self.cache_key, "ConvertResponse transition");
-        ConvertResponseTransition::Response(Response { response, ctx })
+        ConvertResponseTransition::Response(Response {
+            response,
+            ctx,
+            span: Span::none(),
+        })
     }
 }
 
@@ -664,6 +683,8 @@ pub struct HandleStale<Req, U> {
     pub request: Req,
     pub cache_key: CacheKey,
     pub upstream: U,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 /// Data needed for background offload revalidation.
@@ -709,7 +730,11 @@ impl<Req, U> HandleStale<Req, U> {
             StalePolicy::Return => {
                 ctx.set_status(CacheStatus::Stale);
                 HandleStaleResult {
-                    transition: HandleStaleTransition::Response(Response { response, ctx }),
+                    transition: HandleStaleTransition::Response(Response {
+                        response,
+                        ctx,
+                        span: Span::none(),
+                    }),
                     offload_data: None,
                 }
             }
@@ -728,7 +753,11 @@ impl<Req, U> HandleStale<Req, U> {
             StalePolicy::OffloadRevalidate => {
                 ctx.set_status(CacheStatus::Stale);
                 HandleStaleResult {
-                    transition: HandleStaleTransition::Response(Response { response, ctx }),
+                    transition: HandleStaleTransition::Response(Response {
+                        response,
+                        ctx,
+                        span: Span::none(),
+                    }),
                     offload_data: Some(OffloadData {
                         request: self.request,
                         cache_key: self.cache_key,
@@ -761,6 +790,8 @@ pub struct AwaitResponse<Req, U> {
     pub ctx: BoxContext,
     pub cache_key: CacheKey,
     pub upstream: U,
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
 impl<Req, U> AwaitResponse<Req, U> {
@@ -782,7 +813,11 @@ impl<Req, U> AwaitResponse<Req, U> {
         ctx.record_state(DebugState::AwaitResponse);
 
         match result {
-            Ok(response) => AwaitResponseTransition::Response(Response { response, ctx }),
+            Ok(response) => AwaitResponseTransition::Response(Response {
+                response,
+                ctx,
+                span: Span::none(),
+            }),
             Err(ref concurrency_error) => {
                 match concurrency_error {
                     ConcurrencyError::Lagged(n) => {
@@ -820,28 +855,36 @@ impl<Req, U> std::fmt::Debug for AwaitResponse<Req, U> {
 }
 
 // =============================================================================
-// UpdateCacheState
+// UpdateCache
 // =============================================================================
 
-/// Resolved state after UpdateCache future completes.
-pub struct UpdateCacheState<Res> {
-    pub response: Res,
-    pub ctx: BoxContext,
+/// Data for UpdateCache state (non-pinned part).
+///
+/// The update cache future is stored separately in the State enum to allow pinning.
+/// When the future completes, this data is taken and passed to transition().
+pub struct UpdateCache {
+    /// Tracing span for this state (created on entry, entered on each poll).
+    pub span: Span,
 }
 
-impl<Res> UpdateCacheState<Res> {
-    /// Transition from UpdateCache resolved state.
-    pub fn transition(mut self) -> UpdateCacheTransition<Res> {
-        self.ctx.record_state(DebugState::UpdateCache);
+impl UpdateCache {
+    /// Transition from UpdateCache state after future completes.
+    pub fn transition<Res>(
+        self,
+        response: Res,
+        mut ctx: BoxContext,
+    ) -> UpdateCacheTransition<Res> {
+        ctx.record_state(DebugState::UpdateCache);
         UpdateCacheTransition::Response(Response {
-            response: self.response,
-            ctx: self.ctx,
+            response,
+            ctx,
+            span: Span::none(),
         })
     }
 }
 
-impl<Res> std::fmt::Debug for UpdateCacheState<Res> {
+impl std::fmt::Debug for UpdateCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("UpdateCacheState").finish_non_exhaustive()
+        f.debug_struct("UpdateCache").finish_non_exhaustive()
     }
 }

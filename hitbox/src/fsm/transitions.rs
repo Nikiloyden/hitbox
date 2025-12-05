@@ -8,11 +8,12 @@ use std::time::Instant;
 use futures::future::BoxFuture;
 use hitbox_core::{BoxContext, ResponseCachePolicy, Upstream};
 use tokio::sync::OwnedSemaphorePermit;
+use tracing::{Instrument, Level, Span, span};
 
 use crate::fsm::states::{
     AwaitResponse, AwaitResponseFuture, CheckRequestCachePolicy, CheckResponseCachePolicy,
     ConvertResponse, ConvertResponseFuture, HandleStale, PollCache, PollCacheFuture, PollUpstream,
-    RequestCachePolicyFuture, Response, State, UpdateCache,
+    RequestCachePolicyFuture, Response, State, UpdateCache, UpdateCacheFuture,
 };
 use crate::{CacheKey, CacheableRequest, CacheableResponse, Extractor, Predicate};
 
@@ -44,7 +45,7 @@ where
     Req: CacheableRequest,
     U: Upstream<Req>,
 {
-    pub fn into_state<Res, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<Res, ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Res: CacheableResponse,
         U: Upstream<Req, Response = Res>,
@@ -58,20 +59,28 @@ where
                 upstream,
             } => State::CheckRequestCachePolicy {
                 cache_policy_future,
-                state: Some(CheckRequestCachePolicy { ctx, upstream }),
+                state: Some(CheckRequestCachePolicy {
+                    ctx,
+                    upstream,
+                    span: span!(parent: parent, Level::TRACE, "fsm.check_request_cache_policy"),
+                }),
             },
             InitialTransition::PollUpstream {
                 upstream_future,
                 ctx,
-            } => State::PollUpstream {
-                upstream_future,
-                state: Some(PollUpstream {
-                    permit: None,
-                    ctx,
-                    cache_key: None,
-                    upstream_start: Instant::now(),
-                }),
-            },
+            } => {
+                let span = span!(parent: parent, Level::TRACE, "fsm.poll_upstream");
+                State::PollUpstream {
+                    upstream_future: upstream_future.instrument(span.clone()),
+                    state: Some(PollUpstream {
+                        permit: None,
+                        ctx,
+                        cache_key: None,
+                        upstream_start: Instant::now(),
+                        span,
+                    }),
+                }
+            }
         }
     }
 }
@@ -120,7 +129,7 @@ where
     Res: CacheableResponse,
     U: Upstream<Req, Response = Res>,
 {
-    pub fn into_state<ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         ReqP: Predicate<Subject = Req>,
@@ -138,20 +147,25 @@ where
                     request,
                     cache_key,
                     upstream,
+                    span: span!(parent: parent, Level::TRACE, "fsm.poll_cache"),
                 }),
             },
             CheckRequestCachePolicyTransition::PollUpstream {
                 upstream_future,
                 ctx,
-            } => State::PollUpstream {
-                upstream_future,
-                state: Some(PollUpstream {
-                    permit: None,
-                    ctx,
-                    cache_key: None,
-                    upstream_start: Instant::now(),
-                }),
-            },
+            } => {
+                let span = span!(parent: parent, Level::TRACE, "fsm.poll_upstream");
+                State::PollUpstream {
+                    upstream_future: upstream_future.instrument(span.clone()),
+                    state: Some(PollUpstream {
+                        permit: None,
+                        ctx,
+                        cache_key: None,
+                        upstream_start: Instant::now(),
+                        span,
+                    }),
+                }
+            }
         }
     }
 }
@@ -183,7 +197,7 @@ where
 {
     /// Cache hit (actual) with refill needed - update cache then return
     UpdateCache {
-        update_cache_future: UpdateCache<Res>,
+        update_cache_future: UpdateCacheFuture<Res>,
     },
     /// Cache hit (actual) - convert to response
     ConvertResponse {
@@ -219,7 +233,7 @@ where
     Res: CacheableResponse,
     U: Upstream<Req, Response = Res>,
 {
-    pub fn into_state<ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         ReqP: Predicate<Subject = Req>,
@@ -230,13 +244,19 @@ where
                 update_cache_future,
             } => State::UpdateCache {
                 update_cache_future,
+                state: Some(UpdateCache {
+                    span: span!(parent: parent, Level::TRACE, "fsm.update_cache"),
+                }),
             },
             PollCacheTransition::ConvertResponse {
                 response_future,
                 cache_key,
             } => State::ConvertResponse {
                 response_future,
-                state: Some(ConvertResponse { cache_key }),
+                state: Some(ConvertResponse {
+                    cache_key,
+                    span: span!(parent: parent, Level::TRACE, "fsm.convert_response"),
+                }),
             },
             PollCacheTransition::HandleStale {
                 response_future,
@@ -249,6 +269,7 @@ where
                     request,
                     cache_key,
                     upstream,
+                    span: span!(parent: parent, Level::TRACE, "fsm.handle_stale"),
                 }),
             },
             PollCacheTransition::PollUpstream {
@@ -256,15 +277,19 @@ where
                 permit,
                 ctx,
                 cache_key,
-            } => State::PollUpstream {
-                upstream_future,
-                state: Some(PollUpstream {
-                    permit,
-                    ctx,
-                    cache_key: Some(cache_key),
-                    upstream_start: Instant::now(),
-                }),
-            },
+            } => {
+                let span = span!(parent: parent, Level::TRACE, "fsm.poll_upstream");
+                State::PollUpstream {
+                    upstream_future: upstream_future.instrument(span.clone()),
+                    state: Some(PollUpstream {
+                        permit,
+                        ctx,
+                        cache_key: Some(cache_key),
+                        upstream_start: Instant::now(),
+                        span,
+                    }),
+                }
+            }
             PollCacheTransition::AwaitResponse {
                 await_response_future,
                 request,
@@ -278,6 +303,7 @@ where
                     ctx,
                     cache_key,
                     upstream,
+                    span: span!(parent: parent, Level::TRACE, "fsm.await_response"),
                 }),
             },
         }
@@ -310,7 +336,7 @@ pub enum ConvertResponseTransition<Res> {
 }
 
 impl<Res> ConvertResponseTransition<Res> {
-    pub fn into_state<Req, U, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<Req, U, ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Res: CacheableResponse,
         Req: CacheableRequest,
@@ -319,7 +345,10 @@ impl<Res> ConvertResponseTransition<Res> {
         E: Extractor<Subject = Req>,
     {
         match self {
-            ConvertResponseTransition::Response(s) => State::Response(Some(s)),
+            ConvertResponseTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
         }
     }
 }
@@ -359,27 +388,34 @@ where
     Res: CacheableResponse,
     U: Upstream<Req, Response = Res>,
 {
-    pub fn into_state<ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         ReqP: Predicate<Subject = Req>,
         E: Extractor<Subject = Req>,
     {
         match self {
-            HandleStaleTransition::Response(s) => State::Response(Some(s)),
+            HandleStaleTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
             HandleStaleTransition::Revalidate {
                 upstream_future,
                 ctx,
                 cache_key,
-            } => State::PollUpstream {
-                upstream_future,
-                state: Some(PollUpstream {
-                    permit: None,
-                    ctx,
-                    cache_key: Some(cache_key),
-                    upstream_start: Instant::now(),
-                }),
-            },
+            } => {
+                let span = span!(parent: parent, Level::TRACE, "fsm.poll_upstream");
+                State::PollUpstream {
+                    upstream_future: upstream_future.instrument(span.clone()),
+                    state: Some(PollUpstream {
+                        permit: None,
+                        ctx,
+                        cache_key: Some(cache_key),
+                        upstream_start: Instant::now(),
+                        span,
+                    }),
+                }
+            }
         }
     }
 }
@@ -418,27 +454,34 @@ where
     Res: CacheableResponse,
     U: Upstream<Req, Response = Res>,
 {
-    pub fn into_state<ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         ReqP: Predicate<Subject = Req>,
         E: Extractor<Subject = Req>,
     {
         match self {
-            AwaitResponseTransition::Response(s) => State::Response(Some(s)),
+            AwaitResponseTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
             AwaitResponseTransition::PollUpstream {
                 upstream_future,
                 ctx,
                 cache_key,
-            } => State::PollUpstream {
-                upstream_future,
-                state: Some(PollUpstream {
-                    permit: None,
-                    ctx,
-                    cache_key: Some(cache_key),
-                    upstream_start: Instant::now(),
-                }),
-            },
+            } => {
+                let span = span!(parent: parent, Level::TRACE, "fsm.poll_upstream");
+                State::PollUpstream {
+                    upstream_future: upstream_future.instrument(span.clone()),
+                    state: Some(PollUpstream {
+                        permit: None,
+                        ctx,
+                        cache_key: Some(cache_key),
+                        upstream_start: Instant::now(),
+                        span,
+                    }),
+                }
+            }
         }
     }
 }
@@ -479,7 +522,7 @@ impl<Res> PollUpstreamTransition<Res>
 where
     Res: CacheableResponse,
 {
-    pub fn into_state<Req, U, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<Req, U, ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         U: Upstream<Req, Response = Res>,
@@ -498,9 +541,13 @@ where
                     permit,
                     ctx,
                     cache_key,
+                    span: span!(parent: parent, Level::TRACE, "fsm.check_response_cache_policy"),
                 }),
             },
-            PollUpstreamTransition::Response(s) => State::Response(Some(s)),
+            PollUpstreamTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
         }
     }
 }
@@ -530,7 +577,7 @@ where
 {
     /// Response is cacheable - proceed to update cache
     UpdateCache {
-        update_cache_future: UpdateCache<Res>,
+        update_cache_future: UpdateCacheFuture<Res>,
     },
     /// Response is not cacheable - return directly
     Response(Response<Res>),
@@ -540,7 +587,7 @@ impl<Res> CheckResponseCachePolicyTransition<Res>
 where
     Res: CacheableResponse,
 {
-    pub fn into_state<Req, U, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<Req, U, ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Req: CacheableRequest,
         U: Upstream<Req, Response = Res>,
@@ -552,8 +599,14 @@ where
                 update_cache_future,
             } => State::UpdateCache {
                 update_cache_future,
+                state: Some(UpdateCache {
+                    span: span!(parent: parent, Level::TRACE, "fsm.update_cache"),
+                }),
             },
-            CheckResponseCachePolicyTransition::Response(s) => State::Response(Some(s)),
+            CheckResponseCachePolicyTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
         }
     }
 }
@@ -582,7 +635,7 @@ pub enum UpdateCacheTransition<Res> {
 }
 
 impl<Res> UpdateCacheTransition<Res> {
-    pub fn into_state<Req, U, ReqP, E>(self) -> State<Res, Req, U, ReqP, E>
+    pub fn into_state<Req, U, ReqP, E>(self, parent: &Span) -> State<Res, Req, U, ReqP, E>
     where
         Res: CacheableResponse,
         Req: CacheableRequest,
@@ -591,7 +644,10 @@ impl<Res> UpdateCacheTransition<Res> {
         E: Extractor<Subject = Req>,
     {
         match self {
-            UpdateCacheTransition::Response(s) => State::Response(Some(s)),
+            UpdateCacheTransition::Response(mut s) => {
+                s.span = span!(parent: parent, Level::TRACE, "fsm.response");
+                State::Response(Some(s))
+            }
         }
     }
 }
