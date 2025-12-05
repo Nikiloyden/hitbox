@@ -6,7 +6,7 @@
 //!
 //! Flow: poll future → create state struct → `.transition()` → `.into_state()`
 
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -21,7 +21,7 @@ use hitbox_core::{
 };
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
-use tracing::{Span, debug, instrument::Instrumented, warn};
+use tracing::{Instrument, Level, Span, debug, field, instrument::Instrumented, span, warn};
 
 use crate::backend::CacheBackend;
 use crate::concurrency::{ConcurrencyDecision, ConcurrencyError, ConcurrencyManager};
@@ -32,6 +32,22 @@ use crate::fsm::transitions::{
 };
 use crate::policy::{EnabledCacheConfig, PolicyConfig, StalePolicy};
 use crate::{CacheKey, CacheState, CacheStatus, CacheableRequest, CacheableResponse, Extractor};
+
+// =============================================================================
+// Helper Types
+// =============================================================================
+
+/// Wrapper for `Option<&CacheKey>` that implements `Display` without allocation.
+struct OptionalKey<'a>(Option<&'a CacheKey>);
+
+impl fmt::Display for OptionalKey<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(key) => fmt::Display::fmt(key, f),
+            None => Ok(()),
+        }
+    }
+}
 
 // =============================================================================
 // Type Aliases
@@ -187,6 +203,29 @@ pub struct Initial<Req, ReqP, E, U> {
     pub extractors: E,
     pub ctx: BoxContext,
     pub upstream: U,
+    /// Tracing span for this state.
+    pub span: Span,
+}
+
+impl<Req, ReqP, E, U> Initial<Req, ReqP, E, U> {
+    /// Create a new Initial state with its tracing span.
+    pub fn new(
+        request: Req,
+        predicates: ReqP,
+        extractors: E,
+        ctx: BoxContext,
+        upstream: U,
+        parent: &Span,
+    ) -> Self {
+        Self {
+            request,
+            predicates,
+            extractors,
+            ctx,
+            upstream,
+            span: span!(parent: parent, Level::TRACE, "fsm.Initial"),
+        }
+    }
 }
 
 impl<Req, ReqP, E, U> Initial<Req, ReqP, E, U>
@@ -243,6 +282,25 @@ pub struct Response<Res> {
     pub span: Span,
 }
 
+impl<Res> Response<Res> {
+    /// Create a new Response state with its tracing span.
+    ///
+    /// The `status` and `source` fields will be recorded when the response is finalized.
+    pub fn new(response: Res, ctx: BoxContext, parent: &Span) -> Self {
+        Self {
+            response,
+            ctx,
+            span: span!(
+                parent: parent,
+                Level::TRACE,
+                "fsm.Response",
+                cache.status = field::Empty,
+                cache.source = field::Empty
+            ),
+        }
+    }
+}
+
 impl<Res> std::fmt::Debug for Response<Res> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Response").finish_non_exhaustive()
@@ -268,6 +326,37 @@ pub struct PollUpstream {
 }
 
 impl PollUpstream {
+    /// Create a new PollUpstream state with its tracing span, instrumenting the provided future.
+    ///
+    /// Returns both the state and the instrumented future, since the future needs to be
+    /// instrumented with the same span that's stored in the state.
+    pub fn with_future<F: Sized>(
+        permit: Option<OwnedSemaphorePermit>,
+        ctx: BoxContext,
+        cache_key: Option<CacheKey>,
+        future: F,
+        parent: &Span,
+    ) -> (Self, Instrumented<F>) {
+        let has_permit = permit.is_some();
+        let span = span!(
+            parent: parent,
+            Level::TRACE,
+            "fsm.PollUpstream",
+            cache.key = %OptionalKey(cache_key.as_ref()),
+            concurrency.permit = has_permit
+        );
+        (
+            Self {
+                permit,
+                ctx,
+                cache_key,
+                upstream_start: Instant::now(),
+                span: span.clone(),
+            },
+            future.instrument(span),
+        )
+    }
+
     /// Transition from PollUpstream state after future completes.
     ///
     /// This merges the old PollUpstream → UpstreamPolled → next state transitions
@@ -343,6 +432,31 @@ pub struct CheckResponseCachePolicy {
 }
 
 impl CheckResponseCachePolicy {
+    /// Create a new CheckResponseCachePolicy state with its tracing span.
+    ///
+    /// The `cacheable` field will be recorded after the policy check completes.
+    pub fn new(
+        permit: Option<OwnedSemaphorePermit>,
+        ctx: BoxContext,
+        cache_key: CacheKey,
+        parent: &Span,
+    ) -> Self {
+        let has_permit = permit.is_some();
+        Self {
+            permit,
+            ctx,
+            cache_key: cache_key.clone(),
+            span: span!(
+                parent: parent,
+                Level::TRACE,
+                "fsm.CheckResponseCachePolicy",
+                cache.key = %cache_key,
+                concurrency.permit = has_permit,
+                cache.cacheable = field::Empty
+            ),
+        }
+    }
+
     /// Transition from CheckResponseCachePolicy state after future completes.
     pub fn transition<Res, B, C>(
         mut self,
@@ -357,6 +471,8 @@ impl CheckResponseCachePolicy {
         C: ConcurrencyManager<Res>,
     {
         self.ctx.record_state(DebugState::CheckResponseCachePolicy);
+        // Record cacheable decision to span
+        self.span.record("cache.cacheable", matches!(&policy, CachePolicy::Cacheable(_)));
 
         match policy {
             CachePolicy::Cacheable(cache_value) => {
@@ -414,6 +530,17 @@ pub struct CheckRequestCachePolicy<U> {
 }
 
 impl<U> CheckRequestCachePolicy<U> {
+    /// Create a new CheckRequestCachePolicy state with its tracing span.
+    ///
+    /// The `cacheable` field will be recorded after the policy check completes.
+    pub fn new(ctx: BoxContext, upstream: U, parent: &Span) -> Self {
+        Self {
+            ctx,
+            upstream,
+            span: span!(parent: parent, Level::TRACE, "fsm.CheckRequestCachePolicy", cache.cacheable = field::Empty),
+        }
+    }
+
     /// Transition from CheckRequestCachePolicy state after future completes.
     pub fn transition<Req, Res, B>(
         mut self,
@@ -429,6 +556,8 @@ impl<U> CheckRequestCachePolicy<U> {
         B: CacheBackend + Send + Sync + 'static,
     {
         self.ctx.record_state(DebugState::CheckRequestCachePolicy);
+        // Record cacheable decision to span
+        self.span.record("cache.cacheable", matches!(&policy, CachePolicy::Cacheable(_)));
         match policy {
             CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
                 let cache_key_for_get = key.clone();
@@ -485,6 +614,16 @@ pub struct PollCache<Req, U> {
 }
 
 impl<Req, U> PollCache<Req, U> {
+    /// Create a new PollCache state with its tracing span.
+    pub fn new(request: Req, cache_key: CacheKey, upstream: U, parent: &Span) -> Self {
+        Self {
+            request,
+            cache_key: cache_key.clone(),
+            upstream,
+            span: span!(parent: parent, Level::TRACE, "fsm.PollCache", cache.key = %cache_key, concurrency.decision = field::Empty),
+        }
+    }
+
     /// Transition from PollCache state after future completes.
     ///
     /// On cache miss or expired, checks concurrency policy and transitions directly
@@ -582,6 +721,7 @@ impl<Req, U> PollCache<Req, U> {
                 ctx.record_state(DebugState::ConcurrentPollUpstream);
                 match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
                     ConcurrencyDecision::Proceed(permit) => {
+                        self.span.record("concurrency.decision", "proceed");
                         let upstream_future = self.upstream.call(self.request);
                         PollCacheTransition::PollUpstream {
                             upstream_future,
@@ -591,6 +731,7 @@ impl<Req, U> PollCache<Req, U> {
                         }
                     }
                     ConcurrencyDecision::ProceedWithoutPermit => {
+                        self.span.record("concurrency.decision", "proceed_without_permit");
                         let upstream_future = self.upstream.call(self.request);
                         PollCacheTransition::PollUpstream {
                             upstream_future,
@@ -600,6 +741,7 @@ impl<Req, U> PollCache<Req, U> {
                         }
                     }
                     ConcurrencyDecision::Await(await_future) => {
+                        self.span.record("concurrency.decision", "await");
                         PollCacheTransition::AwaitResponse {
                             await_response_future: await_future,
                             request: self.request,
@@ -611,6 +753,7 @@ impl<Req, U> PollCache<Req, U> {
                 }
             }
             _ => {
+                self.span.record("concurrency.decision", "disabled");
                 let upstream_future = self.upstream.call(self.request);
                 PollCacheTransition::PollUpstream {
                     upstream_future,
@@ -647,6 +790,14 @@ pub struct ConvertResponse {
 }
 
 impl ConvertResponse {
+    /// Create a new ConvertResponse state with its tracing span.
+    pub fn new(cache_key: CacheKey, parent: &Span) -> Self {
+        Self {
+            cache_key: cache_key.clone(),
+            span: span!(parent: parent, Level::TRACE, "fsm.ConvertResponse", cache.key = %cache_key),
+        }
+    }
+
     /// Transition from ConvertResponse state after future completes.
     pub fn transition<Res>(
         self,
@@ -654,7 +805,7 @@ impl ConvertResponse {
         mut ctx: BoxContext,
     ) -> ConvertResponseTransition<Res> {
         ctx.record_state(DebugState::ConvertResponse);
-        debug!(cache_key = ?self.cache_key, "ConvertResponse transition");
+        debug!(cache.key = %self.cache_key, "ConvertResponse transition");
         ConvertResponseTransition::Response(Response {
             response,
             ctx,
@@ -685,6 +836,18 @@ pub struct HandleStale<Req, U> {
     pub upstream: U,
     /// Tracing span for this state (created on entry, entered on each poll).
     pub span: Span,
+}
+
+impl<Req, U> HandleStale<Req, U> {
+    /// Create a new HandleStale state with its tracing span.
+    pub fn new(request: Req, cache_key: CacheKey, upstream: U, parent: &Span) -> Self {
+        Self {
+            request,
+            cache_key: cache_key.clone(),
+            upstream,
+            span: span!(parent: parent, Level::TRACE, "fsm.HandleStale", cache.key = %cache_key, stale.policy = field::Empty),
+        }
+    }
 }
 
 /// Data needed for background offload revalidation.
@@ -728,6 +891,7 @@ impl<Req, U> HandleStale<Req, U> {
 
         match stale_policy {
             StalePolicy::Return => {
+                self.span.record("stale.policy", "return");
                 ctx.set_status(CacheStatus::Stale);
                 HandleStaleResult {
                     transition: HandleStaleTransition::Response(Response {
@@ -739,6 +903,7 @@ impl<Req, U> HandleStale<Req, U> {
                 }
             }
             StalePolicy::Revalidate => {
+                self.span.record("stale.policy", "revalidate");
                 ctx.set_status(CacheStatus::Miss);
                 let upstream_future = self.upstream.call(self.request);
                 HandleStaleResult {
@@ -751,6 +916,7 @@ impl<Req, U> HandleStale<Req, U> {
                 }
             }
             StalePolicy::OffloadRevalidate => {
+                self.span.record("stale.policy", "offload");
                 ctx.set_status(CacheStatus::Stale);
                 HandleStaleResult {
                     transition: HandleStaleTransition::Response(Response {
@@ -795,6 +961,23 @@ pub struct AwaitResponse<Req, U> {
 }
 
 impl<Req, U> AwaitResponse<Req, U> {
+    /// Create a new AwaitResponse state with its tracing span.
+    pub fn new(
+        request: Req,
+        ctx: BoxContext,
+        cache_key: CacheKey,
+        upstream: U,
+        parent: &Span,
+    ) -> Self {
+        Self {
+            request,
+            ctx,
+            cache_key: cache_key.clone(),
+            upstream,
+            span: span!(parent: parent, Level::TRACE, "fsm.AwaitResponse", cache.key = %cache_key),
+        }
+    }
+
     /// Transition from AwaitResponse state after future completes.
     ///
     /// On success, returns the response directly.
@@ -868,6 +1051,13 @@ pub struct UpdateCache {
 }
 
 impl UpdateCache {
+    /// Create a new UpdateCache state with its tracing span.
+    pub fn new(parent: &Span) -> Self {
+        Self {
+            span: span!(parent: parent, Level::TRACE, "fsm.UpdateCache"),
+        }
+    }
+
     /// Transition from UpdateCache state after future completes.
     pub fn transition<Res>(
         self,

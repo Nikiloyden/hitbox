@@ -4,6 +4,7 @@ use bitcode::__private::{
 use bitcode::{Decode, Encode};
 use core::num::NonZeroUsize;
 use smol_str::SmolStr;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -60,6 +61,25 @@ impl Clone for CacheKeyInner {
             version: self.version,
             prefix: self.prefix.clone(),
         }
+    }
+}
+
+impl fmt::Display for CacheKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Compact format: prefix:v{version}:key=value&key2=value2
+        if !self.inner.prefix.is_empty() {
+            write!(f, "{}:", self.inner.prefix)?;
+        }
+        if self.inner.version > 0 {
+            write!(f, "v{}:", self.inner.version)?;
+        }
+        for (i, part) in self.inner.parts.iter().enumerate() {
+            if i > 0 {
+                write!(f, "&")?;
+            }
+            write!(f, "{}", part)?;
+        }
+        Ok(())
     }
 }
 
@@ -180,6 +200,16 @@ impl CacheKey {
 pub struct KeyPart {
     key: SmolStr,
     value: Option<SmolStr>,
+}
+
+impl fmt::Display for KeyPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.key)?;
+        if let Some(ref value) = self.value {
+            write!(f, "={}", value)?;
+        }
+        Ok(())
+    }
 }
 
 impl Encode for KeyPart {

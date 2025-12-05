@@ -19,9 +19,37 @@ impl Expiry<CacheKey, CacheValue<Raw>> for Expiration {
         value: &CacheValue<Raw>,
         _created_at: Instant,
     ) -> Option<Duration> {
+        Self::calculate_ttl(value)
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &CacheKey,
+        value: &CacheValue<Raw>,
+        _updated_at: Instant,
+        _duration_until_expiry: Option<Duration>,
+    ) -> Option<Duration> {
+        // IMPORTANT: When updating an entry (e.g., after stale-while-revalidate),
+        // we must use the NEW value's expiration time, not the old one.
+        // The default implementation returns `duration_until_expiry` which
+        // would preserve the OLD expiration time, causing premature expiration.
+        Self::calculate_ttl(value)
+    }
+}
+
+impl Expiration {
+    /// Calculate TTL from CacheValue's expire timestamp.
+    fn calculate_ttl(value: &CacheValue<Raw>) -> Option<Duration> {
         value.expire.map(|expiration| {
             let delta = expiration - Utc::now();
-            Duration::from_secs(delta.num_seconds() as u64)
+            // Use milliseconds for sub-second precision.
+            // Handle negative delta (already expired) by returning zero duration.
+            let millis = delta.num_milliseconds();
+            if millis <= 0 {
+                Duration::ZERO
+            } else {
+                Duration::from_millis(millis as u64)
+            }
         })
     }
 }

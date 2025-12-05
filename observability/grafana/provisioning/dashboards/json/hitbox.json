@@ -63,33 +63,46 @@
           {
             "matcher": { "id": "byName", "options": "stale" },
             "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "total" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } }
+            ]
           }
         ]
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
       "id": 2,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
       },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(hitbox_cache_hit_total[1m])",
+          "expr": "sum(rate(hitbox_cache_hit_total[1m]))",
           "legendFormat": "hits",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(hitbox_cache_miss_total[1m])",
+          "expr": "sum(rate(hitbox_cache_miss_total[1m]))",
           "legendFormat": "misses",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(hitbox_cache_stale_total[1m])",
+          "expr": "sum(rate(hitbox_cache_stale_total[1m]))",
           "legendFormat": "stale",
           "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(hitbox_cache_hit_total[1m])) + sum(rate(hitbox_cache_miss_total[1m])) + sum(rate(hitbox_cache_stale_total[1m]))",
+          "legendFormat": "total",
+          "refId": "D"
         }
       ],
       "title": "Cache Hit/Miss/Stale Rate",
@@ -156,7 +169,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
@@ -236,20 +249,20 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.50, rate(hitbox_request_duration_seconds_bucket[5m]))",
-          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.50, sum by (le, status) (rate(hitbox_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 - {{status}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.95, rate(hitbox_request_duration_seconds_bucket[5m]))",
-          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le, status) (rate(hitbox_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 - {{status}}",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "histogram_quantile(0.99, rate(hitbox_request_duration_seconds_bucket[5m]))",
-          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum by (le, status) (rate(hitbox_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 - {{status}}",
           "refId": "C"
         }
       ],

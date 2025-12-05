@@ -13,7 +13,7 @@ use crate::{
 use futures::ready;
 use hitbox_core::{Cacheable, DebugState, Upstream};
 use pin_project::pin_project;
-use tracing::{Instrument, Level, Span, debug, span, trace};
+use tracing::{Level, Span, debug, span, trace};
 
 use crate::{
     CacheKey, CacheableRequest, Extractor, Predicate,
@@ -75,13 +75,15 @@ where
         offload_manager: Option<OffloadManager>,
         concurrency_manager: C,
     ) -> Self {
-        let initial_state = states::Initial {
+        let parent_span = span!(Level::DEBUG, "hitbox.cache");
+        let initial_state = states::Initial::new(
             request,
-            predicates: request_predicates,
-            extractors: key_extractors,
-            ctx: CacheContext::default().boxed(),
+            request_predicates,
+            key_extractors,
+            CacheContext::default().boxed(),
             upstream,
-        };
+            &parent_span,
+        );
         CacheFuture {
             backend,
             cache_key: None,
@@ -92,7 +94,7 @@ where
             is_revalidation: false,
             concurrency_manager,
             start_time: Instant::now(),
-            span: span!(Level::DEBUG, "hitbox.cache"),
+            span: parent_span,
         }
     }
 }
@@ -135,20 +137,20 @@ where
     ) -> Self {
         let upstream_future = upstream.call(request);
         let parent_span = span!(Level::DEBUG, "hitbox.cache.revalidate");
-        let state_span = span!(parent: &parent_span, Level::TRACE, "fsm.poll_upstream");
+        let (state, instrumented_future) = PollUpstream::with_future(
+            None,
+            CacheContext::default().boxed(),
+            Some(cache_key.clone()),
+            upstream_future,
+            &parent_span,
+        );
 
         CacheFuture {
             backend,
-            cache_key: Some(cache_key.clone()),
+            cache_key: Some(cache_key),
             state: State::PollUpstream {
-                upstream_future: upstream_future.instrument(state_span.clone()),
-                state: Some(PollUpstream {
-                    permit: None,
-                    ctx: CacheContext::default().boxed(),
-                    cache_key: Some(cache_key),
-                    upstream_start: Instant::now(),
-                    span: state_span,
-                }),
+                upstream_future: instrumented_future,
+                state: Some(state),
             },
             response_predicates: Some(response_predicates),
             policy,
@@ -241,10 +243,8 @@ where
         loop {
             let state = match this.state.as_mut().project() {
                 StateProj::Initial(initial_state) => {
-                    let _state_span =
-                        span!(parent: &*this.span, Level::TRACE, "fsm.initial").entered();
-                    trace!("FSM state: Initial");
                     let initial = initial_state.take().expect(POLL_AFTER_READY_ERROR);
+                    trace!(parent: &initial.span, "FSM state: Initial");
                     initial
                         .transition(this.policy.as_ref())
                         .into_state(&*this.span)
@@ -372,6 +372,9 @@ where
                         state.ctx.set_source(ResponseSource::Upstream);
                     }
                     let ctx = hitbox_core::finalize_context(state.ctx);
+                    // Record final status and source to span
+                    state.span.record("cache.status", ctx.status.as_str());
+                    state.span.record("cache.source", ctx.source.as_str());
                     let duration = this.start_time.elapsed();
                     crate::metrics::record_context_metrics(&ctx, duration, *this.is_revalidation);
                     debug!(parent: &*this.span, status = ?ctx.status, source = ?ctx.source, "Cache operation completed");

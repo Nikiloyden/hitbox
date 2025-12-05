@@ -99,6 +99,11 @@ fn init_metrics() -> PrometheusHandle {
 
     PrometheusBuilder::new()
         .set_buckets_for_metric(
+            Matcher::Full("hitbox_request_duration_seconds".to_string()),
+            EXPONENTIAL_SECONDS,
+        )
+        .expect("Failed to set buckets")
+        .set_buckets_for_metric(
             Matcher::Full("hitbox_upstream_duration_seconds".to_string()),
             EXPONENTIAL_SECONDS,
         )
