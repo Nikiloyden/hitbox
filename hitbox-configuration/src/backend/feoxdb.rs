@@ -8,7 +8,11 @@ use super::serialization::BackendConfig;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FeOxDb {
+    #[serde(default)]
     pub path: Option<String>,
+    /// Optional label for this backend (used in metrics/tracing).
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl BackendConfig<FeOxDb> {
@@ -27,6 +31,10 @@ impl BackendConfig<FeOxDb> {
 
         if let Some(path) = self.backend.path {
             builder = builder.path(path);
+        }
+
+        if let Some(label) = self.backend.label {
+            builder = builder.label(label);
         }
 
         let backend = builder

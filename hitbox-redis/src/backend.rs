@@ -33,7 +33,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: BackendLabel,
+    label: BackendLabel,
 }
 
 impl RedisBackend<BincodeFormat, PassthroughCompressor> {
@@ -89,7 +89,7 @@ where
     serializer: S,
     key_format: CacheKeyFormat,
     compressor: C,
-    name: BackendLabel,
+    label: BackendLabel,
 }
 
 impl Default for RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
@@ -99,7 +99,7 @@ impl Default for RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
             serializer: BincodeFormat,
             key_format: CacheKeyFormat::default(),
             compressor: PassthroughCompressor,
-            name: BackendLabel::new_static("redis"),
+            label: BackendLabel::new_static("redis"),
         }
     }
 }
@@ -125,7 +125,7 @@ where
             serializer,
             key_format: self.key_format,
             compressor: self.compressor,
-            name: self.name,
+            label: self.label,
         }
     }
 
@@ -135,12 +135,12 @@ where
         self
     }
 
-    /// Set a custom name for this backend.
+    /// Set a custom label for this backend.
     ///
-    /// The name is used for source path composition in multi-layer caches.
-    /// For example, with name "sessions", the source path might be "composition.L1.sessions".
-    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
-        self.name = name.into();
+    /// The label is used for source path composition in multi-layer caches.
+    /// For example, with label "sessions", the source path might be "composition.L1.sessions".
+    pub fn label(mut self, label: impl Into<BackendLabel>) -> Self {
+        self.label = label.into();
         self
     }
 
@@ -154,7 +154,7 @@ where
             serializer: self.serializer,
             key_format: self.key_format,
             compressor,
-            name: self.name,
+            label: self.label,
         }
     }
 
@@ -166,7 +166,7 @@ where
             serializer: self.serializer,
             key_format: self.key_format,
             compressor: self.compressor,
-            name: self.name,
+            label: self.label,
         })
     }
 }
@@ -253,8 +253,8 @@ where
         }
     }
 
-    fn name(&self) -> BackendLabel {
-        self.name.clone()
+    fn label(&self) -> BackendLabel {
+        self.label.clone()
     }
 
     fn value_format(&self) -> &dyn Format {

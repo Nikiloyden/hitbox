@@ -61,6 +61,9 @@ pub struct CompositionConfig {
     /// Composition policies
     #[serde(default)]
     pub policy: CompositionPolicyConfig,
+    /// Optional label for this backend (used in metrics/tracing).
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl CompositionConfig {
@@ -75,6 +78,7 @@ impl CompositionConfig {
         let l1 = self.l1.into_backend()?;
         let l2 = self.l2.into_backend()?;
         let offload = OffloadManager::default();
+        let label = self.label;
 
         let refill = match self.policy.refill {
             RefillPolicyConfig::Always => RefillPolicy::Always,
@@ -87,63 +91,117 @@ impl CompositionConfig {
                     .read(SequentialReadPolicy::new())
                     .write(SequentialWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Sequential, WritePolicy::OptimisticParallel) => {
                 let policy = CompositionPolicy::new()
                     .read(SequentialReadPolicy::new())
                     .write(OptimisticParallelWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Sequential, WritePolicy::Race) => {
                 let policy = CompositionPolicy::new()
                     .read(SequentialReadPolicy::new())
                     .write(RaceWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Race, WritePolicy::Sequential) => {
                 let policy = CompositionPolicy::new()
                     .read(RaceReadPolicy::new())
                     .write(SequentialWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Race, WritePolicy::OptimisticParallel) => {
                 let policy = CompositionPolicy::new()
                     .read(RaceReadPolicy::new())
                     .write(OptimisticParallelWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Race, WritePolicy::Race) => {
                 let policy = CompositionPolicy::new()
                     .read(RaceReadPolicy::new())
                     .write(RaceWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Parallel, WritePolicy::Sequential) => {
                 let policy = CompositionPolicy::new()
                     .read(ParallelReadPolicy::new())
                     .write(SequentialWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Parallel, WritePolicy::OptimisticParallel) => {
                 let policy = CompositionPolicy::new()
                     .read(ParallelReadPolicy::new())
                     .write(OptimisticParallelWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
             (ReadPolicy::Parallel, WritePolicy::Race) => {
                 let policy = CompositionPolicy::new()
                     .read(ParallelReadPolicy::new())
                     .write(RaceWritePolicy::new())
                     .refill(refill);
-                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+                let backend = l1.compose_with(l2, offload, policy);
+                let backend = if let Some(l) = label {
+                    backend.label(l)
+                } else {
+                    backend
+                };
+                Ok(Arc::new(backend))
             }
         }
     }

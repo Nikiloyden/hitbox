@@ -121,7 +121,7 @@ impl Backend for MockBackend {
         }
     }
 
-    fn name(&self) -> BackendLabel {
+    fn label(&self) -> BackendLabel {
         BackendLabel::new_static("mock")
     }
 }

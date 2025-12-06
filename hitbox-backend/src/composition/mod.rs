@@ -121,11 +121,11 @@ pub struct CompositionBackend<
     write_policy: W,
     /// Refill policy
     refill_policy: RefillPolicy,
-    /// Name of this backend for source path composition
-    name: BackendLabel,
-    /// Pre-computed metrics label for L1: "{name}.{l1.name()}"
+    /// Label of this backend for source path composition
+    label: BackendLabel,
+    /// Pre-computed metrics label for L1: "{label}.{l1.label()}"
     l1_label: SmolStr,
-    /// Pre-computed metrics label for L2: "{name}.{l2.name()}"
+    /// Pre-computed metrics label for L2: "{label}.{l2.label()}"
     l2_label: SmolStr,
 }
 
@@ -153,9 +153,9 @@ where
     /// * `l2` - Second-layer backend (checked if L1 misses)
     /// * `offload` - Offload manager for background tasks (e.g., race policy losers)
     pub fn new(l1: L1, l2: L2, offload: O) -> Self {
-        let name = BackendLabel::new_static("composition");
-        let l1_label = compose_label(name.as_str(), l1.name().as_str());
-        let l2_label = compose_label(name.as_str(), l2.name().as_str());
+        let label = BackendLabel::new_static("composition");
+        let l1_label = compose_label(label.as_str(), l1.label().as_str());
+        let l2_label = compose_label(label.as_str(), l2.label().as_str());
         let format = CompositionFormat::new(
             Arc::new(l1.value_format().clone_box()),
             Arc::new(l2.value_format().clone_box()),
@@ -172,7 +172,7 @@ where
             read_policy: SequentialReadPolicy::new(),
             write_policy: OptimisticParallelWritePolicy::new(),
             refill_policy: RefillPolicy::default(),
-            name,
+            label,
             l1_label,
             l2_label,
         }
@@ -207,15 +207,15 @@ where
         &self.offload
     }
 
-    /// Set a custom name for this backend.
+    /// Set a custom label for this backend.
     ///
-    /// The name is used for source path composition in multi-layer caches.
-    /// For example, with name "cache", the source path might be "cache.L1".
-    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
-        self.name = name.into();
-        // Recalculate labels with new name
-        self.l1_label = compose_label(self.name.as_str(), self.l1.name().as_str());
-        self.l2_label = compose_label(self.name.as_str(), self.l2.name().as_str());
+    /// The label is used for source path composition in multi-layer caches.
+    /// For example, with label "cache", the source path might be "cache.L1".
+    pub fn label(mut self, label: impl Into<BackendLabel>) -> Self {
+        self.label = label.into();
+        // Recalculate labels with new label
+        self.l1_label = compose_label(self.label.as_str(), self.l1.label().as_str());
+        self.l2_label = compose_label(self.label.as_str(), self.l2.label().as_str());
         // Update format labels too
         self.format
             .set_labels(self.l1_label.clone(), self.l2_label.clone());
@@ -255,7 +255,7 @@ where
             read_policy: policy.read,
             write_policy: policy.write,
             refill_policy: policy.refill,
-            name: self.name,
+            label: self.label,
             l1_label: self.l1_label,
             l2_label: self.l2_label,
         }
@@ -285,7 +285,7 @@ where
             read_policy,
             write_policy: self.write_policy,
             refill_policy: self.refill_policy,
-            name: self.name,
+            label: self.label,
             l1_label: self.l1_label,
             l2_label: self.l2_label,
         }
@@ -315,7 +315,7 @@ where
             read_policy: self.read_policy,
             write_policy,
             refill_policy: self.refill_policy,
-            name: self.name,
+            label: self.label,
             l1_label: self.l1_label,
             l2_label: self.l2_label,
         }
@@ -356,7 +356,7 @@ where
             read_policy: self.read_policy.clone(),
             write_policy: self.write_policy.clone(),
             refill_policy: self.refill_policy,
-            name: self.name.clone(),
+            label: self.label.clone(),
             l1_label: self.l1_label.clone(),
             l2_label: self.l2_label.clone(),
         }
@@ -373,7 +373,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompositionBackend")
-            .field("name", &self.name)
+            .field("label", &self.label)
             .field("l1", &self.l1)
             .field("l2", &self.l2)
             .field("format", &self.format)
@@ -575,8 +575,8 @@ where
         }
     }
 
-    fn name(&self) -> BackendLabel {
-        self.name.clone()
+    fn label(&self) -> BackendLabel {
+        self.label.clone()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -618,9 +618,9 @@ where
         let l1_label = self.l1_label.clone();
         let l2_label = self.l2_label.clone();
 
-        // Use inner backend names for source path (merge_from adds composition prefix)
-        let l1_name = l1.name();
-        let l2_name = l2.name();
+        // Use inner backend labels for source path (merge_from adds composition prefix)
+        let l1_name = l1.label();
+        let l2_name = l2.label();
 
         // Clone format for each closure
         let format_for_l1 = self.format.clone();
@@ -774,7 +774,7 @@ where
 
         // Merge inner context into outer context, composing source paths
         if let Some(ref _cache_value) = value {
-            ctx.merge_from(&*inner_ctx, &self.name);
+            ctx.merge_from(&*inner_ctx, &self.label);
 
             // If L2 hit and refill policy is Always, set ReadMode::Refill
             // CacheFuture will handle the actual refill via set()
@@ -1027,21 +1027,21 @@ mod tests {
     #[derive(Clone, Debug)]
     struct TestBackend {
         store: Arc<Mutex<HashMap<CacheKey, CacheValue<Raw>>>>,
-        name: &'static str,
+        backend_label: &'static str,
     }
 
     impl TestBackend {
         fn new() -> Self {
             Self {
                 store: Arc::new(Mutex::new(HashMap::new())),
-                name: "test",
+                backend_label: "test",
             }
         }
 
-        fn with_name(name: &'static str) -> Self {
+        fn with_label(label: &'static str) -> Self {
             Self {
                 store: Arc::new(Mutex::new(HashMap::new())),
-                name,
+                backend_label: label,
             }
         }
     }
@@ -1064,8 +1064,8 @@ mod tests {
             }
         }
 
-        fn name(&self) -> BackendLabel {
-            BackendLabel::new(self.name)
+        fn label(&self) -> BackendLabel {
+            BackendLabel::new(self.backend_label)
         }
 
         fn value_format(&self) -> &dyn Format {
@@ -1125,9 +1125,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_l1_hit() {
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).name("cache");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).label("cache");
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
@@ -1159,8 +1159,8 @@ mod tests {
     async fn test_l2_hit_sets_refill_mode() {
         use hitbox_core::ReadMode;
 
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
 
         let key = CacheKey::from_str("test", "key1");
         let value = CacheValue::new(
@@ -1173,7 +1173,7 @@ mod tests {
 
         // Backend with RefillPolicy::Always
         let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload)
-            .name("cache")
+            .label("cache")
             .refill(RefillPolicy::Always);
 
         // Write through CompositionBackend (populates both L1 and L2)
@@ -1325,15 +1325,15 @@ mod tests {
         // Create a nested composition: outer(inner(l1, l2), l3)
         // to test hierarchical source paths like "outer.inner.moka"
 
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let l3 = TestBackend::with_name("disk");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let l3 = TestBackend::with_label("disk");
 
         // Inner composition: L1=moka, L2=redis
-        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).name("inner");
+        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).label("inner");
 
         // Outer composition: L1=inner, L2=disk
-        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).name("outer");
+        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).label("outer");
 
         let key = CacheKey::from_str("test", "nested");
         let value = CacheValue::new(
@@ -1367,15 +1367,15 @@ mod tests {
     async fn test_nested_composition_l2_source_path() {
         // Test nested composition where hit comes from inner L2
 
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let l3 = TestBackend::with_name("disk");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let l3 = TestBackend::with_label("disk");
 
         // Inner composition: L1=moka, L2=redis
-        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).name("inner");
+        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).label("inner");
 
         // Outer composition: L1=inner, L2=disk
-        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).name("outer");
+        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).label("outer");
 
         let key = CacheKey::from_str("test", "nested_l2");
         let value = CacheValue::new(
@@ -1409,15 +1409,15 @@ mod tests {
     async fn test_nested_composition_outer_l2_source_path() {
         // Test nested composition where hit comes from outer L2 (disk)
 
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let l3 = TestBackend::with_name("disk");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let l3 = TestBackend::with_label("disk");
 
         // Inner composition: L1=moka, L2=redis
-        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).name("inner");
+        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).label("inner");
 
         // Outer composition: L1=inner, L2=disk
-        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).name("outer");
+        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).label("outer");
 
         let key = CacheKey::from_str("test", "outer_l2");
         let value = CacheValue::new(
@@ -1446,9 +1446,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_l1_hit_status() {
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).name("cache");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let backend = CompositionBackend::new(l1.clone(), l2, TestOffload).label("cache");
 
         let key = CacheKey::from_str("test", "metrics1");
         let value = CacheValue::new(
@@ -1479,8 +1479,8 @@ mod tests {
     async fn test_l2_hit_with_refill_via_set() {
         use hitbox_core::ReadMode;
 
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
 
         let key = CacheKey::from_str("test", "metrics2");
         let value = CacheValue::new(
@@ -1492,7 +1492,7 @@ mod tests {
         );
 
         let backend = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload)
-            .name("cache")
+            .label("cache")
             .refill(RefillPolicy::Always);
 
         // Write through CompositionBackend (populates both L1 and L2)
@@ -1531,12 +1531,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_nested_composition_status() {
-        let l1 = TestBackend::with_name("moka");
-        let l2 = TestBackend::with_name("redis");
-        let l3 = TestBackend::with_name("disk");
+        let l1 = TestBackend::with_label("moka");
+        let l2 = TestBackend::with_label("redis");
+        let l3 = TestBackend::with_label("disk");
 
-        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).name("inner");
-        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).name("outer");
+        let inner = CompositionBackend::new(l1.clone(), l2.clone(), TestOffload).label("inner");
+        let outer = CompositionBackend::new(inner, l3.clone(), TestOffload).label("outer");
 
         let key = CacheKey::from_str("test", "nested_metrics");
         let value = CacheValue::new(

@@ -13,7 +13,7 @@ use hitbox_backend::{
     Backend, BackendError, BackendResult, CacheKeyFormat, Compressor, DeleteStatus,
     PassthroughCompressor,
 };
-use hitbox_core::{CacheKey, CacheValue, Raw};
+use hitbox_core::{BackendLabel, CacheKey, CacheValue, Raw};
 use serde::{Deserialize, Serialize};
 
 use crate::FeOxDbError;
@@ -52,6 +52,7 @@ where
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
+    label: BackendLabel,
 }
 
 impl FeOxDbBackend<JsonFormat, PassthroughCompressor> {
@@ -73,6 +74,7 @@ impl FeOxDbBackend<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
+            label: BackendLabel::new_static("feoxdb"),
         })
     }
 
@@ -86,6 +88,7 @@ impl FeOxDbBackend<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
+            label: BackendLabel::new_static("feoxdb"),
         }
     }
 
@@ -97,6 +100,7 @@ impl FeOxDbBackend<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
+            label: BackendLabel::new_static("feoxdb"),
         })
     }
 }
@@ -110,6 +114,7 @@ where
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
+    label: BackendLabel,
 }
 
 impl Default for FeOxDbBackendBuilder<JsonFormat, PassthroughCompressor> {
@@ -119,6 +124,7 @@ impl Default for FeOxDbBackendBuilder<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
+            label: BackendLabel::new_static("feoxdb"),
         }
     }
 }
@@ -138,6 +144,14 @@ where
         self
     }
 
+    /// Set a custom label for this backend.
+    ///
+    /// The label is used for source path composition in multi-layer caches.
+    pub fn label(mut self, label: impl Into<BackendLabel>) -> Self {
+        self.label = label.into();
+        self
+    }
+
     pub fn value_format<NewS>(self, serializer: NewS) -> FeOxDbBackendBuilder<NewS, C>
     where
         NewS: Format,
@@ -147,6 +161,7 @@ where
             key_format: self.key_format,
             serializer,
             compressor: self.compressor,
+            label: self.label,
         }
     }
 
@@ -159,6 +174,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor,
+            label: self.label,
         }
     }
 
@@ -182,6 +198,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor: self.compressor,
+            label: self.label,
         })
     }
 }
@@ -277,6 +294,10 @@ where
 
     fn compressor(&self) -> &dyn Compressor {
         &self.compressor
+    }
+
+    fn label(&self) -> BackendLabel {
+        self.label.clone()
     }
 }
 

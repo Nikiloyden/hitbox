@@ -13,7 +13,7 @@ where
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
-    name: BackendLabel,
+    label: BackendLabel,
 }
 
 impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
@@ -24,7 +24,7 @@ impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
-            name: BackendLabel::new_static("moka"),
+            label: BackendLabel::new_static("moka"),
         }
     }
 }
@@ -34,12 +34,12 @@ where
     S: Format,
     C: Compressor,
 {
-    /// Set a custom name for this backend.
+    /// Set a custom label for this backend.
     ///
-    /// The name is used for source path composition in multi-layer caches.
-    /// For example, with name "sessions", the source path might be "composition.L1.sessions".
-    pub fn name(mut self, name: impl Into<BackendLabel>) -> Self {
-        self.name = name.into();
+    /// The label is used for source path composition in multi-layer caches.
+    /// For example, with label "sessions", the source path might be "composition.L1.sessions".
+    pub fn label(mut self, label: impl Into<BackendLabel>) -> Self {
+        self.label = label.into();
         self
     }
 
@@ -57,7 +57,7 @@ where
             key_format: self.key_format,
             serializer,
             compressor: self.compressor,
-            name: self.name,
+            label: self.label,
         }
     }
 
@@ -70,7 +70,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor,
-            name: self.name,
+            label: self.label,
         }
     }
 
@@ -82,7 +82,7 @@ where
             key_format: self.key_format,
             serializer: self.serializer,
             compressor: self.compressor,
-            name: self.name,
+            label: self.label,
         }
     }
 }

@@ -9,6 +9,9 @@ use super::serialization::BackendConfig;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Redis {
     pub connection_string: String,
+    /// Optional label for this backend (used in metrics/tracing).
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl BackendConfig<Redis> {
@@ -20,11 +23,17 @@ impl BackendConfig<Redis> {
         let serializer = self.value.format.to_serializer();
         let compressor = self.value.compression.to_compressor()?;
 
-        let backend = RedisBackend::builder()
+        let mut builder = RedisBackend::builder()
             .server(self.backend.connection_string)
             .key_format(key_format)
             .value_format(serializer)
-            .compressor(compressor)
+            .compressor(compressor);
+
+        if let Some(label) = self.backend.label {
+            builder = builder.label(label);
+        }
+
+        let backend = builder
             .build()
             .map_err(|e| ConfigError::BackendNotAvailable(format!("Redis: {}", e)))?;
 

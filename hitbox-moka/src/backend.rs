@@ -36,7 +36,7 @@ where
     pub key_format: CacheKeyFormat,
     pub serializer: S,
     pub compressor: C,
-    pub name: BackendLabel,
+    pub label: BackendLabel,
 }
 
 impl<S, C> std::fmt::Debug for MokaBackend<S, C>
@@ -46,7 +46,7 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MokaBackend")
-            .field("name", &self.name)
+            .field("label", &self.label)
             .field("cache", &self.cache)
             .field("key_format", &self.key_format)
             .field("serializer", &std::any::type_name::<S>())
@@ -86,8 +86,8 @@ where
         }
     }
 
-    fn name(&self) -> BackendLabel {
-        self.name.clone()
+    fn label(&self) -> BackendLabel {
+        self.label.clone()
     }
 
     fn value_format(&self) -> &dyn Format {

@@ -91,7 +91,10 @@ fn test_backend_serialize_roundtrip() {
             format: ValueSerialization::Json,
             compression: Compression::Zstd { level: 3 },
         },
-        backend: Moka { max_capacity: 5000 },
+        backend: Moka {
+            max_capacity: 5000,
+            label: None,
+        },
     });
 
     let yaml = serde_saphyr::to_string(&backend).expect("failed to serialize");
@@ -99,6 +102,74 @@ fn test_backend_serialize_roundtrip() {
     let deserialized: Backend = serde_saphyr::from_str(&yaml).expect("failed to deserialize");
 
     assert_eq!(backend, deserialized);
+}
+
+#[test]
+fn test_backend_with_custom_label() {
+    let yaml = r#"
+type: Moka
+max_capacity: 10000
+label: "session-cache"
+key:
+  format: Bitcode
+value:
+  format: Json
+"#;
+
+    let backend: Backend = serde_saphyr::from_str(yaml).expect("failed to deserialize");
+
+    match backend {
+        Backend::Moka(config) => {
+            assert_eq!(config.backend.max_capacity, 10000);
+            assert_eq!(config.backend.label, Some("session-cache".to_string()));
+        }
+        _ => panic!("expected Moka backend"),
+    }
+}
+
+#[test]
+fn test_composition_backend_with_labeled_layers() {
+    let yaml = r#"
+type: Composition
+label: "tiered-cache"
+l1:
+  type: Moka
+  max_capacity: 1000
+  label: "l1-hot-cache"
+  key:
+    format: Bitcode
+  value:
+    format: Json
+l2:
+  type: Redis
+  connection_string: "redis://localhost:6379"
+  label: "l2-persistent"
+  key:
+    format: Bitcode
+  value:
+    format: Json
+"#;
+
+    let backend: Backend = serde_saphyr::from_str(yaml).expect("failed to deserialize");
+
+    match backend {
+        Backend::Composition(config) => {
+            assert_eq!(config.label, Some("tiered-cache".to_string()));
+            match config.l1.as_ref() {
+                Backend::Moka(moka) => {
+                    assert_eq!(moka.backend.label, Some("l1-hot-cache".to_string()));
+                }
+                _ => panic!("expected Moka as L1"),
+            }
+            match config.l2.as_ref() {
+                Backend::Redis(redis) => {
+                    assert_eq!(redis.backend.label, Some("l2-persistent".to_string()));
+                }
+                _ => panic!("expected Redis as L2"),
+            }
+        }
+        _ => panic!("expected Composition backend"),
+    }
 }
 
 #[test]

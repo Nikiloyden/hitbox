@@ -9,6 +9,9 @@ use super::serialization::BackendConfig;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Moka {
     pub max_capacity: u64,
+    /// Optional label for this backend (used in metrics/tracing).
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl BackendConfig<Moka> {
@@ -20,13 +23,16 @@ impl BackendConfig<Moka> {
         let serializer = self.value.format.to_serializer();
         let compressor = self.value.compression.to_compressor()?;
 
-        let backend = MokaBackend::builder(self.backend.max_capacity)
+        let mut builder = MokaBackend::builder(self.backend.max_capacity)
             .key_format(key_format)
             .value_format(serializer)
-            .compressor(compressor)
-            .build();
+            .compressor(compressor);
 
-        Ok(Arc::new(backend))
+        if let Some(label) = self.backend.label {
+            builder = builder.label(label);
+        }
+
+        Ok(Arc::new(builder.build()))
     }
 
     #[cfg(not(feature = "moka"))]
