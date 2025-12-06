@@ -39,30 +39,30 @@ use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
-    Resource, runtime,
-    trace::{RandomIdGenerator, Sampler, TracerProvider},
+    Resource,
+    trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
 };
-use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Initialize OpenTelemetry tracing with OTLP exporter to Jaeger
-fn init_tracing() -> Result<TracerProvider, Box<dyn std::error::Error>> {
+fn init_tracing() -> Result<SdkTracerProvider, Box<dyn std::error::Error>> {
     let exporter = SpanExporter::builder()
         .with_tonic()
         .with_endpoint("http://localhost:4317")
         .build()?;
 
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_sampler(Sampler::AlwaysOn)
         .with_id_generator(RandomIdGenerator::default())
-        .with_resource(Resource::new(vec![opentelemetry::KeyValue::new(
-            SERVICE_NAME,
-            "hitbox-observability",
-        )]))
+        .with_resource(
+            Resource::builder_empty()
+                .with_service_name("hitbox-observability")
+                .build(),
+        )
         .build();
 
     let tracer = tracer_provider.tracer("hitbox-observability");
@@ -175,8 +175,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           - Path: /
         policy:
           Enabled:
-            ttl: 60
-            stale: 30
+            ttl: 60s
+            stale: 30s
         ",
     )?
     .into_endpoint()?;
@@ -192,8 +192,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           - Path: /greet/{name}
         policy:
           Enabled:
-            ttl: 10
-            stale: 5
+            ttl: 10s
+            stale: 5s
         ",
     )?
     .into_endpoint()?;
