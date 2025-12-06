@@ -80,7 +80,7 @@ impl Backend for TestBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> BackendLabel {
+    fn label(&self) -> BackendLabel {
         BackendLabel::new_static("test")
     }
 }
@@ -123,7 +123,7 @@ impl Backend for ErrorBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> BackendLabel {
+    fn label(&self) -> BackendLabel {
         BackendLabel::new_static("error")
     }
 }

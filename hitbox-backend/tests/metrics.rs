@@ -97,7 +97,7 @@ impl Backend for TestBackend {
         &PassthroughCompressor
     }
 
-    fn name(&self) -> BackendLabel {
+    fn label(&self) -> BackendLabel {
         BackendLabel::new_static("test")
     }
 }
@@ -506,7 +506,7 @@ fn test_composition_backend_write_metrics() {
             let l1 = TestBackend::new();
             let l2 = TestBackend::new();
 
-            let composition = CompositionBackend::new(l1, l2, TestOffload).name("comp");
+            let composition = CompositionBackend::new(l1, l2, TestOffload).label("comp");
 
             let key = CacheKey::from_str("test_key", "");
             let data = TestData {
@@ -594,7 +594,7 @@ fn test_composition_backend_read_metrics() {
             let l1 = TestBackend::new();
             let l2 = TestBackend::new();
 
-            let composition = CompositionBackend::new(l1, l2, TestOffload).name("comp");
+            let composition = CompositionBackend::new(l1, l2, TestOffload).label("comp");
 
             let key = CacheKey::from_str("test_key", "");
             let data = TestData {
@@ -695,7 +695,7 @@ fn test_dyn_composition_backend_write_metrics() {
             let l1: Arc<SyncBackend> = Arc::new(TestBackend::new());
             let l2: Arc<SyncBackend> = Arc::new(TestBackend::new());
 
-            let composition = CompositionBackend::new(l1, l2, TestOffload).name("dyncomp");
+            let composition = CompositionBackend::new(l1, l2, TestOffload).label("dyncomp");
 
             let key = CacheKey::from_str("test_key", "");
             let data = TestData {
@@ -782,7 +782,7 @@ fn test_dyn_composition_backend_read_metrics() {
             let l1: Arc<SyncBackend> = Arc::new(TestBackend::new());
             let l2: Arc<SyncBackend> = Arc::new(TestBackend::new());
 
-            let composition = CompositionBackend::new(l1, l2, TestOffload).name("dyncomp");
+            let composition = CompositionBackend::new(l1, l2, TestOffload).label("dyncomp");
 
             let key = CacheKey::from_str("test_key", "");
             let data = TestData {

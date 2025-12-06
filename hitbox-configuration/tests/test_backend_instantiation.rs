@@ -14,7 +14,10 @@ fn test_moka_backend_instantiation() {
             format: ValueSerialization::Json,
             compression: Compression::Disabled,
         },
-        backend: Moka { max_capacity: 1000 },
+        backend: Moka {
+            max_capacity: 1000,
+            label: None,
+        },
     });
 
     let _backend = backend_config

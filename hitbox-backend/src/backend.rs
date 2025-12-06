@@ -33,7 +33,7 @@ pub trait Backend: Sync + Send {
     ///
     /// This is used to build hierarchical source paths like "composition.l1.moka"
     /// when backends are nested within CompositionBackend.
-    fn name(&self) -> BackendLabel {
+    fn label(&self) -> BackendLabel {
         BackendLabel::new_static("backend")
     }
 
@@ -64,8 +64,8 @@ impl Backend for &dyn Backend {
         (*self).remove(key).await
     }
 
-    fn name(&self) -> BackendLabel {
-        (*self).name()
+    fn label(&self) -> BackendLabel {
+        (*self).label()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -95,8 +95,8 @@ impl Backend for Box<dyn Backend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> BackendLabel {
-        (**self).name()
+    fn label(&self) -> BackendLabel {
+        (**self).label()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -126,8 +126,8 @@ impl Backend for Arc<UnsyncBackend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> BackendLabel {
-        (**self).name()
+    fn label(&self) -> BackendLabel {
+        (**self).label()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -157,8 +157,8 @@ impl Backend for Arc<SyncBackend> {
         (**self).remove(key).await
     }
 
-    fn name(&self) -> BackendLabel {
-        (**self).name()
+    fn label(&self) -> BackendLabel {
+        (**self).label()
     }
 
     fn value_format(&self) -> &dyn Format {
@@ -190,7 +190,7 @@ pub trait CacheBackend: Backend {
         T::Cached: Cacheable,
     {
         async move {
-            let backend_label = self.name();
+            let backend_label = self.label();
 
             let read_timer = Timer::new();
             let read_result = self.read(key).await;
@@ -275,7 +275,7 @@ pub trait CacheBackend: Backend {
                 return Ok(());
             }
 
-            let backend_label = self.name();
+            let backend_label = self.label();
             let format = self.value_format();
 
             let serialize_timer = Timer::new();

@@ -112,7 +112,10 @@ async fn test_moka_all_combinations() {
                 format: value_format.clone(),
                 compression: compression.clone(),
             },
-            backend: Moka { max_capacity: 1000 },
+            backend: Moka {
+                max_capacity: 1000,
+                label: None,
+            },
         };
 
         // Skip configurations with unavailable compression features
@@ -144,7 +147,10 @@ async fn test_feoxdb_all_combinations() {
                 format: value_format.clone(),
                 compression: compression.clone(),
             },
-            backend: FeOxDb { path: None },
+            backend: FeOxDb {
+                path: None,
+                label: None,
+            },
         };
 
         // Skip configurations with unavailable compression features
@@ -191,6 +197,7 @@ async fn test_redis_all_combinations() {
             },
             backend: Redis {
                 connection_string: connection_string.clone(),
+                label: None,
             },
         };
 
