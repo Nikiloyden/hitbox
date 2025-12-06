@@ -1,4 +1,10 @@
+use hitbox_backend::Backend as BackendTrait;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use crate::error::ConfigError;
+
+use super::core::Backend;
 
 /// Read policy for composition backends.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -43,4 +49,102 @@ pub struct CompositionPolicyConfig {
     pub write: WritePolicy,
     #[serde(default)]
     pub refill: RefillPolicyConfig,
+}
+
+/// Configuration for composing two backends into a layered cache.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CompositionConfig {
+    /// First-layer cache (typically fast, local)
+    pub l1: Box<Backend>,
+    /// Second-layer cache (typically distributed, persistent)
+    pub l2: Box<Backend>,
+    /// Composition policies
+    #[serde(default)]
+    pub policy: CompositionPolicyConfig,
+}
+
+impl CompositionConfig {
+    pub fn into_backend(self) -> Result<Arc<dyn BackendTrait + Send + 'static>, ConfigError> {
+        use hitbox::offload::OffloadManager;
+        use hitbox_backend::composition::policy::{
+            OptimisticParallelWritePolicy, ParallelReadPolicy, RaceReadPolicy, RaceWritePolicy,
+            RefillPolicy, SequentialReadPolicy, SequentialWritePolicy,
+        };
+        use hitbox_backend::composition::{Compose, CompositionPolicy};
+
+        let l1 = self.l1.into_backend()?;
+        let l2 = self.l2.into_backend()?;
+        let offload = OffloadManager::default();
+
+        let refill = match self.policy.refill {
+            RefillPolicyConfig::Always => RefillPolicy::Always,
+            RefillPolicyConfig::Never => RefillPolicy::Never,
+        };
+
+        match (self.policy.read, self.policy.write) {
+            (ReadPolicy::Sequential, WritePolicy::Sequential) => {
+                let policy = CompositionPolicy::new()
+                    .read(SequentialReadPolicy::new())
+                    .write(SequentialWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Sequential, WritePolicy::OptimisticParallel) => {
+                let policy = CompositionPolicy::new()
+                    .read(SequentialReadPolicy::new())
+                    .write(OptimisticParallelWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Sequential, WritePolicy::Race) => {
+                let policy = CompositionPolicy::new()
+                    .read(SequentialReadPolicy::new())
+                    .write(RaceWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Race, WritePolicy::Sequential) => {
+                let policy = CompositionPolicy::new()
+                    .read(RaceReadPolicy::new())
+                    .write(SequentialWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Race, WritePolicy::OptimisticParallel) => {
+                let policy = CompositionPolicy::new()
+                    .read(RaceReadPolicy::new())
+                    .write(OptimisticParallelWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Race, WritePolicy::Race) => {
+                let policy = CompositionPolicy::new()
+                    .read(RaceReadPolicy::new())
+                    .write(RaceWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Parallel, WritePolicy::Sequential) => {
+                let policy = CompositionPolicy::new()
+                    .read(ParallelReadPolicy::new())
+                    .write(SequentialWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Parallel, WritePolicy::OptimisticParallel) => {
+                let policy = CompositionPolicy::new()
+                    .read(ParallelReadPolicy::new())
+                    .write(OptimisticParallelWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+            (ReadPolicy::Parallel, WritePolicy::Race) => {
+                let policy = CompositionPolicy::new()
+                    .read(ParallelReadPolicy::new())
+                    .write(RaceWritePolicy::new())
+                    .refill(refill);
+                Ok(Arc::new(l1.compose_with(l2, offload, policy)))
+            }
+        }
+    }
 }
