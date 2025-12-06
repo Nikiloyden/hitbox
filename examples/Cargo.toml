@@ -15,10 +15,7 @@ tracing = [
     "dep:opentelemetry-semantic-conventions",
     "dep:tracing-opentelemetry",
 ]
-observability = [
-    "tracing",
-    "dep:metrics-exporter-prometheus",
-]
+observability = ["tracing", "dep:metrics-exporter-prometheus"]
 
 [dev-dependencies]
 hitbox = { path = "../hitbox", features = ["metrics"] }
@@ -53,7 +50,9 @@ erased-serde = "0.4"
 [dependencies]
 opentelemetry = { version = "0.27", optional = true }
 opentelemetry-otlp = { version = "0.27", features = ["tonic"], optional = true }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
+opentelemetry_sdk = { version = "0.27", features = [
+    "rt-tokio",
+], optional = true }
 opentelemetry-semantic-conventions = { version = "0.27", optional = true }
 tracing-opentelemetry = { version = "0.28", optional = true }
 metrics-exporter-prometheus = { version = "0.16", optional = true }
@@ -65,11 +64,6 @@ path = "examples/axum.rs"
 [[example]]
 name = "tower"
 path = "examples/tower.rs"
-
-[[example]]
-name = "tracing_example"
-path = "examples/tracing_example.rs"
-required-features = ["tracing"]
 
 [[example]]
 name = "observability"
