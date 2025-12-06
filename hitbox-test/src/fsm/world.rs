@@ -8,7 +8,7 @@ use cucumber::World;
 use hitbox::CacheContext;
 use hitbox::concurrency::BroadcastConcurrencyManager;
 use hitbox::fsm::CacheFuture;
-use hitbox::policy::{EnabledCacheConfig, PolicyConfig};
+use hitbox::policy::{ConcurrencyLimit, EnabledCacheConfig, PolicyConfig};
 use hitbox_backend::composition::CompositionPolicy;
 use hitbox_backend::composition::policy::RefillPolicy;
 use hitbox_backend::{CacheBackend, CompositionBackend};
@@ -201,7 +201,7 @@ pub struct FsmConfig {
     pub cache_enabled: bool,
     pub request_cacheable: bool,
     pub response_cacheable: bool,
-    pub concurrency: Option<u8>,
+    pub concurrency: Option<ConcurrencyLimit>,
     pub ttl: Option<Duration>,
     pub stale: Option<Duration>,
 }
@@ -292,7 +292,7 @@ impl FsmWorld {
                 cache_enabled: true,
                 request_cacheable: true,
                 response_cacheable: true,
-                concurrency: Some(1),
+                concurrency: ConcurrencyLimit::new(1),
                 ttl: Some(Duration::from_secs(60)),
                 stale: None,
             },

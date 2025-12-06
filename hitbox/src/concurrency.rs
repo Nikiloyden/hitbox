@@ -10,6 +10,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, broadcast};
 use hitbox_core::{CacheValue, CacheableResponse};
 
 use crate::CacheKey;
+use crate::policy::ConcurrencyLimit;
 
 /// Type alias for the in-flight request entry: (broadcast sender, semaphore)
 type InFlightEntry<T> = (broadcast::Sender<Arc<CacheValue<T>>>, Arc<Semaphore>);
@@ -44,7 +45,11 @@ where
     Res: CacheableResponse,
 {
     /// Check if this request should proceed to upstream or await an existing request
-    fn check(&self, cache_key: &CacheKey, concurrency: usize) -> ConcurrencyDecision<Res>;
+    fn check(
+        &self,
+        cache_key: &CacheKey,
+        concurrency: ConcurrencyLimit,
+    ) -> ConcurrencyDecision<Res>;
 
     /// Notify waiting requests that the response is ready and return it back
     fn resolve(&self, cache_key: &CacheKey, cache_value: &CacheValue<Res::Cached>);
@@ -58,7 +63,11 @@ where
     T: ConcurrencyManager<Res>,
     Res: CacheableResponse,
 {
-    fn check(&self, cache_key: &CacheKey, concurrency: usize) -> ConcurrencyDecision<Res> {
+    fn check(
+        &self,
+        cache_key: &CacheKey,
+        concurrency: ConcurrencyLimit,
+    ) -> ConcurrencyDecision<Res> {
         self.as_ref().check(cache_key, concurrency)
     }
 
@@ -79,7 +88,11 @@ impl<Res> ConcurrencyManager<Res> for NoopConcurrencyManager
 where
     Res: CacheableResponse + Send + 'static,
 {
-    fn check(&self, _cache_key: &CacheKey, _concurrency: usize) -> ConcurrencyDecision<Res> {
+    fn check(
+        &self,
+        _cache_key: &CacheKey,
+        _concurrency: ConcurrencyLimit,
+    ) -> ConcurrencyDecision<Res> {
         ConcurrencyDecision::ProceedWithoutPermit
     }
 
@@ -99,13 +112,25 @@ where
 /// - Subsequent requests subscribe to the broadcast channel and wait
 /// - First request to complete broadcasts the result to all waiters
 /// - Waiters reconstruct the response using CacheableResponse::from_cached
-#[derive(Clone)]
 pub struct BroadcastConcurrencyManager<Res>
 where
     Res: CacheableResponse,
 {
     /// Maps cache keys to (broadcast sender, semaphore) for in-flight requests
     in_flight: Arc<DashMap<CacheKey, InFlightEntry<Res::Cached>>>,
+}
+
+// Manual Clone impl to avoid unnecessary Res: Clone bound
+// (the derive would add it even though Arc<DashMap<...>> doesn't need it)
+impl<Res> Clone for BroadcastConcurrencyManager<Res>
+where
+    Res: CacheableResponse,
+{
+    fn clone(&self) -> Self {
+        Self {
+            in_flight: Arc::clone(&self.in_flight),
+        }
+    }
 }
 
 impl<Res> Default for BroadcastConcurrencyManager<Res>
@@ -133,7 +158,13 @@ where
     Res: CacheableResponse + Send + 'static,
     Res::Cached: Send + Sync + Clone + Debug + 'static,
 {
-    fn check(&self, cache_key: &CacheKey, concurrency: usize) -> ConcurrencyDecision<Res> {
+    fn check(
+        &self,
+        cache_key: &CacheKey,
+        concurrency: ConcurrencyLimit,
+    ) -> ConcurrencyDecision<Res> {
+        let concurrency: usize = concurrency.get().into();
+
         // Use entry() API for atomic insert-if-absent to prevent race conditions
         match self.in_flight.entry(cache_key.clone()) {
             Entry::Occupied(entry) => {

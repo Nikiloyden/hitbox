@@ -7,6 +7,7 @@ use axum::{
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
+use crate::handler_state::HandlerState;
 use crate::handlers::{echo_body, get_book, get_book_cover, get_books, post_book};
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug, Serialize, Deserialize, Ord, PartialOrd)]
@@ -128,12 +129,14 @@ impl Database {
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
     database: Arc<Database>,
+    pub handler_state: HandlerState,
 }
 
 impl AppState {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(handler_state: HandlerState) -> Self {
         AppState {
             database: Arc::new(Database::new()),
+            handler_state,
         }
     }
 
@@ -142,7 +145,7 @@ impl AppState {
     }
 }
 
-pub(crate) fn app() -> Router {
+pub(crate) fn app(handler_state: HandlerState) -> Router {
     Router::new()
         .route("/v1/authors/{author_id}/books", get(get_books))
         .route(
@@ -151,5 +154,5 @@ pub(crate) fn app() -> Router {
         )
         .route("/v1/books/{book_id}/covers", get(get_book_cover))
         .route("/echo", any(echo_body))
-        .with_state(AppState::new())
+        .with_state(AppState::new(handler_state))
 }

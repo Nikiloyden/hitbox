@@ -43,12 +43,18 @@ pub enum BackendError {
     CompressionError(#[from] CompressionError),
 }
 
-/// Status of deleting result.
+/// Status of a delete operation.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeleteStatus {
     /// Record successfully deleted.
+    ///
+    /// The `u32` count indicates how many cache layers deleted the key.
+    /// For single backends this is always `1`, but for [`CompositionBackend`]
+    /// the counts are summed (e.g., `Deleted(2)` means both L1 and L2 had the key).
+    ///
+    /// [`CompositionBackend`]: crate::composition::CompositionBackend
     Deleted(u32),
-    /// Record already missing.
+    /// Record was not found in the cache.
     Missing,
 }
 

@@ -1,6 +1,5 @@
 use bytes::Bytes;
 use hitbox_moka::MokaBackend;
-// use hitbox_stretto::StrettoBackend;
 use hitbox_tower::Cache;
 use http_body_util::Full;
 use std::net::SocketAddr;
@@ -22,8 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let inmemory = MokaBackend::builder(10_000).build();
-    // let inmemory = StrettoBackend::builder(10_000_000).finalize().unwrap();
-    // let redis = RedisBackend::builder().build().unwrap();
 
     let _service = tower::ServiceBuilder::new()
         .layer(Cache::builder().backend(inmemory).build())

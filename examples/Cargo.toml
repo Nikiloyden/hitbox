@@ -28,7 +28,6 @@ hitbox-moka = { path = "../hitbox-moka" }
 hitbox-redis = { path = "../hitbox-redis" }
 hitbox-configuration = { path = "../hitbox-configuration" }
 
-# hitbox-stretto = { path = "../hitbox-stretto" }
 actix = "0.13"
 axum = { workspace = true }
 log = "0.4"

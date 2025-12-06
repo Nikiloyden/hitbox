@@ -7,7 +7,6 @@ members = [
     "hitbox-core",
     "hitbox-redis",
     "hitbox-feoxdb",
-    # "hitbox-stretto",
     "hitbox-tower",
     "hitbox-moka",
     # "hitbox-tarantool",

@@ -715,7 +715,7 @@ impl<Req, U> PollCache<Req, U> {
             PolicyConfig::Enabled(EnabledCacheConfig {
                 concurrency: Some(concurrency),
                 ..
-            }) => match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
+            }) => match concurrency_manager.check(&self.cache_key, *concurrency) {
                 ConcurrencyDecision::Proceed(permit) => {
                     self.span.record("concurrency.decision", "proceed");
                     let upstream_future = self.upstream.call(self.request);

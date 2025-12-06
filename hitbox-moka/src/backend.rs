@@ -107,7 +107,6 @@ where
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         let value = self.cache.remove(key).await;
-        // FIXME: No need to have u32 inside Deleted option. We can remove it
         match value {
             Some(_) => Ok(DeleteStatus::Deleted(1)),
             None => Ok(DeleteStatus::Missing),

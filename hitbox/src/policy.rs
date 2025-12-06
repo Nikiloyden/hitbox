@@ -1,6 +1,14 @@
 use std::time::Duration;
 
+use bounded_integer::bounded_integer;
 use serde::{Deserialize, Serialize};
+
+bounded_integer! {
+    /// Concurrency limit for dogpile prevention (1-255).
+    /// A value of 1 means only one request can fetch from upstream at a time.
+    #[repr(u8)]
+    pub struct ConcurrencyLimit { 1..=255 }
+}
 
 /// Policy for handling stale cache entries.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Default)]
@@ -34,7 +42,7 @@ pub struct EnabledCacheConfig {
     #[serde(default)]
     pub policy: CacheBehaviorPolicy,
     /// Concurrency limit for dogpile prevention.
-    pub concurrency: Option<u8>,
+    pub concurrency: Option<ConcurrencyLimit>,
 }
 
 impl Default for EnabledCacheConfig {
