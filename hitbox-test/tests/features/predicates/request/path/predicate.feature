@@ -4,7 +4,7 @@ Feature: Request Path Predicate Functionality
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @request @path

@@ -114,14 +114,6 @@ pub trait Context: Send + Sync {
     /// Consumes boxed self and returns a `CacheContext`.
     fn into_cache_context(self: Box<Self>) -> CacheContext;
 
-    /// Record an FSM state transition.
-    ///
-    /// Default is no-op. `CacheContext` overrides this when `fsm-trace` feature is enabled.
-    #[inline]
-    fn record_state(&mut self, _state: DebugState) {
-        // Default no-op
-    }
-
     /// Merge fields from another context into this one.
     ///
     /// Used by composition backends to combine results from inner backends.
@@ -171,61 +163,6 @@ pub fn finalize_context(ctx: BoxContext) -> CacheContext {
     boxed.into_cache_context()
 }
 
-/// FSM state for debugging/tracing purposes.
-///
-/// This enum represents the states visited during cache FSM execution.
-/// Used with the `fsm-trace` feature to track state transitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "fsm-trace", derive(serde::Serialize, serde::Deserialize))]
-pub enum DebugState {
-    /// Initial state before processing
-    Initial,
-    /// Checking if request should be cached
-    CheckRequestCachePolicy,
-    /// Polling the cache backend
-    PollCache,
-    /// Converting cached value to response (cache hit, no refill)
-    ConvertResponse,
-    /// Handling stale cache hit
-    HandleStale,
-    /// Check concurrency policy
-    CheckConcurrency,
-    /// Concurrent upstream polling with concurrency control
-    ConcurrentPollUpstream,
-    /// Awaiting response from another concurrent request
-    AwaitResponse,
-    /// Polling upstream service
-    PollUpstream,
-    /// Upstream response received
-    UpstreamPolled,
-    /// Checking if response should be cached
-    CheckResponseCachePolicy,
-    /// Updating cache with response (also used for L1 refill from L2 hit)
-    UpdateCache,
-    /// Final state with response
-    Response,
-}
-
-impl std::fmt::Display for DebugState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DebugState::Initial => write!(f, "Initial"),
-            DebugState::CheckRequestCachePolicy => write!(f, "CheckRequestCachePolicy"),
-            DebugState::PollCache => write!(f, "PollCache"),
-            DebugState::ConvertResponse => write!(f, "ConvertResponse"),
-            DebugState::HandleStale => write!(f, "HandleStale"),
-            DebugState::CheckConcurrency => write!(f, "CheckConcurrency"),
-            DebugState::ConcurrentPollUpstream => write!(f, "ConcurrentPollUpstream"),
-            DebugState::AwaitResponse => write!(f, "AwaitResponse"),
-            DebugState::PollUpstream => write!(f, "PollUpstream"),
-            DebugState::UpstreamPolled => write!(f, "UpstreamPolled"),
-            DebugState::CheckResponseCachePolicy => write!(f, "CheckResponseCachePolicy"),
-            DebugState::UpdateCache => write!(f, "UpdateCache"),
-            DebugState::Response => write!(f, "Response"),
-        }
-    }
-}
-
 /// Context information about a cache operation.
 #[derive(Debug, Clone, Default)]
 pub struct CacheContext {
@@ -235,9 +172,6 @@ pub struct CacheContext {
     pub read_mode: ReadMode,
     /// Source of the response.
     pub source: ResponseSource,
-    /// FSM states visited during the cache operation (only with `fsm-trace` feature).
-    #[cfg(feature = "fsm-trace")]
-    pub states: Vec<DebugState>,
 }
 
 impl CacheContext {
@@ -286,11 +220,6 @@ impl Context for CacheContext {
     fn into_cache_context(self: Box<Self>) -> CacheContext {
         *self
     }
-
-    #[cfg(feature = "fsm-trace")]
-    fn record_state(&mut self, state: DebugState) {
-        self.states.push(state);
-    }
 }
 
 #[cfg(test)]
@@ -310,31 +239,12 @@ mod tests {
         println!("BoxContext size: {} bytes", box_ctx_size);
         println!("S4 inline space: {} bytes", s4_space);
 
-        #[cfg(not(feature = "fsm-trace"))]
-        {
-            // CacheContext should fit in S4 inline storage (32 bytes on 64-bit)
-            assert!(
-                cache_ctx_size <= s4_space,
-                "CacheContext ({} bytes) should fit in S4 ({} bytes)",
-                cache_ctx_size,
-                s4_space
-            );
-        }
-
-        #[cfg(feature = "fsm-trace")]
-        {
-            // With fsm-trace, Vec<DebugState> is added. Verify base struct still fits.
-            let vec_size = size_of::<Vec<DebugState>>();
-            let base_size = cache_ctx_size - vec_size;
-            println!("  - Vec<DebugState>: {} bytes", vec_size);
-            println!("  - Base size (without Vec): {} bytes", base_size);
-
-            assert!(
-                base_size <= s4_space,
-                "Base CacheContext ({} bytes) should fit in S4 ({} bytes)",
-                base_size,
-                s4_space
-            );
-        }
+        // CacheContext should fit in S4 inline storage (32 bytes on 64-bit)
+        assert!(
+            cache_ctx_size <= s4_space,
+            "CacheContext ({} bytes) should fit in S4 ({} bytes)",
+            cache_ctx_size,
+            s4_space
+        );
     }
 }

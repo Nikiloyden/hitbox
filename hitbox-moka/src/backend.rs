@@ -29,8 +29,7 @@ impl Expiry<CacheKey, CacheValue<Raw>> for Expiration {
         _updated_at: Instant,
         _duration_until_expiry: Option<Duration>,
     ) -> Option<Duration> {
-        // IMPORTANT: When updating an entry (e.g., after stale-while-revalidate),
-        // we must use the NEW value's expiration time, not the old one.
+        // Use the NEW value's expiration time, not the old one.
         // The default implementation returns `duration_until_expiry` which
         // would preserve the OLD expiration time, causing premature expiration.
         Self::calculate_ttl(value)

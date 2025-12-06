@@ -11,7 +11,7 @@ use crate::{
     CacheContext, CacheStatus, CacheableResponse, ResponseSource, offload::OffloadManager,
 };
 use futures::ready;
-use hitbox_core::{Cacheable, DebugState, Upstream};
+use hitbox_core::{Cacheable, Upstream};
 use pin_project::pin_project;
 use tracing::{Level, Span, debug, span, trace};
 
@@ -338,7 +338,10 @@ where
                         .transition(upstream_result, predicates, this.policy.as_ref())
                         .into_state(&*this.span)
                 }
-                StateProj::CheckResponseCachePolicy { cache_policy, state } => {
+                StateProj::CheckResponseCachePolicy {
+                    cache_policy,
+                    state,
+                } => {
                     let state_ref = state.as_ref().expect(POLL_AFTER_READY_ERROR);
                     trace!(parent: &state_ref.span, "FSM state: CheckResponseCachePolicy");
                     let policy = ready!(cache_policy.poll(cx));
@@ -365,7 +368,6 @@ where
                     let state_ref = response_state.as_ref().expect(POLL_AFTER_READY_ERROR);
                     trace!(parent: &state_ref.span, "FSM state: Response");
                     let mut state = response_state.take().expect(POLL_AFTER_READY_ERROR);
-                    state.ctx.record_state(DebugState::Response);
                     // For cache miss, set source to Upstream.
                     // For hit/stale, the backend has already set the correct source.
                     if state.ctx.status() == CacheStatus::Miss {

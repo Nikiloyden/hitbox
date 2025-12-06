@@ -4,7 +4,7 @@ Feature: Request Body Jq Eq Predicate
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @request @body @jq @eq

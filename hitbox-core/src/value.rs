@@ -1,62 +1,7 @@
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 
-#[cfg(any(test, feature = "test-helpers"))]
-use std::sync::RwLock;
-
 use crate::response::CacheState;
-
-#[cfg(any(test, feature = "test-helpers"))]
-use crate::time_provider::TimeProvider;
-
-// Global mock time provider for testing
-// Available in test builds or when test-helpers feature is enabled
-#[cfg(any(test, feature = "test-helpers"))]
-static MOCK_TIME_PROVIDER: RwLock<Option<Box<dyn TimeProvider>>> = RwLock::new(None);
-
-/// Set a mock time provider for testing.
-///
-/// This function is available in test builds or when the `test-helpers` feature
-/// is enabled. It allows setting a custom time provider that will be used by
-/// `CacheValue::cache_state()` instead of the real system time.
-///
-/// # Examples
-///
-/// ```ignore
-/// use hitbox_core::set_mock_time_provider;
-/// use hitbox_test::time::MockTimeProvider;
-///
-/// let mock_time = MockTimeProvider::new();
-/// set_mock_time_provider(Some(Box::new(mock_time)));
-///
-/// // Now all cache_state calls will use the mock time
-///
-/// // Clear when done
-/// set_mock_time_provider(None);
-/// ```
-#[cfg(any(test, feature = "test-helpers"))]
-pub fn set_mock_time_provider(provider: Option<Box<dyn TimeProvider>>) {
-    let mut mock = MOCK_TIME_PROVIDER.write().unwrap();
-    *mock = provider;
-}
-
-/// Get the current time, using mock time provider if set (test/test-helpers only).
-#[cfg(any(test, feature = "test-helpers"))]
-pub fn current_time() -> DateTime<Utc> {
-    let mock = MOCK_TIME_PROVIDER.read().unwrap();
-    if let Some(provider) = mock.as_ref() {
-        provider.now()
-    } else {
-        Utc::now()
-    }
-}
-
-/// Get the current time (production version).
-#[cfg(not(any(test, feature = "test-helpers")))]
-#[inline]
-pub(crate) fn current_time() -> DateTime<Utc> {
-    Utc::now()
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CacheValue<T> {
@@ -88,7 +33,7 @@ impl<T> CacheValue<T> {
     /// or `None` if there's no expire time or it's already expired.
     pub fn ttl(&self) -> Option<Duration> {
         self.expire.and_then(|expire| {
-            let duration = expire.signed_duration_since(current_time());
+            let duration = expire.signed_duration_since(Utc::now());
             if duration.num_seconds() > 0 {
                 Some(Duration::from_secs(duration.num_seconds() as u64))
             } else {
@@ -106,7 +51,7 @@ impl<T> CacheValue<T> {
     ///
     /// The caller is responsible for converting to Response via `from_cached()` when needed.
     pub fn cache_state(self) -> CacheState<Self> {
-        let now = current_time();
+        let now = Utc::now();
         if let Some(expire) = self.expire
             && expire <= now
         {

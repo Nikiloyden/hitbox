@@ -19,6 +19,8 @@ use hitbox_core::{
 };
 use hitbox_moka::MokaBackend;
 
+use crate::tracing::{SpanCollector, create_span_collector};
+
 // =============================================================================
 // Request / Response types
 // =============================================================================
@@ -200,8 +202,8 @@ pub struct FsmConfig {
     pub request_cacheable: bool,
     pub response_cacheable: bool,
     pub concurrency: Option<u8>,
-    pub ttl: Option<u32>,
-    pub stale: Option<u32>,
+    pub ttl: Option<Duration>,
+    pub stale: Option<Duration>,
 }
 
 // =============================================================================
@@ -251,35 +253,20 @@ impl TestResults {
     pub fn all_responses_eq(&self, expected: u32) -> bool {
         self.responses.iter().all(|(r, _)| r.0 == expected)
     }
-
-    /// Get FSM states from the first response context as strings.
-    /// Only available when `fsm-trace` feature is enabled.
-    #[cfg(feature = "fsm-trace")]
-    pub fn fsm_states(&self) -> Option<Vec<String>> {
-        self.responses
-            .first()
-            .map(|(_, ctx)| ctx.states.iter().map(|s| s.to_string()).collect())
-    }
-
-    /// Get FSM states for all responses as strings.
-    /// Returns a vector of string vectors, one per response.
-    /// Only available when `fsm-trace` feature is enabled.
-    #[cfg(feature = "fsm-trace")]
-    pub fn all_fsm_states(&self) -> Vec<Vec<String>> {
-        self.responses
-            .iter()
-            .map(|(_, ctx)| ctx.states.iter().map(|s| s.to_string()).collect())
-            .collect()
-    }
 }
 
 // =============================================================================
 // FsmWorld - Cucumber World for FSM tests
 // =============================================================================
 
-#[derive(Debug, World)]
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+
+static WORLD_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(World)]
 #[world(init = Self::new)]
 pub struct FsmWorld {
+    pub id: u64,
     pub config: FsmConfig,
     pub cache_state: CacheState,
     pub upstream_delay_ms: u64,
@@ -292,17 +279,21 @@ pub struct FsmWorld {
     pub l1_backend: MokaBackend,
     /// L2 backend (for inspection when composition is enabled)
     pub l2_backend: MokaBackend,
+    /// Span collector for capturing FSM state transitions
+    pub span_collector: SpanCollector,
 }
 
 impl FsmWorld {
     pub fn new() -> Self {
+        let id = WORLD_ID_COUNTER.fetch_add(1, AtomicOrdering::SeqCst);
         Self {
+            id,
             config: FsmConfig {
                 cache_enabled: true,
                 request_cacheable: true,
                 response_cacheable: true,
                 concurrency: Some(1),
-                ttl: Some(60),
+                ttl: Some(Duration::from_secs(60)),
                 stale: None,
             },
             cache_state: CacheState::Empty,
@@ -313,10 +304,15 @@ impl FsmWorld {
             composition: CompositionConfig::default(),
             l1_backend: MokaBackend::builder(100).build(),
             l2_backend: MokaBackend::builder(100).build(),
+            span_collector: create_span_collector(),
         }
     }
 
     pub async fn run_requests(&mut self, num_requests: usize, request_value: u32) {
+        // Note: We no longer clear mock time at start because tests may run in parallel
+        // and this would clear another test's mock time.
+        // Instead, mock time is managed per-scenario in prepopulate_cache.
+
         let upstream_call_count = Arc::new(AtomicUsize::new(0));
 
         let request_pred = Arc::new(ConfigurableRequestPredicate {
@@ -347,6 +343,9 @@ impl FsmWorld {
             self.prepopulate_cache(&backend).await;
         }
 
+        // Clear any previously captured spans
+        self.span_collector.clear();
+
         let mut handles = Vec::new();
 
         for i in 0..num_requests {
@@ -366,6 +365,9 @@ impl FsmWorld {
             let l2 = self.l2_backend.clone();
             let single_backend = self.backend.clone();
 
+            // Clone the dispatch for use in spawned task
+            let dispatch = self.span_collector.dispatch().clone();
+
             let handle = tokio::spawn(async move {
                 if request_delay_ms > 0 && i > 0 {
                     tokio::time::sleep(Duration::from_millis(i as u64 * request_delay_ms)).await;
@@ -373,43 +375,51 @@ impl FsmWorld {
 
                 let upstream = ConfigurableUpstream::new(upstream_call_count, upstream_delay_ms);
 
-                if composition_enabled {
-                    // Use CompositionBackend
-                    let composition = CompositionBackend::new(l1, l2, TestOffload)
-                        .with_policy(CompositionPolicy::new().refill(refill_policy));
-                    let backend = Arc::new(composition);
+                // Run the cache future with span capture enabled
+                tracing::dispatcher::with_default(&dispatch, || {
+                    // Use block_in_place to allow sync closure to await
+                    tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(async {
+                            if composition_enabled {
+                                // Use CompositionBackend
+                                let composition = CompositionBackend::new(l1, l2, TestOffload)
+                                    .with_policy(CompositionPolicy::new().refill(refill_policy));
+                                let backend = Arc::new(composition);
 
-                    let cache_future = CacheFuture::new(
-                        backend,
-                        SimpleRequest(request_value),
-                        upstream,
-                        request_pred,
-                        response_pred,
-                        extractor,
-                        policy,
-                        None, // No offload manager for tests
-                        concurrency_manager,
-                    );
+                                let cache_future = CacheFuture::new(
+                                    backend,
+                                    SimpleRequest(request_value),
+                                    upstream,
+                                    request_pred,
+                                    response_pred,
+                                    extractor,
+                                    policy,
+                                    None, // No offload manager for tests
+                                    concurrency_manager,
+                                );
 
-                    cache_future.await
-                } else {
-                    // Use single MokaBackend
-                    let backend = Arc::new(single_backend);
+                                cache_future.await
+                            } else {
+                                // Use single MokaBackend
+                                let backend = Arc::new(single_backend);
 
-                    let cache_future = CacheFuture::new(
-                        backend,
-                        SimpleRequest(request_value),
-                        upstream,
-                        request_pred,
-                        response_pred,
-                        extractor,
-                        policy,
-                        None, // No offload manager for tests
-                        concurrency_manager,
-                    );
+                                let cache_future = CacheFuture::new(
+                                    backend,
+                                    SimpleRequest(request_value),
+                                    upstream,
+                                    request_pred,
+                                    response_pred,
+                                    extractor,
+                                    policy,
+                                    None, // No offload manager for tests
+                                    concurrency_manager,
+                                );
 
-                    cache_future.await
-                }
+                                cache_future.await
+                            }
+                        })
+                    })
+                })
             });
 
             handles.push(handle);
@@ -429,10 +439,11 @@ impl FsmWorld {
 
     async fn prepopulate_cache(&self, backend: &Arc<MokaBackend>) {
         let mut ctx = CacheContext::default().boxed();
+        let cache_key = CacheKey::from_str("fixed_key", "value");
+
         match &self.cache_state {
             CacheState::Empty => {}
             CacheState::Fresh(value) => {
-                let cache_key = CacheKey::from_str("fixed_key", "value");
                 // Fresh: expires in the future
                 let expire = Some(Utc::now() + chrono::Duration::hours(1));
                 let cache_value = CacheValue::new(*value, expire, None);
@@ -441,7 +452,6 @@ impl FsmWorld {
                     .await;
             }
             CacheState::Stale(value) => {
-                let cache_key = CacheKey::from_str("fixed_key", "value");
                 // Stale: expire is in the future, but stale threshold is in the past
                 // This means: not expired yet, but past the "fresh" period
                 let expire = Some(Utc::now() + chrono::Duration::hours(1));
@@ -452,8 +462,10 @@ impl FsmWorld {
                     .await;
             }
             CacheState::Expired(value) => {
-                let cache_key = CacheKey::from_str("fixed_key", "value");
-                // Expired: both TTL and stale period expired
+                // Note: With moka backend, expired entries are immediately evicted due to TTL=0.
+                // This means the FSM will see a cache miss (None), which also triggers upstream.
+                // Both expired-entry and cache-miss paths lead to upstream being called, so
+                // functionally this tests the same behavior.
                 let expire = Some(Utc::now() - chrono::Duration::hours(1));
                 let stale = Some(Utc::now() - chrono::Duration::minutes(30));
                 let cache_value = CacheValue::new(*value, expire, stale);
@@ -503,6 +515,8 @@ impl FsmWorld {
                     .await;
             }
             CacheState::Expired(value) => {
+                // Note: With moka backend, expired entries are immediately evicted.
+                // See comment in prepopulate_cache for details.
                 let expire = Some(Utc::now() - chrono::Duration::hours(1));
                 let stale = Some(Utc::now() - chrono::Duration::minutes(30));
                 let cache_value = CacheValue::new(*value, expire, stale);
@@ -516,12 +530,13 @@ impl FsmWorld {
     pub async fn cache_contains_value(&self, expected: u32) -> bool {
         let cache_key = CacheKey::from_str("fixed_key", "value");
         let mut ctx = CacheContext::default().boxed();
-        if let Ok(Some(cached)) = self
+        let result = self
             .backend
             .get::<SimpleResponse>(&cache_key, &mut ctx)
-            .await
-        {
-            cached.into_inner() == expected
+            .await;
+        if let Ok(Some(cached)) = result {
+            let inner = cached.into_inner();
+            inner == expected
         } else {
             false
         }
@@ -600,5 +615,19 @@ impl FsmWorld {
 impl Default for FsmWorld {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Debug for FsmWorld {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FsmWorld")
+            .field("id", &self.id)
+            .field("config", &self.config)
+            .field("cache_state", &self.cache_state)
+            .field("upstream_delay_ms", &self.upstream_delay_ms)
+            .field("request_delay_ms", &self.request_delay_ms)
+            .field("results", &self.results)
+            .field("composition", &self.composition)
+            .finish_non_exhaustive()
     }
 }

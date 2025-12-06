@@ -4,7 +4,7 @@ Feature: Response Body Jq Complex Expressions
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @response @body @jq @complex

@@ -4,7 +4,7 @@ Feature: Request Query Cache Key Extractor
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @extractor @query

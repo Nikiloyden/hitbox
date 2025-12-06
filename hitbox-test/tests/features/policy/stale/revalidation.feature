@@ -2,7 +2,6 @@
 Feature: Stale-While-Revalidate (SWR) Policy
 
   Background:
-    Given mock time is enabled
     Given offload revalidation is enabled
 
   @stale @revalidation
@@ -10,8 +9,8 @@ Feature: Stale-While-Revalidate (SWR) Policy
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 120
-        stale: 60
+        ttl: 10s
+        stale: 5s
         policy:
           stale: OffloadRevalidate
       ```
@@ -37,8 +36,8 @@ Feature: Stale-While-Revalidate (SWR) Policy
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
-        stale: 5
+        ttl: 300ms
+        stale: 100ms
         policy:
           stale: OffloadRevalidate
       ```
@@ -52,7 +51,7 @@ Feature: Stale-While-Revalidate (SWR) Policy
     And cache has 1 records
 
     # Second request within stale mark - cache hit
-    When sleep 3
+    When sleep 50ms
     When execute request
       ```hurl
       GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
@@ -61,7 +60,7 @@ Feature: Stale-While-Revalidate (SWR) Policy
     And response header "X-Cache-Status" is "HIT"
 
     # Third request after stale mark but within TTL - returns stale, triggers revalidation
-    When sleep 5
+    When sleep 100ms
     When execute request
       ```hurl
       GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
@@ -85,8 +84,8 @@ Feature: Stale-While-Revalidate (SWR) Policy
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
-        stale: 5
+        ttl: 300ms
+        stale: 100ms
         policy:
           stale: Return
       ```
@@ -100,7 +99,7 @@ Feature: Stale-While-Revalidate (SWR) Policy
     And cache has 1 records
 
     # Second request after stale mark but within TTL
-    When sleep 8
+    When sleep 150ms
     When execute request
       ```hurl
       GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
@@ -124,8 +123,8 @@ Feature: Stale-While-Revalidate (SWR) Policy
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
-        stale: 5
+        ttl: 300ms
+        stale: 100ms
         policy:
           stale: Revalidate
       ```
@@ -139,7 +138,7 @@ Feature: Stale-While-Revalidate (SWR) Policy
     And cache has 1 records
 
     # Second request after stale mark - should revalidate synchronously
-    When sleep 8
+    When sleep 150ms
     When execute request
       ```hurl
       GET http://localhost/v1/authors/robert-sheckley/books/victim-prime
@@ -153,8 +152,8 @@ Feature: Stale-While-Revalidate (SWR) Policy
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 15
-        stale: 5
+        ttl: 200ms
+        stale: 100ms
         policy:
           stale: OffloadRevalidate
       ```
@@ -168,7 +167,7 @@ Feature: Stale-While-Revalidate (SWR) Policy
     And cache has 1 records
 
     # Request after TTL - should be expired
-    When sleep 20
+    When sleep 250ms
     When execute request
       ```hurl
       GET http://localhost/v1/authors/robert-sheckley/books/victim-prime

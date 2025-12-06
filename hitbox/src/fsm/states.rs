@@ -10,14 +10,14 @@ use std::fmt::{self, Debug};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use futures::future::BoxFuture;
 use futures::ready;
 use hitbox_backend::BackendError;
 use hitbox_core::{
-    BoxContext, CachePolicy, CacheValue, Cacheable, CacheablePolicyData, DebugState,
-    EntityPolicyConfig, Predicate, ReadMode, RequestCachePolicy, ResponseCachePolicy, Upstream,
+    BoxContext, CachePolicy, CacheValue, Cacheable, CacheablePolicyData, EntityPolicyConfig,
+    Predicate, ReadMode, RequestCachePolicy, ResponseCachePolicy, Upstream,
 };
 use pin_project::pin_project;
 use tokio::sync::OwnedSemaphorePermit;
@@ -241,7 +241,6 @@ where
     /// - Enabled: create CheckRequestCachePolicy future
     /// - Disabled: call upstream directly
     pub fn transition(mut self, policy: &PolicyConfig) -> InitialTransition<Req, U> {
-        self.ctx.record_state(DebugState::Initial);
         match policy {
             PolicyConfig::Enabled(_) => {
                 // Box the RPITIT future for storage in FSM state
@@ -362,7 +361,7 @@ impl PollUpstream {
     /// This merges the old PollUpstream → UpstreamPolled → next state transitions
     /// into a single step, since UpstreamPolled was a synchronous state.
     pub fn transition<Res, ResP>(
-        mut self,
+        self,
         upstream_result: Res,
         predicates: ResP,
         policy: &PolicyConfig,
@@ -374,15 +373,12 @@ impl PollUpstream {
         // Record upstream duration metric
         crate::metrics::record_upstream_duration(self.upstream_start.elapsed());
 
-        self.ctx.record_state(DebugState::PollUpstream);
-        self.ctx.record_state(DebugState::UpstreamPolled);
-
         match self.cache_key {
             Some(cache_key) => {
                 let entity_config = match policy {
                     PolicyConfig::Enabled(config) => EntityPolicyConfig {
-                        ttl: config.ttl.map(|s| Duration::from_secs(s as u64)),
-                        stale_ttl: config.stale.map(|s| Duration::from_secs(s as u64)),
+                        ttl: config.ttl,
+                        stale_ttl: config.stale,
                     },
                     PolicyConfig::Disabled => EntityPolicyConfig::default(),
                 };
@@ -459,7 +455,7 @@ impl CheckResponseCachePolicy {
 
     /// Transition from CheckResponseCachePolicy state after future completes.
     pub fn transition<Res, B, C>(
-        mut self,
+        self,
         policy: CachePolicy<CacheValue<Res::Cached>, Res>,
         backend: Arc<B>,
         concurrency_manager: &C,
@@ -470,9 +466,11 @@ impl CheckResponseCachePolicy {
         B: CacheBackend + Send + Sync + 'static,
         C: ConcurrencyManager<Res>,
     {
-        self.ctx.record_state(DebugState::CheckResponseCachePolicy);
         // Record cacheable decision to span
-        self.span.record("cache.cacheable", matches!(&policy, CachePolicy::Cacheable(_)));
+        self.span.record(
+            "cache.cacheable",
+            matches!(&policy, CachePolicy::Cacheable(_)),
+        );
 
         match policy {
             CachePolicy::Cacheable(cache_value) => {
@@ -555,9 +553,11 @@ impl<U> CheckRequestCachePolicy<U> {
         U: Upstream<Req, Response = Res>,
         B: CacheBackend + Send + Sync + 'static,
     {
-        self.ctx.record_state(DebugState::CheckRequestCachePolicy);
         // Record cacheable decision to span
-        self.span.record("cache.cacheable", matches!(&policy, CachePolicy::Cacheable(_)));
+        self.span.record(
+            "cache.cacheable",
+            matches!(&policy, CachePolicy::Cacheable(_)),
+        );
         match policy {
             CachePolicy::Cacheable(CacheablePolicyData { key, request }) => {
                 let cache_key_for_get = key.clone();
@@ -643,7 +643,6 @@ impl<Req, U> PollCache<Req, U> {
         U: Upstream<Req, Response = Res>,
         C: ConcurrencyManager<Res>,
     {
-        ctx.record_state(DebugState::PollCache);
         let cached = cache_result
             .inspect_err(|err| warn!("Cache error: {err:?}"))
             .unwrap_or_default();
@@ -703,7 +702,7 @@ impl<Req, U> PollCache<Req, U> {
     /// Helper to transition to upstream based on concurrency policy.
     fn transition_to_upstream<Res, C>(
         mut self,
-        mut ctx: BoxContext,
+        ctx: BoxContext,
         policy: &PolicyConfig,
         concurrency_manager: &C,
     ) -> PollCacheTransition<Res, Req, U>
@@ -712,46 +711,43 @@ impl<Req, U> PollCache<Req, U> {
         U: Upstream<Req, Response = Res>,
         C: ConcurrencyManager<Res>,
     {
-        ctx.record_state(DebugState::CheckConcurrency);
         match policy {
             PolicyConfig::Enabled(EnabledCacheConfig {
                 concurrency: Some(concurrency),
                 ..
-            }) => {
-                ctx.record_state(DebugState::ConcurrentPollUpstream);
-                match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
-                    ConcurrencyDecision::Proceed(permit) => {
-                        self.span.record("concurrency.decision", "proceed");
-                        let upstream_future = self.upstream.call(self.request);
-                        PollCacheTransition::PollUpstream {
-                            upstream_future,
-                            permit: Some(permit),
-                            ctx,
-                            cache_key: self.cache_key,
-                        }
-                    }
-                    ConcurrencyDecision::ProceedWithoutPermit => {
-                        self.span.record("concurrency.decision", "proceed_without_permit");
-                        let upstream_future = self.upstream.call(self.request);
-                        PollCacheTransition::PollUpstream {
-                            upstream_future,
-                            permit: None,
-                            ctx,
-                            cache_key: self.cache_key,
-                        }
-                    }
-                    ConcurrencyDecision::Await(await_future) => {
-                        self.span.record("concurrency.decision", "await");
-                        PollCacheTransition::AwaitResponse {
-                            await_response_future: await_future,
-                            request: self.request,
-                            ctx,
-                            cache_key: self.cache_key,
-                            upstream: self.upstream,
-                        }
+            }) => match concurrency_manager.check(&self.cache_key, *concurrency as usize) {
+                ConcurrencyDecision::Proceed(permit) => {
+                    self.span.record("concurrency.decision", "proceed");
+                    let upstream_future = self.upstream.call(self.request);
+                    PollCacheTransition::PollUpstream {
+                        upstream_future,
+                        permit: Some(permit),
+                        ctx,
+                        cache_key: self.cache_key,
                     }
                 }
-            }
+                ConcurrencyDecision::ProceedWithoutPermit => {
+                    self.span
+                        .record("concurrency.decision", "proceed_without_permit");
+                    let upstream_future = self.upstream.call(self.request);
+                    PollCacheTransition::PollUpstream {
+                        upstream_future,
+                        permit: None,
+                        ctx,
+                        cache_key: self.cache_key,
+                    }
+                }
+                ConcurrencyDecision::Await(await_future) => {
+                    self.span.record("concurrency.decision", "await");
+                    PollCacheTransition::AwaitResponse {
+                        await_response_future: await_future,
+                        request: self.request,
+                        ctx,
+                        cache_key: self.cache_key,
+                        upstream: self.upstream,
+                    }
+                }
+            },
             _ => {
                 self.span.record("concurrency.decision", "disabled");
                 let upstream_future = self.upstream.call(self.request);
@@ -799,12 +795,7 @@ impl ConvertResponse {
     }
 
     /// Transition from ConvertResponse state after future completes.
-    pub fn transition<Res>(
-        self,
-        response: Res,
-        mut ctx: BoxContext,
-    ) -> ConvertResponseTransition<Res> {
-        ctx.record_state(DebugState::ConvertResponse);
+    pub fn transition<Res>(self, response: Res, ctx: BoxContext) -> ConvertResponseTransition<Res> {
         debug!(cache.key = %self.cache_key, "ConvertResponse transition");
         ConvertResponseTransition::Response(Response {
             response,
@@ -882,8 +873,6 @@ impl<Req, U> HandleStale<Req, U> {
         Res: CacheableResponse,
         U: Upstream<Req, Response = Res>,
     {
-        ctx.record_state(DebugState::HandleStale);
-
         let stale_policy = match policy {
             PolicyConfig::Enabled(EnabledCacheConfig { policy, .. }) => policy.stale,
             PolicyConfig::Disabled => StalePolicy::Return,
@@ -992,8 +981,7 @@ impl<Req, U> AwaitResponse<Req, U> {
         U: Upstream<Req, Response = Res>,
         C: ConcurrencyManager<Res>,
     {
-        let mut ctx = self.ctx;
-        ctx.record_state(DebugState::AwaitResponse);
+        let ctx = self.ctx;
 
         match result {
             Ok(response) => AwaitResponseTransition::Response(Response {
@@ -1059,12 +1047,7 @@ impl UpdateCache {
     }
 
     /// Transition from UpdateCache state after future completes.
-    pub fn transition<Res>(
-        self,
-        response: Res,
-        mut ctx: BoxContext,
-    ) -> UpdateCacheTransition<Res> {
-        ctx.record_state(DebugState::UpdateCache);
+    pub fn transition<Res>(self, response: Res, ctx: BoxContext) -> UpdateCacheTransition<Res> {
         UpdateCacheTransition::Response(Response {
             response,
             ctx,

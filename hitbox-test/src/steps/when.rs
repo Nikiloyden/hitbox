@@ -38,14 +38,14 @@ async fn execute_request(world: &mut HitboxWorld, step: &Step) -> Result<(), Err
 }
 
 #[when(expr = "sleep {int}")]
-async fn sleep(world: &mut HitboxWorld, secs: u16) -> Result<(), Error> {
-    // If mock time is available, advance it instead of actually sleeping
-    if let Some(mock_time) = &world.time_state.mock_time {
-        mock_time.advance_secs(secs.into());
-    } else {
-        // Fall back to actual sleep if no mock time is set
-        tokio::time::sleep(tokio::time::Duration::from_secs(secs.into())).await;
-    }
+async fn sleep(_world: &mut HitboxWorld, secs: u16) -> Result<(), Error> {
+    tokio::time::sleep(tokio::time::Duration::from_secs(secs.into())).await;
+    Ok(())
+}
+
+#[when(expr = "sleep {int}ms")]
+async fn sleep_ms(_world: &mut HitboxWorld, millis: u64) -> Result<(), Error> {
+    tokio::time::sleep(tokio::time::Duration::from_millis(millis)).await;
     Ok(())
 }
 
@@ -109,20 +109,6 @@ async fn debug_cache(world: &mut HitboxWorld) -> Result<(), Error> {
             Err(e) => eprintln!("  CacheBackend::get: Err({:?})", e),
         }
     }
-    if let Some(mock_time) = &world.time_state.mock_time {
-        eprintln!("Mock time elapsed: {:?}", mock_time.elapsed());
-        eprintln!("Mock time now: {:?}", mock_time.now());
-        // Also test what the provider returns (what cache_state uses)
-        if let Some(provider) = &world.time_state.mock_provider {
-            use hitbox_core::TimeProvider;
-            eprintln!("MockTimeProvider::now(): {:?}", provider.now());
-        }
-    }
-    // Check what current_time() in hitbox-core actually returns
-    eprintln!(
-        "hitbox_core::current_time(): {:?}",
-        hitbox_core::current_time()
-    );
     eprintln!("Real time now: {:?}", Utc::now());
     eprintln!("=========================");
     Ok(())

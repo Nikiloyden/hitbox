@@ -15,10 +15,9 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
-      | Initial        |
-      | PollUpstream   |
-      | UpstreamPolled |
-      | Response       |
+      | Initial      |
+      | PollUpstream |
+      | Response     |
 
   # =============================================================================
   # Request Non-Cacheable
@@ -36,7 +35,6 @@ Feature: Cache FSM Behavior
       | Initial                 |
       | CheckRequestCachePolicy |
       | PollUpstream            |
-      | UpstreamPolled          |
       | Response                |
 
   # =============================================================================
@@ -55,14 +53,12 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | Response                 |
+      | Initial                                       |
+      | CheckRequestCachePolicy                       |
+      | PollCache {concurrency.decision = disabled}   |
+      | PollUpstream                                  |
+      | CheckResponseCachePolicy                      |
+      | Response                                      |
 
   @fsm @miss @no-dogpile
   Scenario: Cache miss without dogpile prevention - response cacheable
@@ -76,15 +72,13 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | UpdateCache              |
-      | Response                 |
+      | Initial                                       |
+      | CheckRequestCachePolicy                       |
+      | PollCache {concurrency.decision = disabled}   |
+      | PollUpstream                                  |
+      | CheckResponseCachePolicy                      |
+      | UpdateCache                                   |
+      | Response                                      |
 
   # =============================================================================
   # Cache Miss - Dogpile Prevention: Proceed with Permit
@@ -102,15 +96,12 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | ConcurrentPollUpstream   |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | Response                 |
+      | Initial                                      |
+      | CheckRequestCachePolicy                      |
+      | PollCache {concurrency.decision = proceed}   |
+      | PollUpstream                                 |
+      | CheckResponseCachePolicy                     |
+      | Response                                     |
 
   @fsm @miss @dogpile @proceed
   Scenario: Cache miss with permit - response cacheable
@@ -124,16 +115,13 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | ConcurrentPollUpstream   |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | UpdateCache              |
-      | Response                 |
+      | Initial                                      |
+      | CheckRequestCachePolicy                      |
+      | PollCache {concurrency.decision = proceed}   |
+      | PollUpstream                                 |
+      | CheckResponseCachePolicy                     |
+      | UpdateCache                                  |
+      | Response                                     |
 
   # =============================================================================
   # Cache Miss - Dogpile Prevention: Await Broadcast OK
@@ -151,17 +139,14 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states for each request should be:
-      | Request 1                | Request 2                | Request 3                |
-      | Initial                  | Initial                  | Initial                  |
-      | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
-      | PollCache                | PollCache                | PollCache                |
-      | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
-      | ConcurrentPollUpstream   | ConcurrentPollUpstream   | ConcurrentPollUpstream   |
-      | PollUpstream             | AwaitResponse            | AwaitResponse            |
-      | UpstreamPolled           | Response                 | Response                 |
-      | CheckResponseCachePolicy |                          |                          |
-      | UpdateCache              |                          |                          |
-      | Response                 |                          |                          |
+      | Request 1                                    | Request 2                                   | Request 3                                   |
+      | Initial                                      | Initial                                     | Initial                                     |
+      | CheckRequestCachePolicy                      | CheckRequestCachePolicy                     | CheckRequestCachePolicy                     |
+      | PollCache {concurrency.decision = proceed}   | PollCache {concurrency.decision = await}    | PollCache {concurrency.decision = await}    |
+      | PollUpstream                                 | AwaitResponse                               | AwaitResponse                               |
+      | CheckResponseCachePolicy                     | Response                                    | Response                                    |
+      | UpdateCache                                  |                                             |                                             |
+      | Response                                     |                                             |                                             |
 
   # =============================================================================
   # Cache Miss - Dogpile Prevention: Non-cacheable Response (natural channel close)
@@ -179,17 +164,14 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should be empty
     And FSM states for each request should be:
-      | Request 1                | Request 2                | Request 3                |
-      | Initial                  | Initial                  | Initial                  |
-      | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
-      | PollCache                | PollCache                | PollCache                |
-      | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
-      | ConcurrentPollUpstream   | ConcurrentPollUpstream   | ConcurrentPollUpstream   |
-      | PollUpstream             | AwaitResponse            | AwaitResponse            |
-      | UpstreamPolled           | PollUpstream             | PollUpstream             |
-      | CheckResponseCachePolicy | UpstreamPolled           | UpstreamPolled           |
-      | Response                 | CheckResponseCachePolicy | CheckResponseCachePolicy |
-      |                          | Response                 | Response                 |
+      | Request 1                                    | Request 2                                   | Request 3                                   |
+      | Initial                                      | Initial                                     | Initial                                     |
+      | CheckRequestCachePolicy                      | CheckRequestCachePolicy                     | CheckRequestCachePolicy                     |
+      | PollCache {concurrency.decision = proceed}   | PollCache {concurrency.decision = await}    | PollCache {concurrency.decision = await}    |
+      | PollUpstream                                 | AwaitResponse                               | AwaitResponse                               |
+      | CheckResponseCachePolicy                     | PollUpstream                                | PollUpstream                                |
+      | Response                                     | CheckResponseCachePolicy                    | CheckResponseCachePolicy                    |
+      |                                              | Response                                    | Response                                    |
 
   # =============================================================================
   # Cache Miss - Dogpile Prevention: Await Broadcast Closed
@@ -304,14 +286,12 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | Response                 |
+      | Initial                                       |
+      | CheckRequestCachePolicy                       |
+      | PollCache {concurrency.decision = disabled}   |
+      | PollUpstream                                  |
+      | CheckResponseCachePolicy                      |
+      | Response                                      |
 
   @fsm @hit @expired @no-dogpile
   Scenario: Expired cache triggers upstream call - response cacheable
@@ -325,15 +305,13 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | UpdateCache              |
-      | Response                 |
+      | Initial                                       |
+      | CheckRequestCachePolicy                       |
+      | PollCache {concurrency.decision = disabled}   |
+      | PollUpstream                                  |
+      | CheckResponseCachePolicy                      |
+      | UpdateCache                                   |
+      | Response                                      |
 
   # =============================================================================
   # Cache Hit - Expired, Dogpile Prevention: Proceed
@@ -350,15 +328,12 @@ Feature: Cache FSM Behavior
     Then upstream should be called 1 time
     And all responses should equal 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | ConcurrentPollUpstream   |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | Response                 |
+      | Initial                                      |
+      | CheckRequestCachePolicy                      |
+      | PollCache {concurrency.decision = proceed}   |
+      | PollUpstream                                 |
+      | CheckResponseCachePolicy                     |
+      | Response                                     |
 
   @fsm @hit @expired @dogpile @proceed
   Scenario: Expired cache with permit - response cacheable
@@ -372,16 +347,13 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | ConcurrentPollUpstream   |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | UpdateCache              |
-      | Response                 |
+      | Initial                                      |
+      | CheckRequestCachePolicy                      |
+      | PollCache {concurrency.decision = proceed}   |
+      | PollUpstream                                 |
+      | CheckResponseCachePolicy                     |
+      | UpdateCache                                  |
+      | Response                                     |
 
   # =============================================================================
   # Cache Hit - Expired, Dogpile Prevention: Await OK
@@ -399,17 +371,14 @@ Feature: Cache FSM Behavior
     And all responses should equal 100
     And cache should contain value 100
     And FSM states for each request should be:
-      | Request 1                | Request 2               | Request 3               |
-      | Initial                  | Initial                 | Initial                 |
-      | CheckRequestCachePolicy  | CheckRequestCachePolicy | CheckRequestCachePolicy |
-      | PollCache                | PollCache               | PollCache               |
-      | CheckConcurrency         | CheckConcurrency        | CheckConcurrency        |
-      | ConcurrentPollUpstream   | ConcurrentPollUpstream  | ConcurrentPollUpstream  |
-      | PollUpstream             | AwaitResponse           | AwaitResponse           |
-      | UpstreamPolled           | Response                | Response                |
-      | CheckResponseCachePolicy |                         |                         |
-      | UpdateCache              |                         |                         |
-      | Response                 |                         |                         |
+      | Request 1                                    | Request 2                                   | Request 3                                   |
+      | Initial                                      | Initial                                     | Initial                                     |
+      | CheckRequestCachePolicy                      | CheckRequestCachePolicy                     | CheckRequestCachePolicy                     |
+      | PollCache {concurrency.decision = proceed}   | PollCache {concurrency.decision = await}    | PollCache {concurrency.decision = await}    |
+      | PollUpstream                                 | AwaitResponse                               | AwaitResponse                               |
+      | CheckResponseCachePolicy                     | Response                                    | Response                                    |
+      | UpdateCache                                  |                                             |                                             |
+      | Response                                     |                                             |                                             |
 
   # =============================================================================
   # Cache Hit - Expired, Dogpile Prevention: Await Closed
@@ -482,14 +451,11 @@ Feature: Cache FSM Behavior
     Then upstream should be called 3 times
     And all responses should equal 100
     And FSM states for each request should be:
-      | Request 1                | Request 2                | Request 3                |
-      | Initial                  | Initial                  | Initial                  |
-      | CheckRequestCachePolicy  | CheckRequestCachePolicy  | CheckRequestCachePolicy  |
-      | PollCache                | PollCache                | PollCache                |
-      | CheckConcurrency         | CheckConcurrency         | CheckConcurrency         |
-      | ConcurrentPollUpstream   | ConcurrentPollUpstream   | ConcurrentPollUpstream   |
-      | PollUpstream             | PollUpstream             | PollUpstream             |
-      | UpstreamPolled           | UpstreamPolled           | UpstreamPolled           |
-      | CheckResponseCachePolicy | CheckResponseCachePolicy | CheckResponseCachePolicy |
-      | UpdateCache              | UpdateCache              | UpdateCache              |
-      | Response                 | Response                 | Response                 |
+      | Request 1                                    | Request 2                                    | Request 3                                    |
+      | Initial                                      | Initial                                      | Initial                                      |
+      | CheckRequestCachePolicy                      | CheckRequestCachePolicy                      | CheckRequestCachePolicy                      |
+      | PollCache {concurrency.decision = proceed}   | PollCache {concurrency.decision = proceed}   | PollCache {concurrency.decision = proceed}   |
+      | PollUpstream                                 | PollUpstream                                 | PollUpstream                                 |
+      | CheckResponseCachePolicy                     | CheckResponseCachePolicy                     | CheckResponseCachePolicy                     |
+      | UpdateCache                                  | UpdateCache                                  | UpdateCache                                  |
+      | Response                                     | Response                                     | Response                                     |

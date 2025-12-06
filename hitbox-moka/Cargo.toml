@@ -4,17 +4,28 @@ version = "0.1.0"
 edition = "2024"
 rust-version.workspace = true
 
+[features]
+default = []
+# Enable test helpers (mock time provider integration)
+test-helpers = ["hitbox-core/test-helpers"]
+
 [dependencies]
 hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }
 hitbox = { path = "../hitbox", version = "0.1.0" }
+hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-moka = { version = "0.12.10", features = ["future"]  }
+moka = { version = "0.12", features = ["future"] }
 chrono = { workspace = true, features = ["clock"] }
 smol_str = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
-tokio = { workspace = true, features = ["time", "macros", "test-util", "rt-multi-thread"] }
+tokio = { workspace = true, features = [
+    "time",
+    "macros",
+    "test-util",
+    "rt-multi-thread",
+] }

@@ -6,7 +6,7 @@ Local development setup for tracing, metrics, and dashboards.
 
 ```bash
 # Start the observability stack
-docker compose -f docker-compose.observability.yml up -d
+docker compose -f observability/docker-compose.yml up -d
 
 # Run the observability example (includes tracing + metrics)
 cargo run -p hitbox-examples --example observability --features observability
@@ -73,7 +73,7 @@ The following metrics are exposed:
 To include Redis for testing:
 
 ```bash
-docker compose -f docker-compose.observability.yml --profile with-redis up -d
+docker compose -f observability/docker-compose.yml --profile with-redis up -d
 ```
 
 Redis will be available at `localhost:6379`.
@@ -81,17 +81,17 @@ Redis will be available at `localhost:6379`.
 ## Stopping
 
 ```bash
-docker compose -f docker-compose.observability.yml down
+docker compose -f observability/docker-compose.yml down
 
 # To also remove volumes:
-docker compose -f docker-compose.observability.yml down -v
+docker compose -f observability/docker-compose.yml down -v
 ```
 
 ## Prometheus Configuration
 
 The default configuration scrapes the observability example at `host.docker.internal:3002/metrics`.
 
-To configure additional targets, edit `observability/prometheus.yml`:
+To configure additional targets, edit `prometheus.yml`:
 
 ```yaml
 scrape_configs:
@@ -103,7 +103,7 @@ scrape_configs:
 
 ## Grafana Dashboards
 
-A pre-configured Hitbox dashboard is included at `observability/grafana/provisioning/dashboards/json/hitbox.json`.
+A pre-configured Hitbox dashboard is included at `grafana/provisioning/dashboards/json/hitbox.json`.
 
-Additional dashboards can be added to `observability/grafana/provisioning/dashboards/json/`.
+Additional dashboards can be added to `grafana/provisioning/dashboards/json/`.
 They will be automatically loaded on startup.

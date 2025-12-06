@@ -247,8 +247,13 @@ where
                 ctx,
                 cache_key,
             } => {
-                let (state, instrumented_future) =
-                    PollUpstream::with_future(permit, ctx, Some(cache_key), upstream_future, parent);
+                let (state, instrumented_future) = PollUpstream::with_future(
+                    permit,
+                    ctx,
+                    Some(cache_key),
+                    upstream_future,
+                    parent,
+                );
                 State::PollUpstream {
                     upstream_future: instrumented_future,
                     state: Some(state),
@@ -262,7 +267,9 @@ where
                 upstream,
             } => State::AwaitResponse {
                 await_response_future,
-                state: Some(AwaitResponse::new(request, ctx, cache_key, upstream, parent)),
+                state: Some(AwaitResponse::new(
+                    request, ctx, cache_key, upstream, parent,
+                )),
             },
         }
     }
@@ -482,7 +489,9 @@ where
                 cache_key,
             } => State::CheckResponseCachePolicy {
                 cache_policy: cache_policy_future,
-                state: Some(CheckResponseCachePolicy::new(permit, ctx, cache_key, parent)),
+                state: Some(CheckResponseCachePolicy::new(
+                    permit, ctx, cache_key, parent,
+                )),
             },
             PollUpstreamTransition::Response(s) => {
                 State::Response(Some(Response::new(s.response, s.ctx, parent)))

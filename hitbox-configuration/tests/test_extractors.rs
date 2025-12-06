@@ -20,7 +20,7 @@ fn test_extractors_serialize() {
     let config = r"
 policy:
   Enabled:
-    ttl: 5
+    ttl: 5s
 extractors:
   - Method: {}
   - Path: /greet/{name}

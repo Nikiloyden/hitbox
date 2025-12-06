@@ -1,5 +1,4 @@
 use crate::app::app;
-use crate::time::{MockTime, MockTimeProvider, clear_mock_time_provider};
 use hitbox::offload::OffloadManager;
 use hitbox_configuration::Endpoint;
 use hitbox_moka::MokaBackend;
@@ -18,18 +17,11 @@ pub struct State {
     pub response: Option<TestResponse>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct TimeState {
-    pub mock_time: Option<MockTime>,
-    pub mock_provider: Option<MockTimeProvider>,
-}
-
 #[derive(Debug, World)]
 pub struct HitboxWorld {
     pub config: Endpoint<axum::body::Body, axum::body::Body>,
     pub state: State,
     pub backend: MokaBackend,
-    pub time_state: TimeState,
     #[world(default)]
     pub offload_manager: Option<OffloadManager>,
 }
@@ -40,18 +32,7 @@ impl Default for HitboxWorld {
             config: Default::default(),
             state: Default::default(),
             backend: MokaBackend::builder(100).build(),
-            time_state: Default::default(),
             offload_manager: None,
-        }
-    }
-}
-
-impl Drop for HitboxWorld {
-    fn drop(&mut self) {
-        // Clean up global mock time provider when scenario ends
-        // This ensures each scenario has isolated time state
-        if self.time_state.mock_time.is_some() {
-            clear_mock_time_provider();
         }
     }
 }
