@@ -1,6 +1,7 @@
 use crate::fsm::world::{CacheState, FsmWorld};
-use anyhow::Error;
+use anyhow::{Error, anyhow};
 use cucumber::given;
+use hitbox::policy::ConcurrencyLimit;
 use hitbox_backend::composition::policy::RefillPolicy;
 
 // =============================================================================
@@ -105,7 +106,9 @@ fn concurrency_disabled(world: &mut FsmWorld) -> Result<(), Error> {
 
 #[given(expr = "concurrency limit is {int}")]
 fn concurrency_limit(world: &mut FsmWorld, limit: u8) -> Result<(), Error> {
-    world.config.concurrency = Some(limit);
+    let concurrency = ConcurrencyLimit::new(limit)
+        .ok_or_else(|| anyhow!("Invalid concurrency limit: {}", limit))?;
+    world.config.concurrency = Some(concurrency);
     Ok(())
 }
 

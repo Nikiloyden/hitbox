@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::{HitboxWorld, StepExt};
+use crate::handler_state::HandlerName;
 use crate::time::{MockTime, MockTimeProvider};
 use hitbox::offload::OffloadManager;
 use hitbox_configuration::{Request, RequestExtractor, Response, extractors::Extractor};
@@ -108,5 +109,14 @@ fn reset_mock_time(world: &mut HitboxWorld) -> Result<(), Error> {
 #[given(expr = "offload revalidation is enabled")]
 fn enable_offload_revalidation(world: &mut HitboxWorld) -> Result<(), Error> {
     world.offload_manager = Some(OffloadManager::with_defaults());
+    Ok(())
+}
+
+#[given(expr = "upstream delay for {word} is {int}ms")]
+fn upstream_delay(world: &mut HitboxWorld, handler: String, delay_ms: u64) -> Result<(), Error> {
+    let handler_name: HandlerName = handler
+        .parse()
+        .map_err(|_| anyhow!("Unknown handler: {}", handler))?;
+    world.handler_state.set_delay(handler_name, delay_ms);
     Ok(())
 }

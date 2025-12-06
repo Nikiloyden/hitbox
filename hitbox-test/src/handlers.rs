@@ -10,11 +10,17 @@ use http::{HeaderValue, StatusCode};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{AppState, AuthorId, Book, BookId};
+use crate::handler_state::HandlerName;
 
 /// Echo handler that accepts any body and returns 200 with the body echoed back.
 /// Useful for testing body extractors.
 #[axum::debug_handler]
-pub(crate) async fn echo_body(body: Bytes) -> Response {
+pub(crate) async fn echo_body(State(state): State<AppState>, body: Bytes) -> Response {
+    state
+        .handler_state
+        .increment_call_count(HandlerName::EchoBody);
+    state.handler_state.apply_delay(HandlerName::EchoBody).await;
+
     Response::builder()
         .status(StatusCode::OK)
         .header("content-type", "application/octet-stream")
@@ -42,6 +48,11 @@ pub(crate) async fn get_book(
     Path((_author_id, book_id)): Path<(String, String)>,
     Query(query): Query<QueryParams>,
 ) -> Result<Response, StatusCode> {
+    state
+        .handler_state
+        .increment_call_count(HandlerName::GetBook);
+    state.handler_state.apply_delay(HandlerName::GetBook).await;
+
     match book_id.as_str() {
         "invalid-book-id" => Err(StatusCode::INTERNAL_SERVER_ERROR),
         _ => {
@@ -118,6 +129,11 @@ pub(crate) async fn get_books(
     Path(author_id): Path<String>,
     pagination: Query<Pagination>,
 ) -> Result<Json<Vec<Arc<Book>>>, StatusCode> {
+    state
+        .handler_state
+        .increment_call_count(HandlerName::GetBooks);
+    state.handler_state.apply_delay(HandlerName::GetBooks).await;
+
     let mut books = state
         .database()
         .get_books(AuthorId::new(author_id))
@@ -159,6 +175,11 @@ pub(crate) async fn post_book(
     Path((author_id, book_id)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Json<Arc<Book>>, StatusCode> {
+    state
+        .handler_state
+        .increment_call_count(HandlerName::PostBook);
+    state.handler_state.apply_delay(HandlerName::PostBook).await;
+
     // Check if book already exists
     if state
         .database()
@@ -192,9 +213,18 @@ pub(crate) async fn post_book(
 
 #[axum::debug_handler]
 pub(crate) async fn get_book_cover(
+    State(state): State<AppState>,
     Path(book_id): Path<String>,
     Query(query): Query<QueryParams>,
 ) -> Result<Response, StatusCode> {
+    state
+        .handler_state
+        .increment_call_count(HandlerName::GetBookCover);
+    state
+        .handler_state
+        .apply_delay(HandlerName::GetBookCover)
+        .await;
+
     // Try to load cover image from covers directory
     let cover_path = format!("covers/{}.png", book_id);
     let cover_path_fallback = format!("hitbox-test/covers/{}.png", book_id);
