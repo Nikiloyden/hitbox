@@ -203,6 +203,72 @@ let policy = CompositionPolicy::new()
 let cache = moka.compose_with(redis, offload, policy);
 ```
 
+<details>
+<summary>YAML configuration</summary>
+
+```yaml
+# L1 (Moka) + L2 (Redis) composition
+backend:
+  type: Composition
+  l1:
+    type: Moka
+    max_capacity: 10000
+    key:
+      format: Bitcode
+    value:
+      format: Bincode
+  l2:
+    type: Redis
+    connection_string: "redis://localhost:6379"
+    key:
+      format: Bitcode
+    value:
+      format: Bincode
+  policy:
+    read: Sequential
+    write: OptimisticParallel
+    refill: Never
+```
+
+```yaml
+# Nested L1/L2/L3 hierarchy
+backend:
+  type: Composition
+  l1:
+    type: Moka
+    max_capacity: 1000
+    key:
+      format: Bitcode
+    value:
+      format: Bincode
+  l2:
+    type: Composition
+    l1:
+      type: Moka
+      max_capacity: 10000
+      key:
+        format: Bitcode
+      value:
+        format: Bincode
+    l2:
+      type: Redis
+      connection_string: "redis://localhost:6379"
+      key:
+        format: Bitcode
+      value:
+        format: Bincode
+    policy:
+      read: Sequential
+      write: OptimisticParallel
+      refill: Never
+  policy:
+    read: Race
+    write: OptimisticParallel
+    refill: Always
+```
+
+</details>
+
 ## Serialization
 
 Hitbox supports multiple serialization formats via the `Format` trait. Bincode offers the best write throughput and excellent read performance. Rkyv provides zero-copy deserialization for maximum read speed but slower writes. RON balances performance with human-readable output. JSON is slowest but useful for debugging. Choose based on your read/write ratio and debugging needs.

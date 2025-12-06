@@ -1,6 +1,6 @@
 use hitbox_configuration::backend::{
-    Backend, BackendConfig, Compression, KeyFormat, KeySerialization, Moka, ValueFormat,
-    ValueSerialization,
+    Backend, BackendConfig, Compression, KeyFormat, KeySerialization, Moka, ReadPolicy,
+    RefillPolicyConfig, ValueFormat, ValueSerialization, WritePolicy,
 };
 
 #[test]
@@ -99,4 +99,99 @@ fn test_backend_serialize_roundtrip() {
     let deserialized: Backend = serde_saphyr::from_str(&yaml).expect("failed to deserialize");
 
     assert_eq!(backend, deserialized);
+}
+
+#[test]
+fn test_composition_backend_with_default_policies() {
+    let yaml = r#"
+type: Composition
+l1:
+  type: Moka
+  max_capacity: 5000
+  key:
+    format: Bitcode
+  value:
+    format: Json
+l2:
+  type: FeOxDb
+  path: "/tmp/cache.db"
+  key:
+    format: UrlEncoded
+  value:
+    format: Bincode
+"#;
+
+    let backend: Backend = serde_saphyr::from_str(yaml).expect("failed to deserialize");
+
+    match backend {
+        Backend::Composition(config) => {
+            // Check default policies
+            assert_eq!(config.policy.read, ReadPolicy::Sequential);
+            assert_eq!(config.policy.write, WritePolicy::OptimisticParallel);
+            assert_eq!(config.policy.refill, RefillPolicyConfig::Never);
+        }
+        _ => panic!("expected Composition backend"),
+    }
+}
+
+#[test]
+fn test_nested_composition_backend() {
+    let yaml = r#"
+type: Composition
+l1:
+  type: Moka
+  max_capacity: 1000
+  key:
+    format: Bitcode
+  value:
+    format: Bincode
+l2:
+  type: Composition
+  l1:
+    type: Moka
+    max_capacity: 10000
+    key:
+      format: Bitcode
+    value:
+      format: Bincode
+  l2:
+    type: Redis
+    connection_string: "redis://localhost:6379"
+    key:
+      format: Bitcode
+    value:
+      format: Bincode
+  policy:
+    read: Sequential
+    write: OptimisticParallel
+    refill: Never
+policy:
+  read: Race
+  write: OptimisticParallel
+  refill: Always
+"#;
+
+    let backend: Backend = serde_saphyr::from_str(yaml).expect("failed to deserialize");
+
+    match backend {
+        Backend::Composition(config) => {
+            // Check outer policies
+            assert_eq!(config.policy.read, ReadPolicy::Race);
+            assert_eq!(config.policy.refill, RefillPolicyConfig::Always);
+
+            // Check L1 is Moka
+            assert!(matches!(config.l1.as_ref(), Backend::Moka(_)));
+
+            // Check L2 is Composition
+            match config.l2.as_ref() {
+                Backend::Composition(inner) => {
+                    assert!(matches!(inner.l1.as_ref(), Backend::Moka(_)));
+                    assert!(matches!(inner.l2.as_ref(), Backend::Redis(_)));
+                    assert_eq!(inner.policy.read, ReadPolicy::Sequential);
+                }
+                _ => panic!("expected nested Composition as L2"),
+            }
+        }
+        _ => panic!("expected Composition backend"),
+    }
 }
