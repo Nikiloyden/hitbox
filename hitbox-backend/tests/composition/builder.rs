@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[derive(Clone, Debug)]
 struct TestOffload;
 
-impl Offload for TestOffload {
+impl Offload<'static> for TestOffload {
     fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
     where
         F: Future<Output = ()> + Send + 'static,

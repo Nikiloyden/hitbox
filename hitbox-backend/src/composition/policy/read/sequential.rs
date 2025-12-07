@@ -57,7 +57,7 @@ impl CompositionReadPolicy for SequentialReadPolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
         Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Try L1 first
         let (l1_result, l1_ctx) = read_l1(key.clone()).await;

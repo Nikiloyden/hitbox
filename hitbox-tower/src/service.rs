@@ -79,6 +79,7 @@ where
     type Error = S::Error;
     type Future = CacheServiceFuture<
         CacheFuture<
+            'static,
             B,
             CacheableHttpRequest<ReqBody>,
             Result<CacheableHttpResponse<ResBody>, S::Error>,
@@ -87,6 +88,7 @@ where
             C::ResponsePredicate,
             C::Extractor,
             CM,
+            OffloadManager,
         >,
         ResBody,
         S::Error,

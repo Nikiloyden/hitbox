@@ -21,7 +21,7 @@ use hitbox_core::{Offload, SmolStr};
 #[derive(Clone, Debug)]
 struct BenchOffload;
 
-impl Offload for BenchOffload {
+impl Offload<'static> for BenchOffload {
     fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
     where
         F: Future<Output = ()> + Send + 'static,

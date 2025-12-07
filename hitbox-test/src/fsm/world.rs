@@ -183,7 +183,7 @@ impl Upstream<SimpleRequest> for ConfigurableUpstream {
 #[derive(Clone, Debug)]
 pub struct TestOffload;
 
-impl Offload for TestOffload {
+impl Offload<'static> for TestOffload {
     fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
     where
         F: Future<Output = ()> + Send + 'static,
@@ -394,7 +394,7 @@ impl FsmWorld {
                                     response_pred,
                                     extractor,
                                     policy,
-                                    None, // No offload manager for tests
+                                    None::<hitbox_core::DisabledOffload>, // No offload manager for tests
                                     concurrency_manager,
                                 );
 
@@ -411,7 +411,7 @@ impl FsmWorld {
                                     response_pred,
                                     extractor,
                                     policy,
-                                    None, // No offload manager for tests
+                                    None::<hitbox_core::DisabledOffload>, // No offload manager for tests
                                     concurrency_manager,
                                 );
 

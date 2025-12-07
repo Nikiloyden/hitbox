@@ -336,7 +336,7 @@ impl Default for OffloadManager {
     }
 }
 
-impl hitbox_core::Offload for OffloadManager {
+impl hitbox_core::Offload<'static> for OffloadManager {
     fn spawn<F>(&self, kind: impl Into<SmolStr>, future: F)
     where
         F: Future<Output = ()> + Send + 'static,

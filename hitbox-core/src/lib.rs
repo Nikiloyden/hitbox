@@ -20,7 +20,7 @@ pub use context::{
 pub use extractor::Extractor;
 pub use key::{CacheKey, KeyPart, KeyParts};
 pub use label::BackendLabel;
-pub use offload::Offload;
+pub use offload::{DisabledOffload, Offload};
 pub use policy::{CachePolicy, EntityPolicyConfig};
 pub use predicate::{Predicate, PredicateResult};
 pub use request::{CacheablePolicyData, CacheableRequest, RequestCachePolicy};

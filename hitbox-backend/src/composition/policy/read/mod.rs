@@ -96,5 +96,5 @@ pub trait CompositionReadPolicy: Send + Sync {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
         Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
-        O: Offload;
+        O: Offload<'static>;
 }

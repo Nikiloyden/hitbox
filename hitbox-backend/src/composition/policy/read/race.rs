@@ -90,7 +90,7 @@ impl CompositionReadPolicy for RaceReadPolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
         Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Box futures so we can move them to offload if needed
         let l1_fut = Box::pin(read_l1(key.clone()));
