@@ -23,7 +23,7 @@ use crate::{
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
 
 #[pin_project(project = CacheFutureProj)]
-pub struct CacheFuture<'a, B, Req, Res, U, ReqP, ResP, E, C, O>
+pub struct CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O>
 where
     U: Upstream<Req, Response = Res>,
     B: CacheBackend,
@@ -33,7 +33,7 @@ where
     ResP: Predicate<Subject = Res::Subject> + Send + Sync,
     E: Extractor<Subject = Req> + Send + Sync,
     C: ConcurrencyManager<Res>,
-    O: Offload<'a>,
+    O: Offload<'offload>,
 {
     backend: Arc<B>,
     cache_key: Option<CacheKey>,
@@ -50,11 +50,12 @@ where
     start_time: Instant,
     /// Parent span for the entire cache operation (DEBUG level).
     span: Span,
-    /// Phantom lifetime marker.
-    _lifetime: std::marker::PhantomData<&'a ()>,
+    /// Phantom lifetime marker for offload spawning.
+    _lifetime: std::marker::PhantomData<&'offload ()>,
 }
 
-impl<'a, B, Req, Res, U, ReqP, ResP, E, C, O> CacheFuture<'a, B, Req, Res, U, ReqP, ResP, E, C, O>
+impl<'offload, B, Req, Res, U, ReqP, ResP, E, C, O>
+    CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O>
 where
     U: Upstream<Req, Response = Res>,
     B: CacheBackend,
@@ -64,7 +65,7 @@ where
     ResP: Predicate<Subject = Res::Subject> + Send + Sync,
     E: Extractor<Subject = Req> + Send + Sync,
     C: ConcurrencyManager<Res>,
-    O: Offload<'a>,
+    O: Offload<'offload>,
 {
     pub fn new(
         backend: Arc<B>,
@@ -102,9 +103,9 @@ where
     }
 }
 
-impl<'a, B, Req, Res, U, ReqP, ResP, E>
+impl<'offload, B, Req, Res, U, ReqP, ResP, E>
     CacheFuture<
-        'a,
+        'offload,
         B,
         Req,
         Res,
@@ -117,7 +118,7 @@ impl<'a, B, Req, Res, U, ReqP, ResP, E>
     >
 where
     U: Upstream<Req, Response = Res>,
-    U::Future: Send + 'a,
+    U::Future: Send + 'offload,
     B: CacheBackend,
     Res: CacheableResponse,
     Req: CacheableRequest,
@@ -180,11 +181,11 @@ where
     }
 }
 
-impl<'a, B, Req, Res, U, ReqP, ResP, E, C, O> Future
-    for CacheFuture<'a, B, Req, Res, U, ReqP, ResP, E, C, O>
+impl<'offload, B, Req, Res, U, ReqP, ResP, E, C, O> Future
+    for CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O>
 where
-    U: Upstream<Req, Response = Res> + Send + 'a,
-    U::Future: Send + 'a,
+    U: Upstream<Req, Response = Res> + Send + 'offload,
+    U::Future: Send + 'offload,
     B: CacheBackend + Send + Sync + 'static,
     Res: CacheableResponse + Send + 'static,
     Res::Cached: Cacheable + Send,
@@ -193,7 +194,7 @@ where
     ResP: Predicate<Subject = Res::Subject> + Send + Sync + 'static,
     E: Extractor<Subject = Req> + Send + Sync + 'static,
     C: ConcurrencyManager<Res> + 'static,
-    O: Offload<'a>,
+    O: Offload<'offload>,
     // Debug bounds
     Req: Debug,
     Res::Cached: Debug,
