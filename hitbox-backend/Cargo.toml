@@ -51,10 +51,7 @@ default = []
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
 metrics = ["dep:metrics", "dep:lazy_static"]
-rkyv_format = [
-    "dep:rkyv",
-    "hitbox-core/rkyv_format",
-]
+rkyv_format = ["dep:rkyv", "hitbox-core/rkyv_format"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
@@ -69,15 +66,3 @@ smol_str = { workspace = true }
 chrono = { workspace = true }
 serial_test = "3.2"
 futures = { workspace = true }
-
-# [[bench]]
-# name = "key_size"
-# harness = false
-#
-# [[bench]]
-# name = "envelope_serialization"
-# harness = false
-
-[[bench]]
-name = "format_comparison"
-harness = false
