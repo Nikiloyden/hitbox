@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use hitbox_core::{Offload, SmolStr};
+use hitbox_core::{DisabledOffload, Offload, SmolStr};
 
 /// Offload that spawns tasks with tokio::spawn
 #[derive(Clone, Debug)]
@@ -863,7 +863,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None,
+                    None::<DisabledOffload>,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -896,7 +896,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None,
+                    None::<DisabledOffload>,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -980,7 +980,7 @@ fn bench_compare_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1017,7 +1017,7 @@ fn bench_compare_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1243,7 +1243,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None,
+                    None::<DisabledOffload>,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -1276,7 +1276,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None,
+                    None::<DisabledOffload>,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -1360,7 +1360,7 @@ fn bench_compare_body_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1397,7 +1397,7 @@ fn bench_compare_body_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
