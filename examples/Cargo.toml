@@ -8,6 +8,13 @@ autoexamples = false
 
 [features]
 default = []
+tracing = [
+    "dep:opentelemetry",
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry_sdk",
+    "dep:tracing-opentelemetry",
+]
+observability = ["tracing", "dep:metrics-exporter-prometheus"]
 
 [dev-dependencies]
 hitbox = { path = "../hitbox", features = ["metrics"] }
@@ -24,7 +31,7 @@ actix-rt = "2"
 serde = { workspace = true }
 env_logger = "0.11"
 serde_json = { workspace = true }
-serde_yaml = "0.9"
+serde-saphyr = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 tokio = { workspace = true, features = ["full"] }
 tower = { workspace = true, features = ["full"] }
@@ -38,6 +45,16 @@ bytes = { workspace = true }
 lazy_static = "1"
 erased-serde = "0.4"
 
+# OpenTelemetry and metrics (optional, for observability example)
+[dependencies]
+opentelemetry = { version = "0.31", optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"], optional = true }
+opentelemetry_sdk = { version = "0.31", features = [
+    "rt-tokio",
+], optional = true }
+tracing-opentelemetry = { version = "0.32", optional = true }
+metrics-exporter-prometheus = { version = "0.18", optional = true }
+
 [[example]]
 name = "axum"
 path = "examples/axum.rs"
@@ -45,6 +62,11 @@ path = "examples/axum.rs"
 [[example]]
 name = "tower"
 path = "examples/tower.rs"
+
+[[example]]
+name = "observability"
+path = "examples/observability.rs"
+required-features = ["observability"]
 
 # [[example]]
 # name = "dyn-backend"

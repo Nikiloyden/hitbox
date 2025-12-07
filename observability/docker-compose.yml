@@ -1,0 +1,79 @@
+# Observability stack for Hitbox development
+#
+# Usage:
+#   docker compose -f observability/docker-compose.yml up -d
+#
+# Services:
+#   - Jaeger: http://localhost:16686 (UI)
+#   - Prometheus: http://localhost:9090
+#   - Grafana: http://localhost:3000 (admin/admin)
+#
+# OTLP endpoints (for your application):
+#   - gRPC: localhost:4317
+#   - HTTP: localhost:4318
+
+services:
+  # Jaeger v2 - Distributed Tracing
+  # https://www.jaegertracing.io/docs/latest/getting-started/
+  jaeger:
+    image: jaegertracing/jaeger:latest
+    container_name: hitbox-jaeger
+    ports:
+      # Jaeger UI
+      - "16686:16686"
+      # OTLP gRPC receiver
+      - "4317:4317"
+      # OTLP HTTP receiver
+      - "4318:4318"
+    restart: unless-stopped
+
+  # Prometheus - Metrics
+  # https://prometheus.io/docs/prometheus/latest/installation/
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: hitbox-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Grafana - Dashboards
+  # https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/
+  grafana:
+    image: grafana/grafana:latest
+    container_name: hitbox-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - jaeger
+    restart: unless-stopped
+
+  # Redis (for testing with Redis backend)
+  redis:
+    image: redis:7-alpine
+    container_name: hitbox-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    profiles:
+      - with-redis
+
+volumes:
+  prometheus-data:
+  grafana-data:

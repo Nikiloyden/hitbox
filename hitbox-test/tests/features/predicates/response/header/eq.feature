@@ -4,7 +4,7 @@ Feature: Response Header Eq Predicate
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @response @header @eq

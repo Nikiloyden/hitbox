@@ -21,7 +21,7 @@ Feature: Concurrency Control (Dogpile Prevention)
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 300
+        ttl: 300s
         concurrency: 1
       ```
     And upstream delay for GetBook is 35ms
@@ -42,7 +42,7 @@ Feature: Concurrency Control (Dogpile Prevention)
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 300
+        ttl: 300s
         concurrency: 3
       ```
     And upstream delay for GetBook is 35ms
@@ -63,7 +63,7 @@ Feature: Concurrency Control (Dogpile Prevention)
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 300
+        ttl: 300s
         concurrency: 1
       ```
     And upstream delay for GetBook is 15ms
@@ -87,7 +87,7 @@ Feature: Concurrency Control (Dogpile Prevention)
     And hitbox with policy
       ```yaml
       Enabled:
-        ttl: 300
+        ttl: 300s
         concurrency: 1
       ```
     And upstream delay for GetBook is 35ms

@@ -29,7 +29,7 @@ response: []
 extractors: []
 policy:
   Enabled:
-    ttl: 5
+    ttl: 5s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -79,7 +79,7 @@ response: []
 extractors: []
 policy:
   Enabled:
-    ttl: 5
+    ttl: 5s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -101,7 +101,7 @@ request:
     cache: 'true'
 policy:
   Enabled:
-    ttl: 5
+    ttl: 5s
 ";
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_str).unwrap();
 
@@ -272,7 +272,7 @@ request:
     debug: {exists:}
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -303,7 +303,7 @@ request:
     cache: 'true'
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -334,7 +334,7 @@ request:
       - csv
 policy:
   Enabled:
-    ttl: 30
+    ttl: 30s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -360,7 +360,7 @@ request:
         debug: {exists:}
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -387,7 +387,7 @@ request:
     sort: desc
 policy:
   Enabled:
-    ttl: 30
+    ttl: 30s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -410,7 +410,7 @@ request:
     verbose: {exists:}
 policy:
   Enabled:
-    ttl: 30
+    ttl: 30s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -454,7 +454,7 @@ request:
         cache: 'true'
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -481,7 +481,7 @@ request:
     status: active
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -505,7 +505,7 @@ request:
       - completed
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();
@@ -534,7 +534,7 @@ request:
     debug: {exists:}
 policy:
   Enabled:
-    ttl: 60
+    ttl: 60s
 ";
 
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_input).unwrap();

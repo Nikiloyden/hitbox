@@ -2,7 +2,7 @@
 # Unit tests with nextest (fast, parallel)
 test-unit = "nextest run --all --all-features --profile ci"
 
-# BDD/Cucumber tests (integration + FSM, all features including fsm-trace)
+# BDD/Cucumber tests (integration + FSM, all features)
 test-bdd = "test --test bdd --all-features"
 
 # Coverage generation (runs all tests including BDD)

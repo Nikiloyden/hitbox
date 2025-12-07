@@ -35,8 +35,6 @@ default = []
 test-helpers = []
 # Enable rkyv serialization support
 rkyv_format = ["dep:rkyv", "dep:rkyv_dyn"]
-# Enable FSM state tracing for debugging/testing
-fsm-trace = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

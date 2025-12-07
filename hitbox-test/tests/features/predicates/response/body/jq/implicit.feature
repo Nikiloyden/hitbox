@@ -4,7 +4,7 @@ Feature: Response Body Jq Implicit Syntax
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @response @body @jq @implicit

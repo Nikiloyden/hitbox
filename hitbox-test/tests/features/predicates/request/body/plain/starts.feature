@@ -4,7 +4,7 @@ Feature: Request Body Plain Starts Predicate
     Given hitbox with policy
       ```yaml
       Enabled:
-        ttl: 10
+        ttl: 10s
       ```
 
   @request @body @plain @starts

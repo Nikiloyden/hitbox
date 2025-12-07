@@ -12,6 +12,7 @@
 
 use std::future::{Future, Ready};
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use hitbox_core::{Offload, SmolStr};
@@ -221,7 +222,7 @@ fn create_extractors() -> impl hitbox::Extractor<Subject = BenchRequest> + Send 
 /// Create cache policy (enabled with 5 min TTL)
 fn create_policy() -> Arc<PolicyConfig> {
     Arc::new(PolicyConfig::Enabled(EnabledCacheConfig {
-        ttl: Some(300),
+        ttl: Some(Duration::from_secs(300)),
         stale: None,
         policy: Default::default(),
         concurrency: None,

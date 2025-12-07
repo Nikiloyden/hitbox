@@ -1,0 +1,19 @@
+# Prometheus configuration for Hitbox
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Hitbox observability example metrics
+  - job_name: 'hitbox-observability'
+    static_configs:
+      - targets: ['host.docker.internal:3002']
+    metrics_path: '/metrics'
+
+  # Note: Jaeger v2 metrics require additional configuration
+  # See: https://www.jaegertracing.io/docs/latest/deployment/#metrics

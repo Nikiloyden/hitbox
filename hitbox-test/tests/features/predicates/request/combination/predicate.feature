@@ -4,7 +4,7 @@ Feature: Multiple request predicates
     Given hitbox with policy
       ```yaml
         Enabled:
-          ttl: 10
+          ttl: 10s
       ```
 
   @request @header @contains @method @path @query

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use bounded_integer::bounded_integer;
 use serde::{Deserialize, Serialize};
 
@@ -30,10 +32,12 @@ pub struct CacheBehaviorPolicy {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct EnabledCacheConfig {
-    /// Time-to-live in seconds before cache entry becomes stale.
-    pub ttl: Option<u32>,
-    /// Duration in seconds during which stale data can still be served.
-    pub stale: Option<u32>,
+    /// Time-to-live before cache entry becomes stale (e.g., "5s", "500ms", "1m").
+    #[serde(default, with = "humantime_serde")]
+    pub ttl: Option<Duration>,
+    /// Duration during which stale data can still be served (e.g., "5s", "500ms", "1m").
+    #[serde(default, with = "humantime_serde")]
+    pub stale: Option<Duration>,
     /// Cache behavior policy.
     #[serde(default)]
     pub policy: CacheBehaviorPolicy,
@@ -44,7 +48,7 @@ pub struct EnabledCacheConfig {
 impl Default for EnabledCacheConfig {
     fn default() -> Self {
         Self {
-            ttl: Some(5),
+            ttl: Some(Duration::from_secs(5)),
             stale: None,
             policy: CacheBehaviorPolicy::default(),
             concurrency: None,

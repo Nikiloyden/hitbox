@@ -94,15 +94,13 @@ Feature: Composition Backend with L1/L2 Refill
     And L1 should contain value 100
     And L2 should contain value 100
     And FSM states should be:
-      | Initial                  |
-      | CheckRequestCachePolicy  |
-      | PollCache                |
-      | CheckConcurrency         |
-      | PollUpstream             |
-      | UpstreamPolled           |
-      | CheckResponseCachePolicy |
-      | UpdateCache              |
-      | Response                 |
+      | Initial                                       |
+      | CheckRequestCachePolicy                       |
+      | PollCache {concurrency.decision = disabled}   |
+      | PollUpstream                                  |
+      | CheckResponseCachePolicy                      |
+      | UpdateCache                                   |
+      | Response                                      |
 
   # =============================================================================
   # Stale L2 Hit - No Refill for Stale Data
