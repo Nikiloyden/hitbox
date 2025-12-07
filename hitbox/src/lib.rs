@@ -51,8 +51,6 @@ pub use hitbox_core::{
     CacheableRequest, CacheableResponse, EntityPolicyConfig, Extractor, KeyPart, KeyParts,
     Predicate, Raw, RequestCachePolicy, ResponseCachePolicy,
 };
-#[cfg(feature = "rkyv_format")]
-pub use hitbox_core::{RkyvDeserializeError, RkyvDeserializer};
 
 pub mod config;
 pub mod context;

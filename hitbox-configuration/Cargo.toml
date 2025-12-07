@@ -24,7 +24,6 @@ regex = { workspace = true }
 bytes = { workspace = true }
 bytesize = { version = "2", features = ["serde"] }
 rkyv = { workspace = true, optional = true }
-rkyv_typename = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -33,7 +32,7 @@ feoxdb = ["hitbox-feoxdb"]
 redis = ["hitbox-redis"]
 gzip = ["hitbox-backend/gzip"]
 zstd = ["hitbox-backend/zstd"]
-rkyv_format = ["dep:rkyv", "dep:rkyv_typename", "hitbox-backend/rkyv_format"]
+rkyv_format = ["dep:rkyv", "hitbox-backend/rkyv_format"]
 
 
 [dev-dependencies]

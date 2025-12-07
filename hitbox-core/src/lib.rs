@@ -12,8 +12,6 @@ mod upstream;
 mod value;
 
 pub use cacheable::Cacheable;
-#[cfg(feature = "rkyv_format")]
-pub use cacheable::{RkyvDeserializeError, RkyvDeserializer};
 pub use context::{
     BoxContext, CacheContext, CacheStatus, Context, ReadMode, ResponseSource, finalize_context,
 };

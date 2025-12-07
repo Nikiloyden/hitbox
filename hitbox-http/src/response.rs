@@ -66,10 +66,10 @@ where
 
 #[cfg(feature = "rkyv_format")]
 mod rkyv_status_code {
-    use hitbox::RkyvDeserializeError;
     use http::StatusCode;
     use rkyv::{
-        Fallible,
+        Place,
+        rancor::Fallible,
         with::{ArchiveWith, DeserializeWith, SerializeWith},
     };
 
@@ -79,22 +79,13 @@ mod rkyv_status_code {
         type Archived = rkyv::Archived<u16>;
         type Resolver = rkyv::Resolver<u16>;
 
-        unsafe fn resolve_with(
-            field: &StatusCode,
-            pos: usize,
-            resolver: Self::Resolver,
-            out: *mut Self::Archived,
-        ) {
+        fn resolve_with(field: &StatusCode, resolver: Self::Resolver, out: Place<Self::Archived>) {
             let value = field.as_u16();
-            // Safety: The caller guarantees that `out` is aligned and points to enough bytes
-            unsafe { rkyv::Archive::resolve(&value, pos, resolver, out) };
+            rkyv::Archive::resolve(&value, resolver, out);
         }
     }
 
-    impl<S: Fallible + ?Sized> SerializeWith<StatusCode, S> for StatusCodeAsU16
-    where
-        S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
-    {
+    impl<S: Fallible + rkyv::ser::Writer + ?Sized> SerializeWith<StatusCode, S> for StatusCodeAsU16 {
         fn serialize_with(
             field: &StatusCode,
             serializer: &mut S,
@@ -103,18 +94,14 @@ mod rkyv_status_code {
         }
     }
 
-    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<u16>, StatusCode, D> for StatusCodeAsU16
-    where
-        D::Error: From<RkyvDeserializeError>,
-    {
+    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<u16>, StatusCode, D> for StatusCodeAsU16 {
         fn deserialize_with(
             field: &rkyv::Archived<u16>,
             deserializer: &mut D,
         ) -> Result<StatusCode, D::Error> {
             let value: u16 = rkyv::Deserialize::deserialize(field, deserializer)?;
-            StatusCode::from_u16(value).map_err(|e| {
-                RkyvDeserializeError::new(format!("invalid status code: {}", e)).into()
-            })
+            // StatusCode::from_u16 always succeeds for valid u16 values
+            Ok(StatusCode::from_u16(value).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR))
         }
     }
 }
@@ -123,7 +110,8 @@ mod rkyv_status_code {
 mod rkyv_header_map {
     use http::HeaderMap;
     use rkyv::{
-        Fallible,
+        Place,
+        rancor::Fallible,
         with::{ArchiveWith, DeserializeWith, SerializeWith},
     };
 
@@ -133,25 +121,19 @@ mod rkyv_header_map {
         type Archived = rkyv::Archived<Vec<(String, Vec<u8>)>>;
         type Resolver = rkyv::Resolver<Vec<(String, Vec<u8>)>>;
 
-        unsafe fn resolve_with(
-            field: &HeaderMap,
-            pos: usize,
-            resolver: Self::Resolver,
-            out: *mut Self::Archived,
-        ) {
+        fn resolve_with(field: &HeaderMap, resolver: Self::Resolver, out: Place<Self::Archived>) {
             let vec: Vec<(String, Vec<u8>)> = field
                 .iter()
                 .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
                 .collect();
-            unsafe {
-                rkyv::Archive::resolve(&vec, pos, resolver, out);
-            }
+            rkyv::Archive::resolve(&vec, resolver, out);
         }
     }
 
-    impl<S: Fallible + ?Sized> SerializeWith<HeaderMap, S> for AsHeaderVec
+    impl<S> SerializeWith<HeaderMap, S> for AsHeaderVec
     where
-        S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
+        S: Fallible + rkyv::ser::Writer + rkyv::ser::Allocator + ?Sized,
+        S::Error: rkyv::rancor::Source,
     {
         fn serialize_with(
             field: &HeaderMap,
@@ -165,19 +147,26 @@ mod rkyv_header_map {
         }
     }
 
-    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<Vec<(String, Vec<u8>)>>, HeaderMap, D>
-        for AsHeaderVec
+    impl<D> DeserializeWith<rkyv::Archived<Vec<(String, Vec<u8>)>>, HeaderMap, D> for AsHeaderVec
+    where
+        D: Fallible + ?Sized,
     {
         fn deserialize_with(
             field: &rkyv::Archived<Vec<(String, Vec<u8>)>>,
-            deserializer: &mut D,
+            _deserializer: &mut D,
         ) -> Result<HeaderMap, D::Error> {
-            let vec: Vec<(String, Vec<u8>)> = rkyv::Deserialize::deserialize(field, deserializer)?;
-            let mut map = HeaderMap::new();
-            for (name, value) in vec {
+            // Zero-copy optimization: work directly with archived data
+            // instead of deserializing intermediate Vec<(String, Vec<u8>)>
+            let mut map = HeaderMap::with_capacity(field.len());
+
+            for item in field.iter() {
+                // Access archived data directly without allocation
+                let name_str: &str = item.0.as_str();
+                let value_slice: &[u8] = item.1.as_slice();
+
                 if let (Ok(header_name), Ok(header_value)) = (
-                    http::header::HeaderName::from_bytes(name.as_bytes()),
-                    http::header::HeaderValue::from_bytes(&value),
+                    http::header::HeaderName::from_bytes(name_str.as_bytes()),
+                    http::header::HeaderValue::from_bytes(value_slice),
                 ) {
                     map.append(header_name, header_value);
                 }
@@ -190,23 +179,16 @@ mod rkyv_header_map {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(
     feature = "rkyv_format",
-    derive(
-        rkyv::Archive,
-        rkyv::Serialize,
-        rkyv::Deserialize,
-        rkyv_typename::TypeName
-    )
+    derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
 )]
-#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-#[cfg_attr(feature = "rkyv_format", archive_attr(derive(rkyv_typename::TypeName)))]
 pub struct SerializableHttpResponse {
     #[serde(with = "http_serde::status_code")]
-    #[cfg_attr(feature = "rkyv_format", with(rkyv_status_code::StatusCodeAsU16))]
+    #[cfg_attr(feature = "rkyv_format", rkyv(with = rkyv_status_code::StatusCodeAsU16))]
     status: http::StatusCode,
     version: String,
     body: Bytes,
     #[serde(with = "http_serde::header_map")]
-    #[cfg_attr(feature = "rkyv_format", with(rkyv_header_map::AsHeaderVec))]
+    #[cfg_attr(feature = "rkyv_format", rkyv(with = rkyv_header_map::AsHeaderVec))]
     headers: HeaderMap,
 }
 

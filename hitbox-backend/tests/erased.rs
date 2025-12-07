@@ -30,8 +30,6 @@ impl Offload for TestOffload {
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
-#[cfg(feature = "rkyv_format")]
-use rkyv_typename::TypeName;
 
 #[derive(Debug, Clone)]
 struct MemBackend {
@@ -78,10 +76,8 @@ impl CacheBackend for MemBackend {}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(
     feature = "rkyv_format",
-    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    derive(Archive, RkyvSerialize, rkyv::Deserialize)
 )]
-#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct Value {
     name: String,
     index: u8,

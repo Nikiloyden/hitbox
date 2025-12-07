@@ -146,8 +146,6 @@ mod tests {
 
     #[cfg(feature = "rkyv_format")]
     use rkyv::{Archive, Serialize as RkyvSerialize};
-    #[cfg(feature = "rkyv_format")]
-    use rkyv_typename::TypeName;
 
     /// Test offload that spawns tasks with tokio::spawn
     #[derive(Clone, Debug)]
@@ -211,10 +209,8 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[cfg_attr(
         feature = "rkyv_format",
-        derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+        derive(Archive, RkyvSerialize, rkyv::Deserialize)
     )]
-    #[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-    #[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
     struct CachedData {
         value: String,
     }

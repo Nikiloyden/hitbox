@@ -27,14 +27,13 @@ pin-project = { workspace = true }
 
 # Optional rkyv support
 rkyv = { workspace = true, optional = true }
-rkyv_dyn = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enable test helpers for integration testing (used by hitbox-test)
 test-helpers = []
 # Enable rkyv serialization support
-rkyv_format = ["dep:rkyv", "dep:rkyv_dyn"]
+rkyv_format = ["dep:rkyv"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

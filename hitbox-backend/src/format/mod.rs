@@ -6,6 +6,9 @@ use hitbox_core::BoxContext;
 
 use crate::Context;
 
+#[cfg(feature = "rkyv_format")]
+use ::rkyv::{api::high::to_bytes_in, from_bytes, rancor, util::AlignedVec};
+
 // Bincode imports for concrete types (use absolute paths to avoid conflict with our bincode module)
 use ::bincode::config::Configuration;
 use ::bincode::de::DecoderImpl;
@@ -17,8 +20,6 @@ use ::bincode::{Decode, Encode};
 // Import the BincodeVecWriter from bincode module
 use self::bincode::BincodeVecWriter;
 
-#[cfg(feature = "rkyv_format")]
-use hitbox_core::RkyvDeserializer;
 
 mod bincode;
 mod json;
@@ -93,7 +94,7 @@ pub enum FormatTypeId {
 pub enum FormatSerializer<'a> {
     Serde(&'a mut dyn erased_serde::Serializer),
     #[cfg(feature = "rkyv_format")]
-    Rkyv(&'a mut dyn rkyv_dyn::DynSerializer),
+    Rkyv(&'a mut AlignedVec),
     Bincode(&'a mut EncoderImpl<BincodeVecWriter, Configuration>),
 }
 
@@ -111,15 +112,15 @@ impl<'a> FormatSerializer<'a> {
                     .map_err(|e| FormatError::Serialize(Box::new(e)))
             }
             #[cfg(feature = "rkyv_format")]
-            FormatSerializer::Rkyv(ser) => {
-                let rkyv_value = value as &dyn rkyv_dyn::SerializeDyn;
-                rkyv_value
-                    .serialize_dyn(*ser)
-                    .map(|_| ()) // Discard the position, return ()
-                    .map_err(|e| {
-                        // Use dedicated error type to preserve error information
-                        FormatError::Serialize(Box::new(RkyvSerializeError::new(e)))
-                    })
+            FormatSerializer::Rkyv(buffer) => {
+                // Serialize directly into the pre-allocated buffer (no double allocation)
+                // Take ownership temporarily, serialize, then restore the buffer
+                let mut owned_buffer = std::mem::take(*buffer);
+                owned_buffer.clear();
+                let result_buffer = to_bytes_in::<_, rancor::Error>(value, owned_buffer)
+                    .map_err(|e| FormatError::Serialize(Box::new(RkyvSerializeError::new(e))))?;
+                **buffer = result_buffer;
+                Ok(())
             }
             FormatSerializer::Bincode(enc) => {
                 // Use Compat wrapper to bridge serde and bincode
@@ -144,26 +145,15 @@ impl<'a> FormatDeserializer<'a> {
     where
         T: Cacheable,
     {
-        #[cfg(feature = "rkyv_format")]
-        use ::rkyv::Deserialize as _;
-
         match self {
             FormatDeserializer::Serde(deser) => {
                 erased_serde::deserialize(*deser).map_err(|e| FormatError::Deserialize(Box::new(e)))
             }
             #[cfg(feature = "rkyv_format")]
             FormatDeserializer::Rkyv(data) => {
-                // Safely validate and access the archived data
-                // The CheckBytes bound on Cacheable ensures this is safe
-                let archived = ::rkyv::check_archived_root::<T>(data)
+                // Use rkyv 0.8's from_bytes API which validates and deserializes
+                let value: T = from_bytes::<T, rancor::Error>(data)
                     .map_err(|e| FormatError::Deserialize(Box::new(RkyvValidationError::new(e))))?;
-
-                // Deserialize from the validated archive
-                // Unlike Infallible, RkyvDeserializer can produce real errors
-                let value: T = archived
-                    .deserialize(&mut RkyvDeserializer)
-                    .map_err(|e| FormatError::Deserialize(Box::new(e)))?;
-
                 Ok(value)
             }
             FormatDeserializer::Bincode(dec) => {
