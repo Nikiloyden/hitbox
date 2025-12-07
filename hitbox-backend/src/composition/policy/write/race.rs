@@ -93,7 +93,7 @@ impl CompositionWritePolicy for RaceWritePolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
         Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Box futures so we can move them to offload if needed
         let l1_fut = Box::pin(write_l1(key.clone()));

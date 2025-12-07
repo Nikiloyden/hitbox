@@ -84,5 +84,5 @@ pub trait CompositionWritePolicy: Send + Sync {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
         Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
-        O: Offload;
+        O: Offload<'static>;
 }

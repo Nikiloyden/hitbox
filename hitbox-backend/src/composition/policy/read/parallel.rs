@@ -73,7 +73,7 @@ impl CompositionReadPolicy for ParallelReadPolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
         Fut2: Future<Output = (Result<Option<CacheValue<T>>, E>, BoxContext)> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Query both in parallel and wait for both to complete
         let ((l1_result, l1_ctx), (l2_result, l2_ctx)) =

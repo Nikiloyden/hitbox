@@ -66,7 +66,7 @@ impl CompositionWritePolicy for OptimisticParallelWritePolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
         Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Write to both in parallel
         let (l1_result, l2_result) = futures::join!(write_l1(key.clone()), write_l2(key));

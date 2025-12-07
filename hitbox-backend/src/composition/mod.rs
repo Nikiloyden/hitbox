@@ -103,7 +103,7 @@ pub struct CompositionBackend<
 > where
     L1: Backend,
     L2: Backend,
-    O: Offload,
+    O: Offload<'static>,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
 {
@@ -139,7 +139,7 @@ impl<L1, L2, O> CompositionBackend<L1, L2, O, SequentialReadPolicy, OptimisticPa
 where
     L1: Backend,
     L2: Backend,
-    O: Offload,
+    O: Offload<'static>,
 {
     /// Creates a new composition backend with two layers using default policies.
     ///
@@ -183,7 +183,7 @@ impl<L1, L2, O, R, W> CompositionBackend<L1, L2, O, R, W>
 where
     L1: Backend,
     L2: Backend,
-    O: Offload,
+    O: Offload<'static>,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
 {
@@ -343,7 +343,7 @@ impl<L1, L2, O, R, W> Clone for CompositionBackend<L1, L2, O, R, W>
 where
     L1: Clone + Backend,
     L2: Clone + Backend,
-    O: Offload,
+    O: Offload<'static>,
     R: Clone + CompositionReadPolicy,
     W: Clone + CompositionWritePolicy,
 {
@@ -367,7 +367,7 @@ impl<L1, L2, O, R, W> std::fmt::Debug for CompositionBackend<L1, L2, O, R, W>
 where
     L1: std::fmt::Debug + Backend,
     L2: std::fmt::Debug + Backend,
-    O: std::fmt::Debug + Offload,
+    O: std::fmt::Debug + Offload<'static>,
     R: std::fmt::Debug + CompositionReadPolicy,
     W: std::fmt::Debug + CompositionWritePolicy,
 {
@@ -398,7 +398,7 @@ impl<L1, L2, O, R, W> Backend for CompositionBackend<L1, L2, O, R, W>
 where
     L1: Backend + Clone + Send + Sync + 'static,
     L2: Backend + Clone + Send + Sync + 'static,
-    O: Offload,
+    O: Offload<'static>,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
 {
@@ -596,7 +596,7 @@ impl<L1, L2, O, R, W> CacheBackend for CompositionBackend<L1, L2, O, R, W>
 where
     L1: CacheBackend + Clone + Send + Sync + 'static,
     L2: CacheBackend + Clone + Send + Sync + 'static,
-    O: Offload,
+    O: Offload<'static>,
     R: CompositionReadPolicy,
     W: CompositionWritePolicy,
 {
@@ -1014,7 +1014,7 @@ mod tests {
     #[derive(Clone, Debug)]
     struct TestOffload;
 
-    impl Offload for TestOffload {
+    impl Offload<'static> for TestOffload {
         fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
         where
             F: Future<Output = ()> + Send + 'static,

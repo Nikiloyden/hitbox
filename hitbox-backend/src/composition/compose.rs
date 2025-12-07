@@ -80,7 +80,7 @@ pub trait Compose: Backend + Sized {
     fn compose<L2, O>(self, l2: L2, offload: O) -> CompositionBackend<Self, L2, O>
     where
         L2: Backend,
-        O: Offload,
+        O: Offload<'static>,
     {
         CompositionBackend::new(self, l2, offload)
     }
@@ -113,7 +113,7 @@ pub trait Compose: Backend + Sized {
     ) -> CompositionBackend<Self, L2, O, R, W>
     where
         L2: Backend,
-        O: Offload,
+        O: Offload<'static>,
         R: CompositionReadPolicy,
         W: CompositionWritePolicy,
     {
@@ -153,7 +153,7 @@ mod tests {
     #[derive(Clone, Debug)]
     struct TestOffload;
 
-    impl Offload for TestOffload {
+    impl Offload<'static> for TestOffload {
         fn spawn<F>(&self, _kind: impl Into<SmolStr>, future: F)
         where
             F: Future<Output = ()> + Send + 'static,

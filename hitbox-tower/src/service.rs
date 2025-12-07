@@ -1,6 +1,6 @@
 use hitbox::concurrency::ConcurrencyManager;
 use hitbox::config::CacheConfig;
-use hitbox::offload::OffloadManager;
+use hitbox_core::{DisabledOffload, Offload};
 use std::{fmt::Debug, sync::Arc};
 
 use hitbox::{backend::CacheBackend, fsm::CacheFuture};
@@ -12,51 +12,52 @@ use tower::Service;
 use crate::future::CacheServiceFuture;
 use crate::upstream::TowerUpstream;
 
-pub struct CacheService<S, B, C, CM> {
+pub struct CacheService<S, B, C, CM, O = DisabledOffload> {
     upstream: S,
     backend: Arc<B>,
     configuration: C,
-    offload_manager: Option<OffloadManager>,
+    offload: O,
     concurrency_manager: CM,
 }
 
-impl<S, B, C, CM> CacheService<S, B, C, CM> {
+impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
     pub fn new(
         upstream: S,
         backend: Arc<B>,
         configuration: C,
-        offload_manager: Option<OffloadManager>,
+        offload: O,
         concurrency_manager: CM,
     ) -> Self {
         CacheService {
             upstream,
             backend,
             configuration,
-            offload_manager,
+            offload,
             concurrency_manager,
         }
     }
 }
 
-impl<S, B, C, CM> Clone for CacheService<S, B, C, CM>
+impl<S, B, C, CM, O> Clone for CacheService<S, B, C, CM, O>
 where
     S: Clone,
     B: Clone,
     C: Clone,
     CM: Clone,
+    O: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             upstream: self.upstream.clone(),
             backend: self.backend.clone(),
             configuration: self.configuration.clone(),
-            offload_manager: self.offload_manager.clone(),
+            offload: self.offload.clone(),
             concurrency_manager: self.concurrency_manager.clone(),
         }
     }
 }
 
-impl<S, B, C, CM, ReqBody, ResBody> Service<Request<ReqBody>> for CacheService<S, B, C, CM>
+impl<S, B, C, CM, O, ReqBody, ResBody> Service<Request<ReqBody>> for CacheService<S, B, C, CM, O>
 where
     S: Service<Request<BufferedBody<ReqBody>>, Response = Response<ResBody>>
         + Clone
@@ -66,6 +67,7 @@ where
     S::Future: Send,
     C: CacheConfig<CacheableHttpRequest<ReqBody>, CacheableHttpResponse<ResBody>>,
     CM: ConcurrencyManager<Result<CacheableHttpResponse<ResBody>, S::Error>> + Clone + 'static,
+    O: Offload<'static> + Clone,
     // debug bounds
     ReqBody: Debug + HttpBody + Send + 'static,
     ReqBody::Error: Send,
@@ -79,6 +81,7 @@ where
     type Error = S::Error;
     type Future = CacheServiceFuture<
         CacheFuture<
+            'static,
             B,
             CacheableHttpRequest<ReqBody>,
             Result<CacheableHttpResponse<ResBody>, S::Error>,
@@ -87,6 +90,7 @@ where
             C::ResponsePredicate,
             C::Extractor,
             CM,
+            O,
         >,
         ResBody,
         S::Error,
@@ -119,7 +123,7 @@ where
             configuration.response_predicates(),
             configuration.extractors(),
             Arc::new(configuration.policy().clone()),
-            self.offload_manager.clone(),
+            self.offload.clone(),
             self.concurrency_manager.clone(),
         );
 

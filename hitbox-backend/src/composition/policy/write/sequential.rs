@@ -83,7 +83,7 @@ impl CompositionWritePolicy for SequentialWritePolicy {
         F2: FnOnce(CacheKey) -> Fut2 + Send,
         Fut1: Future<Output = Result<(), BackendError>> + Send + 'static,
         Fut2: Future<Output = Result<(), BackendError>> + Send + 'static,
-        O: Offload,
+        O: Offload<'static>,
     {
         // Write to L1 first
         match write_l1(key.clone()).await {
