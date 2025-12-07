@@ -9,7 +9,7 @@ use std::{
 
 use crate::{CacheContext, CacheStatus, CacheableResponse, ResponseSource};
 use futures::ready;
-use hitbox_core::{Cacheable, Offload, Upstream};
+use hitbox_core::{Cacheable, DisabledOffload, Offload, Upstream};
 use pin_project::pin_project;
 use tracing::{Level, Span, debug, span, trace};
 
@@ -23,7 +23,7 @@ use crate::{
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
 
 #[pin_project(project = CacheFutureProj)]
-pub struct CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O>
+pub struct CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O = DisabledOffload>
 where
     U: Upstream<Req, Response = Res>,
     B: CacheBackend,
@@ -41,8 +41,9 @@ where
     state: State<Res, Req, U, ReqP, E>,
     response_predicates: Option<ResP>,
     policy: Arc<crate::policy::PolicyConfig>,
-    /// Optional offload for background revalidation (SWR).
-    offload: Option<O>,
+    /// Offload for background revalidation (SWR).
+    /// Use `DisabledOffload` (the default) to disable background revalidation.
+    offload: O,
     /// Whether this is a background revalidation task.
     is_revalidation: bool,
     concurrency_manager: C,
@@ -75,7 +76,7 @@ where
         response_predicates: ResP,
         key_extractors: E,
         policy: Arc<crate::policy::PolicyConfig>,
-        offload: Option<O>,
+        offload: O,
         concurrency_manager: C,
     ) -> Self {
         let parent_span = span!(Level::DEBUG, "hitbox.cache");
@@ -170,7 +171,7 @@ where
             response_predicates: Some(response_predicates),
             policy,
             // Revalidation tasks don't spawn further revalidation
-            offload: None,
+            offload: DisabledOffload,
             is_revalidation: true,
             // Revalidation tasks don't need concurrency control
             concurrency_manager: NoopConcurrencyManager,
@@ -279,48 +280,31 @@ where
                     let result = handle_stale_state.transition(response, ctx, this.policy.as_ref());
 
                     // Handle offload revalidation if requested
-                    if let Some(offload_data) = result.offload_data {
-                        if let Some(offload) = this.offload.as_ref() {
-                            if let Some(response_predicates) = this.response_predicates.take() {
-                                let backend = this.backend.clone();
-                                let policy = this.policy.clone();
-                                let cache_key = offload_data.cache_key;
-                                let request = offload_data.request;
-                                let upstream = offload_data.upstream;
+                    // Note: DisabledOffload::spawn is a no-op, so this does nothing when offload is disabled
+                    if let Some(offload_data) = result.offload_data
+                        && let Some(response_predicates) = this.response_predicates.take()
+                    {
+                        let backend = this.backend.clone();
+                        let policy = this.policy.clone();
+                        let cache_key = offload_data.cache_key;
+                        let request = offload_data.request;
+                        let upstream = offload_data.upstream;
 
-                                // Create revalidation future using the existing FSM
-                                // ReqP and E are phantom types in revalidation path
-                                let revalidate_future: CacheFuture<
-                                    '_,
-                                    _,
-                                    _,
-                                    _,
-                                    _,
-                                    ReqP,
-                                    _,
-                                    E,
-                                    _,
-                                    _,
-                                > = CacheFuture::revalidate(
-                                    backend,
-                                    cache_key,
-                                    request,
-                                    upstream,
-                                    response_predicates,
-                                    policy,
-                                );
-
-                                offload.spawn("revalidate", async move {
-                                    let _ = revalidate_future.await;
-                                });
-                            }
-                        } else {
-                            tracing::warn!(
-                                "StalePolicy::OffloadRevalidate is configured but \
-                                 offload is not provided. \
-                                 Falling back to returning stale data without revalidation."
+                        // Create revalidation future using the existing FSM
+                        // ReqP and E are phantom types in revalidation path
+                        let revalidate_future: CacheFuture<'_, _, _, _, _, ReqP, _, E, _, _> =
+                            CacheFuture::revalidate(
+                                backend,
+                                cache_key,
+                                request,
+                                upstream,
+                                response_predicates,
+                                policy,
                             );
-                        }
+
+                        this.offload.spawn("revalidate", async move {
+                            let _ = revalidate_future.await;
+                        });
                     }
 
                     result.transition.into_state(&*this.span)

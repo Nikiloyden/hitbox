@@ -47,20 +47,24 @@ impl HitboxWorld {
         let concurrency_manager: BroadcastConcurrencyManager<_> =
             BroadcastConcurrencyManager::new();
 
-        let mut cache_builder = Cache::builder()
-            .backend(self.backend.clone())
-            .config(self.config.clone())
-            .concurrency_manager(concurrency_manager);
-
-        if let Some(manager) = &self.offload_manager {
-            cache_builder = cache_builder.offload_manager(manager.clone());
-        }
-
-        let cache = cache_builder.build();
-
-        let router = app(self.handler_state.clone()).layer(cache);
-
-        let server = TestServer::new(router)?;
+        let server = if let Some(manager) = &self.offload_manager {
+            let cache = Cache::builder()
+                .backend(self.backend.clone())
+                .config(self.config.clone())
+                .concurrency_manager(concurrency_manager)
+                .offload(manager.clone())
+                .build();
+            let router = app(self.handler_state.clone()).layer(cache);
+            TestServer::new(router)?
+        } else {
+            let cache = Cache::builder()
+                .backend(self.backend.clone())
+                .config(self.config.clone())
+                .concurrency_manager(concurrency_manager)
+                .build();
+            let router = app(self.handler_state.clone()).layer(cache);
+            TestServer::new(router)?
+        };
         let path = request_spec.url.path();
         let mut request = server.method(
             http::Method::from_str(request_spec.method.0.to_string().as_str())?,

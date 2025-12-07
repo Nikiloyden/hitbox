@@ -394,7 +394,7 @@ impl FsmWorld {
                                     response_pred,
                                     extractor,
                                     policy,
-                                    None::<hitbox_core::DisabledOffload>, // No offload manager for tests
+                                    hitbox_core::DisabledOffload, // No offload for tests
                                     concurrency_manager,
                                 );
 
@@ -411,7 +411,7 @@ impl FsmWorld {
                                     response_pred,
                                     extractor,
                                     policy,
-                                    None::<hitbox_core::DisabledOffload>, // No offload manager for tests
+                                    hitbox_core::DisabledOffload, // No offload for tests
                                     concurrency_manager,
                                 );
 

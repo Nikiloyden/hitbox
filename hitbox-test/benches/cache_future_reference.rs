@@ -863,7 +863,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None::<DisabledOffload>,
+                    DisabledOffload,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -896,7 +896,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None::<DisabledOffload>,
+                    DisabledOffload,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -980,7 +980,7 @@ fn bench_compare_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, DisabledOffload, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1017,7 +1017,7 @@ fn bench_compare_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, DisabledOffload, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1243,7 +1243,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None::<DisabledOffload>,
+                    DisabledOffload,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -1276,7 +1276,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
                     res_pred,
                     ext,
                     policy,
-                    None::<DisabledOffload>,
+                    DisabledOffload,
                     NoopConcurrencyManager,
                 );
                 std::hint::black_box(cache_future.await)
@@ -1360,7 +1360,7 @@ fn bench_compare_body_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, DisabledOffload, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
@@ -1397,7 +1397,7 @@ fn bench_compare_body_cache_future_miss(c: &mut Criterion) {
                 let request = CacheableHttpRequest::from_request(request);
                 let upstream = MockUpstream;
                 let cache_future =
-                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, None::<DisabledOffload>, NoopConcurrencyManager);
+                    CacheFuture::new(backend, request, upstream, req_pred, res_pred, ext, policy, DisabledOffload, NoopConcurrencyManager);
                 std::hint::black_box(cache_future.await)
             }
         });
