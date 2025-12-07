@@ -1,0 +1,34 @@
+[package]
+edition = "2024"
+rust-version.workspace = true
+name = "hitbox-reqwest"
+version = "0.1.0"
+authors = ["Hitbox team <mail@hitbox.rs>"]
+license = "MIT"
+description = "Hitbox cache integration for reqwest HTTP client via reqwest-middleware"
+repository = "https://github.com/hit-box/hitbox/"
+categories = [
+    "caching",
+    "asynchronous",
+    "network-programming",
+    "web-programming",
+]
+keywords = ["cache", "reqwest", "async", "http", "hitbox", "middleware"]
+
+[dependencies]
+hitbox = { path = "../hitbox", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox-http = { path = "../hitbox-http", version = "0.1" }
+
+reqwest = { version = "0.12", default-features = false }
+reqwest-middleware = "0.4"
+async-trait = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+hitbox-moka = { path = "../hitbox-moka", version = "0.1" }

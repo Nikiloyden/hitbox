@@ -8,6 +8,7 @@ members = [
     "hitbox-redis",
     "hitbox-feoxdb",
     "hitbox-tower",
+    "hitbox-reqwest",
     "hitbox-moka",
     # "hitbox-tarantool",
     "hitbox-test",
