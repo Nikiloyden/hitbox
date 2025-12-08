@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use hitbox::backend::CacheBackend;
-use hitbox::concurrency::NoopConcurrencyManager;
+use hitbox::concurrency::{ConcurrencyManager, NoopConcurrencyManager};
 use hitbox::config::CacheConfig;
 use hitbox::context::CacheStatus;
 use hitbox::fsm::CacheFuture;
 use hitbox_core::DisabledOffload;
-use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
+use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse, HttpEndpoint};
 use http::Extensions;
 use http::header::HeaderValue;
 use reqwest::{Request, Response};
@@ -26,35 +26,52 @@ use crate::upstream::{ReqwestUpstream, buffered_body_to_reqwest};
 ///
 /// * `B` - Cache backend (e.g., MokaBackend, RedisBackend)
 /// * `C` - Configuration implementing `CacheConfig`
-pub struct CacheMiddleware<B, C> {
+/// * `CM` - Concurrency manager (e.g., NoopConcurrencyManager, BroadcastConcurrencyManager)
+pub struct CacheMiddleware<B, C, CM> {
     backend: Arc<B>,
     configuration: C,
+    concurrency_manager: CM,
 }
 
-impl<B, C> CacheMiddleware<B, C> {
-    /// Create a new cache middleware.
-    pub fn new(backend: Arc<B>, configuration: C) -> Self {
+impl<B, C, CM> CacheMiddleware<B, C, CM> {
+    /// Create a new cache middleware with a custom concurrency manager.
+    pub fn new(backend: Arc<B>, configuration: C, concurrency_manager: CM) -> Self {
         Self {
             backend,
             configuration,
+            concurrency_manager,
         }
     }
 }
 
-impl<B, C> Clone for CacheMiddleware<B, C>
+impl CacheMiddleware<(), HttpEndpoint, NoopConcurrencyManager> {
+    /// Create a new builder for cache middleware.
+    ///
+    /// The builder starts with `HttpEndpoint` as the default configuration
+    /// and `NoopConcurrencyManager` for concurrency control.
+    /// Use `.config()` to set a custom configuration and
+    /// `.concurrency_manager()` to enable dogpile prevention.
+    pub fn builder() -> CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+        CacheMiddlewareBuilder::new()
+    }
+}
+
+impl<B, C, CM> Clone for CacheMiddleware<B, C, CM>
 where
     C: Clone,
+    CM: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             backend: self.backend.clone(),
             configuration: self.configuration.clone(),
+            concurrency_manager: self.concurrency_manager.clone(),
         }
     }
 }
 
 #[async_trait]
-impl<B, C> Middleware for CacheMiddleware<B, C>
+impl<B, C, CM> Middleware for CacheMiddleware<B, C, CM>
 where
     B: CacheBackend + Send + Sync + 'static,
     C: CacheConfig<CacheableHttpRequest<reqwest::Body>, CacheableHttpResponse<reqwest::Body>>
@@ -65,6 +82,11 @@ where
     C::RequestPredicate: Clone + Send + Sync + 'static,
     C::ResponsePredicate: Clone + Send + Sync + 'static,
     C::Extractor: Clone + Send + Sync + 'static,
+    CM: ConcurrencyManager<Result<CacheableHttpResponse<reqwest::Body>>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     async fn handle(
         &self,
@@ -96,7 +118,7 @@ where
             C::RequestPredicate,
             C::ResponsePredicate,
             C::Extractor,
-            NoopConcurrencyManager,
+            CM,
             DisabledOffload,
         > = CacheFuture::new(
             self.backend.clone(),
@@ -107,7 +129,7 @@ where
             self.configuration.extractors(),
             Arc::new(self.configuration.policy().clone()),
             None::<DisabledOffload>,
-            NoopConcurrencyManager,
+            self.concurrency_manager.clone(),
         );
 
         // Execute cache future
@@ -135,5 +157,77 @@ where
 
         // Convert to reqwest::Response
         Ok(http_response.into())
+    }
+}
+
+/// Builder for `CacheMiddleware`.
+pub struct CacheMiddlewareBuilder<B, C, CM> {
+    backend: Option<Arc<B>>,
+    configuration: C,
+    concurrency_manager: CM,
+}
+
+impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
+    /// Set the cache backend.
+    pub fn backend<NB>(self, backend: NB) -> CacheMiddlewareBuilder<NB, C, CM>
+    where
+        NB: CacheBackend,
+    {
+        CacheMiddlewareBuilder {
+            backend: Some(Arc::new(backend)),
+            configuration: self.configuration,
+            concurrency_manager: self.concurrency_manager,
+        }
+    }
+
+    /// Set the cache configuration.
+    pub fn config<NC>(self, configuration: NC) -> CacheMiddlewareBuilder<B, NC, CM> {
+        CacheMiddlewareBuilder {
+            backend: self.backend,
+            configuration,
+            concurrency_manager: self.concurrency_manager,
+        }
+    }
+
+    /// Set the concurrency manager.
+    pub fn concurrency_manager<NCM>(
+        self,
+        concurrency_manager: NCM,
+    ) -> CacheMiddlewareBuilder<B, C, NCM> {
+        CacheMiddlewareBuilder {
+            backend: self.backend,
+            configuration: self.configuration,
+            concurrency_manager,
+        }
+    }
+
+    /// Build the cache middleware.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no backend has been set.
+    pub fn build(self) -> CacheMiddleware<B, C, CM> {
+        CacheMiddleware {
+            backend: self.backend.expect("backend is required"),
+            configuration: self.configuration,
+            concurrency_manager: self.concurrency_manager,
+        }
+    }
+}
+
+impl CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+    /// Create a new builder with default configuration.
+    pub fn new() -> Self {
+        Self {
+            backend: None,
+            configuration: HttpEndpoint::default(),
+            concurrency_manager: NoopConcurrencyManager,
+        }
+    }
+}
+
+impl Default for CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+    fn default() -> Self {
+        Self::new()
     }
 }
