@@ -20,7 +20,6 @@ use ::bincode::{Decode, Encode};
 // Import the BincodeVecWriter from bincode module
 use self::bincode::BincodeVecWriter;
 
-
 mod bincode;
 mod json;
 #[cfg(feature = "rkyv_format")]

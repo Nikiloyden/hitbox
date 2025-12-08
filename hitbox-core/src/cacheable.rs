@@ -18,13 +18,19 @@ impl<T> Cacheable for T where T: Serialize + DeserializeOwned + Send + Sync {}
 /// - Archived type must implement CheckBytes for validation
 /// - Archived type must implement Deserialize for from_bytes
 #[cfg(feature = "rkyv_format")]
-pub trait Cacheable: Serialize
+pub trait Cacheable:
+    Serialize
     + DeserializeOwned
     + Send
     + Sync
-    + rkyv::Archive<Archived: for<'a> rkyv::bytecheck::CheckBytes<rkyv::api::high::HighValidator<'a, rkyv::rancor::Error>>
-                             + rkyv::Deserialize<Self, rkyv::rancor::Strategy<rkyv::de::Pool, rkyv::rancor::Error>>>
-    + for<'a> rkyv::Serialize<
+    + rkyv::Archive<
+        Archived: for<'a> rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'a, rkyv::rancor::Error>,
+        > + rkyv::Deserialize<
+            Self,
+            rkyv::rancor::Strategy<rkyv::de::Pool, rkyv::rancor::Error>,
+        >,
+    > + for<'a> rkyv::Serialize<
         rkyv::api::high::HighSerializer<
             rkyv::util::AlignedVec,
             rkyv::ser::allocator::ArenaHandle<'a>,
@@ -37,19 +43,15 @@ pub trait Cacheable: Serialize
 #[cfg(feature = "rkyv_format")]
 impl<T> Cacheable for T
 where
-    T: Serialize
-        + DeserializeOwned
-        + Send
-        + Sync
-        + rkyv::Archive,
+    T: Serialize + DeserializeOwned + Send + Sync + rkyv::Archive,
     T::Archived: for<'a> rkyv::bytecheck::CheckBytes<rkyv::api::high::HighValidator<'a, rkyv::rancor::Error>>
-                 + rkyv::Deserialize<T, rkyv::rancor::Strategy<rkyv::de::Pool, rkyv::rancor::Error>>,
+        + rkyv::Deserialize<T, rkyv::rancor::Strategy<rkyv::de::Pool, rkyv::rancor::Error>>,
     T: for<'a> rkyv::Serialize<
-        rkyv::api::high::HighSerializer<
-            rkyv::util::AlignedVec,
-            rkyv::ser::allocator::ArenaHandle<'a>,
-            rkyv::rancor::Error,
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'a>,
+                rkyv::rancor::Error,
+            >,
         >,
-    >,
 {
 }
