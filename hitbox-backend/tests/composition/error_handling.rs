@@ -29,8 +29,6 @@ impl Offload<'static> for TestOffload {
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
-#[cfg(feature = "rkyv_format")]
-use rkyv_typename::TypeName;
 
 // Failing backend for testing error propagation
 #[derive(Clone, Debug)]
@@ -84,10 +82,8 @@ impl CacheBackend for FailingBackend {}
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(
     feature = "rkyv_format",
-    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    derive(Archive, RkyvSerialize, rkyv::Deserialize)
 )]
-#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestValue {
     data: String,
 }

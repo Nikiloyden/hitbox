@@ -17,8 +17,6 @@ use std::future::Future;
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
-#[cfg(feature = "rkyv_format")]
-use rkyv_typename::TypeName;
 
 use crate::common::TestBackend;
 
@@ -38,10 +36,8 @@ impl Offload<'static> for TestOffload {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "rkyv_format",
-    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    derive(Archive, RkyvSerialize, rkyv::Deserialize)
 )]
-#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 pub(super) struct TestValue {
     pub data: String,
 }

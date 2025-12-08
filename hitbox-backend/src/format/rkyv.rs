@@ -1,10 +1,11 @@
 use bytes::Bytes;
 use hitbox_core::{BoxContext, Raw};
+use rkyv::util::AlignedVec;
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
 use crate::Context;
 
-/// Rkyv format - high-performance zero-copy serialization
+/// Rkyv format - high-performance zero-copy serialization (rkyv 0.8)
 ///
 /// # Buffer Allocation
 ///
@@ -81,30 +82,16 @@ impl Format for RkyvFormat {
         _context: &dyn Context,
     ) -> Result<Raw, FormatError> {
         // Create a pre-allocated buffer with the configured hint
-        let buffer = rkyv::AlignedVec::with_capacity(self.buffer_hint);
+        let mut buffer = AlignedVec::with_capacity(self.buffer_hint);
 
-        // Wrap the buffer in an AlignedSerializer
-        let aligned_ser = rkyv::ser::serializers::AlignedSerializer::new(buffer);
-
-        // Create an rkyv serializer with scratch space and shared pointer tracker
-        let mut serializer = rkyv::ser::serializers::AllocSerializer::<256>::new(
-            aligned_ser,
-            Default::default(),
-            Default::default(),
-        );
-
-        // Box it to create a trait object
+        // Pass the buffer to the callback - serialization happens inside
         {
-            let mut boxed: Box<dyn rkyv_dyn::DynSerializer> = Box::new(&mut serializer);
-            let mut format_ser = FormatSerializer::Rkyv(&mut *boxed);
-
-            // Call the closure with our serializer
+            let mut format_ser = FormatSerializer::Rkyv(&mut buffer);
             f(&mut format_ser)?;
-        } // boxed is dropped here, releasing the borrow
+        }
 
-        // Extract the serialized bytes
-        let bytes = serializer.into_serializer().into_inner().to_vec();
-        Ok(Bytes::from(bytes))
+        // Convert to Bytes
+        Ok(Bytes::from(buffer.into_vec()))
     }
 
     fn with_deserializer(

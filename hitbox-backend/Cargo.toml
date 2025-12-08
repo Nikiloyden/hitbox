@@ -44,21 +44,14 @@ metrics = { version = "0.24", optional = true }
 lazy_static = { version = "1", optional = true }
 
 # Additional serialization formats (optional)
-rkyv = { workspace = true, optional = true, features = ["bytecheck", "bytes"] }
-rkyv_dyn = { workspace = true, optional = true }
-rkyv_typename = { workspace = true, optional = true }
+rkyv = { workspace = true, optional = true }
 
 [features]
 default = []
 gzip = ["dep:flate2"]
 zstd = ["dep:zstd"]
 metrics = ["dep:metrics", "dep:lazy_static"]
-rkyv_format = [
-    "dep:rkyv",
-    "dep:rkyv_dyn",
-    "dep:rkyv_typename",
-    "hitbox-core/rkyv_format",
-]
+rkyv_format = ["dep:rkyv", "hitbox-core/rkyv_format"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
@@ -73,15 +66,3 @@ smol_str = { workspace = true }
 chrono = { workspace = true }
 serial_test = "3.2"
 futures = { workspace = true }
-
-# [[bench]]
-# name = "key_size"
-# harness = false
-#
-# [[bench]]
-# name = "envelope_serialization"
-# harness = false
-#
-# [[bench]]
-# name = "format_comparison"
-# harness = false

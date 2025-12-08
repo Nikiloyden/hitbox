@@ -16,26 +16,9 @@ fn test_serializable_http_response_is_cacheable() {
     assert_cacheable::<SerializableHttpResponse>();
 }
 
-#[cfg(feature = "rkyv_format")]
-#[test]
-fn test_rkyv_dynamic_serialization_trait() {
-    use rkyv_dyn::SerializeDyn;
-
-    // This test verifies that SerializableHttpResponse can be used as &dyn SerializeDyn
-    // which is required by the Cacheable trait when rkyv_format is enabled
-    fn assert_serialize_dyn<T>()
-    where
-        T: SerializeDyn,
-    {
-    }
-
-    assert_serialize_dyn::<SerializableHttpResponse>();
-}
-
 #[tokio::test]
 async fn test_cacheable_response_serialization_roundtrip() {
     use hitbox::CacheableResponse;
-    use serde_json;
 
     // Create an HTTP response
     let body = Bytes::from(r#"{"message": "Hello, World!", "status": "success"}"#);
@@ -75,8 +58,7 @@ async fn test_cacheable_response_serialization_roundtrip() {
 #[tokio::test]
 async fn test_cacheable_response_rkyv_roundtrip() {
     use hitbox::CacheableResponse;
-    use hitbox::RkyvDeserializer;
-    use rkyv::Deserialize as RkyvDeserialize;
+    use rkyv::{from_bytes, rancor, to_bytes};
 
     // Create an HTTP response
     let body = Bytes::from(r#"{"message": "Hello, World!", "status": "success"}"#);
@@ -99,16 +81,13 @@ async fn test_cacheable_response_rkyv_roundtrip() {
         hitbox::CachePolicy::NonCacheable(_) => panic!("Expected cacheable response"),
     };
 
-    // Serialize with rkyv
+    // Serialize with rkyv 0.8
     let serialized =
-        rkyv::to_bytes::<_, 256>(&serializable).expect("Failed to serialize with rkyv");
+        to_bytes::<rancor::Error>(&serializable).expect("Failed to serialize with rkyv");
 
-    // Deserialize with validation
-    let archived = rkyv::check_archived_root::<SerializableHttpResponse>(&serialized)
-        .expect("Failed to validate archived data");
-
+    // Deserialize with rkyv 0.8 (includes validation)
     let deserialized: SerializableHttpResponse =
-        RkyvDeserialize::deserialize(archived, &mut RkyvDeserializer)
+        from_bytes::<SerializableHttpResponse, rancor::Error>(&serialized)
             .expect("Failed to deserialize with rkyv");
 
     // Verify the data matches using serde_json for comparison

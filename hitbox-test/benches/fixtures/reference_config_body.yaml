@@ -59,4 +59,4 @@ endpoint:
 
   policy:
     Enabled:
-      ttl: 300
+      ttl: 300s

@@ -8,16 +8,12 @@ use std::sync::Arc;
 
 #[cfg(feature = "rkyv_format")]
 use rkyv::{Archive, Serialize as RkyvSerialize};
-#[cfg(feature = "rkyv_format")]
-use rkyv_typename::TypeName;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(
     feature = "rkyv_format",
-    derive(Archive, RkyvSerialize, rkyv::Deserialize, TypeName)
+    derive(Archive, RkyvSerialize, rkyv::Deserialize)
 )]
-#[cfg_attr(feature = "rkyv_format", archive(check_bytes))]
-#[cfg_attr(feature = "rkyv_format", archive_attr(derive(TypeName)))]
 struct TestData {
     id: u32,
     name: String,
