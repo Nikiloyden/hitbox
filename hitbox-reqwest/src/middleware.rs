@@ -128,7 +128,7 @@ where
             self.configuration.response_predicates(),
             self.configuration.extractors(),
             Arc::new(self.configuration.policy().clone()),
-            None::<DisabledOffload>,
+            DisabledOffload,
             self.concurrency_manager.clone(),
         );
 
