@@ -23,6 +23,10 @@ pub enum ConfigError {
     #[error("Invalid HTTP status code: {0}")]
     InvalidStatusCode(u16),
 
+    /// Invalid HTTP version
+    #[error("Invalid HTTP version: {0}")]
+    InvalidVersion(String),
+
     /// Invalid regex pattern
     #[error("Invalid regex pattern '{pattern}': {error}")]
     InvalidRegex {

@@ -10,6 +10,7 @@ pub mod conditions;
 pub mod header;
 pub mod request;
 pub mod response;
+pub mod version;
 
 pub struct NeutralRequestPredicate<ReqBody> {
     _req: PhantomData<fn(ReqBody) -> ReqBody>,

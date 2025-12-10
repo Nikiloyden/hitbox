@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::CacheableSubject;
 use crate::body::BufferedBody;
 use crate::predicates::header::HasHeaders;
+use crate::predicates::version::HasVersion;
 
 #[derive(Debug)]
 pub struct CacheableHttpResponse<ResBody>
@@ -61,6 +62,76 @@ where
 {
     fn headers(&self) -> &http::HeaderMap {
         &self.parts.headers
+    }
+}
+
+impl<ResBody> HasVersion for CacheableHttpResponse<ResBody>
+where
+    ResBody: HttpBody,
+{
+    fn http_version(&self) -> http::Version {
+        self.parts.version
+    }
+}
+
+#[cfg(feature = "rkyv_format")]
+mod rkyv_version {
+    use http::Version;
+    use rkyv::{
+        Place,
+        rancor::Fallible,
+        with::{ArchiveWith, DeserializeWith, SerializeWith},
+    };
+
+    /// Serialize HTTP version as u8 using intuitive numbering:
+    /// HTTP/0.9 => 9, HTTP/1.0 => 10, HTTP/1.1 => 11, HTTP/2 => 20, HTTP/3 => 30
+    pub struct VersionAsU8;
+
+    impl ArchiveWith<Version> for VersionAsU8 {
+        type Archived = rkyv::Archived<u8>;
+        type Resolver = rkyv::Resolver<u8>;
+
+        fn resolve_with(field: &Version, resolver: Self::Resolver, out: Place<Self::Archived>) {
+            rkyv::Archive::resolve(&version_to_u8(*field), resolver, out);
+        }
+    }
+
+    impl<S: Fallible + rkyv::ser::Writer + ?Sized> SerializeWith<Version, S> for VersionAsU8 {
+        fn serialize_with(field: &Version, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+            rkyv::Serialize::serialize(&version_to_u8(*field), serializer)
+        }
+    }
+
+    impl<D: Fallible + ?Sized> DeserializeWith<rkyv::Archived<u8>, Version, D> for VersionAsU8 {
+        fn deserialize_with(
+            field: &rkyv::Archived<u8>,
+            deserializer: &mut D,
+        ) -> Result<Version, D::Error> {
+            let value: u8 = rkyv::Deserialize::deserialize(field, deserializer)?;
+            Ok(u8_to_version(value))
+        }
+    }
+
+    fn version_to_u8(version: Version) -> u8 {
+        match version {
+            Version::HTTP_09 => 9,
+            Version::HTTP_10 => 10,
+            Version::HTTP_11 => 11,
+            Version::HTTP_2 => 20,
+            Version::HTTP_3 => 30,
+            _ => 11, // Default to HTTP/1.1
+        }
+    }
+
+    fn u8_to_version(value: u8) -> Version {
+        match value {
+            9 => Version::HTTP_09,
+            10 => Version::HTTP_10,
+            11 => Version::HTTP_11,
+            20 => Version::HTTP_2,
+            30 => Version::HTTP_3,
+            _ => Version::HTTP_11, // Default to HTTP/1.1
+        }
     }
 }
 
@@ -185,7 +256,9 @@ pub struct SerializableHttpResponse {
     #[serde(with = "http_serde::status_code")]
     #[cfg_attr(feature = "rkyv_format", rkyv(with = rkyv_status_code::StatusCodeAsU16))]
     status: http::StatusCode,
-    version: String,
+    #[serde(with = "http_serde::version")]
+    #[cfg_attr(feature = "rkyv_format", rkyv(with = rkyv_version::VersionAsU8))]
+    version: http::Version,
     body: Bytes,
     #[serde(with = "http_serde::header_map")]
     #[cfg_attr(feature = "rkyv_format", rkyv(with = rkyv_header_map::AsHeaderVec))]
@@ -242,7 +315,7 @@ where
             // HeaderMap is designed to handle pseudo-headers and http-serde will serialize them correctly
             CachePolicy::Cacheable(SerializableHttpResponse {
                 status: self.parts.status,
-                version: format!("{:?}", self.parts.version),
+                version: self.parts.version,
                 body: body_bytes,
                 headers: self.parts.headers,
             })
@@ -254,6 +327,7 @@ where
         let body = BufferedBody::Complete(Some(cached.body));
         let mut response = Response::new(body);
         *response.status_mut() = cached.status;
+        *response.version_mut() = cached.version;
         *response.headers_mut() = cached.headers;
 
         std::future::ready(CacheableHttpResponse::from_response(response))

@@ -9,6 +9,7 @@ use hyper::body::Body as HttpBody;
 use crate::CacheableSubject;
 use crate::body::BufferedBody;
 use crate::predicates::header::HasHeaders;
+use crate::predicates::version::HasVersion;
 
 #[derive(Debug)]
 pub struct CacheableHttpRequest<ReqBody>
@@ -63,6 +64,15 @@ where
 {
     fn headers(&self) -> &http::HeaderMap {
         &self.parts.headers
+    }
+}
+
+impl<ReqBody> HasVersion for CacheableHttpRequest<ReqBody>
+where
+    ReqBody: HttpBody,
+{
+    fn http_version(&self) -> http::Version {
+        self.parts.version
     }
 }
 

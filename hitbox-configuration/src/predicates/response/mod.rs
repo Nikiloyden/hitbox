@@ -9,12 +9,14 @@ use serde::{Deserialize, Serialize};
 use crate::ResponsePredicate;
 use crate::error::ConfigError;
 use crate::predicates::body::BodyOperationConfig;
+use crate::predicates::version::{self, VersionOperationConfig};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub enum Predicate {
     Status(status::Operation),
     Body(BodyOperationConfig),
     Header(header::HeaderOperation),
+    Version(VersionOperationConfig),
 }
 
 impl Predicate {
@@ -31,6 +33,9 @@ impl Predicate {
             Predicate::Status(status_op) => status_op.into_predicates(inner),
             Predicate::Body(body_op) => Ok(Box::new(body_op.into_predicates(inner)?)),
             Predicate::Header(header_op) => header::into_predicates(header_op, inner),
+            Predicate::Version(version_op) => {
+                Ok(Box::new(version::into_predicates(version_op, inner)?))
+            }
         }
     }
 }
