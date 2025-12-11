@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{HeaderOperation, MethodOperation, PathOperation, QueryOperation, header};
 use crate::predicates::body::BodyOperationConfig;
+use crate::predicates::version::{self, VersionOperationConfig};
 use crate::{RequestPredicate, error::ConfigError};
 
 // Use standard externally-tagged enum (serde default)
@@ -14,6 +15,7 @@ pub enum Predicate {
     Query(QueryOperation),
     Header(HeaderOperation),
     Body(BodyOperationConfig),
+    Version(VersionOperationConfig),
 }
 
 impl Predicate {
@@ -32,6 +34,10 @@ impl Predicate {
             Predicate::Query(query_operation) => query_operation.into_predicates(inner),
             Predicate::Header(header_operation) => header::into_predicates(header_operation, inner),
             Predicate::Body(body_predicate) => Ok(Box::new(body_predicate.into_predicates(inner)?)),
+            Predicate::Version(version_operation) => Ok(Box::new(version::into_predicates(
+                version_operation,
+                inner,
+            )?)),
         }
     }
 }

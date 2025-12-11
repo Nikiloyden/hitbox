@@ -20,10 +20,10 @@ impl Serialize for FlatCacheKey {
     {
         let mut map = serializer.serialize_map(None)?;
         if self.version != 0 {
-            map.serialize_entry("version", &self.version)?;
+            map.serialize_entry("__v", &self.version)?;
         }
         if !self.prefix.is_empty() {
-            map.serialize_entry("prefix", &self.prefix)?;
+            map.serialize_entry("__p", &self.prefix)?;
         }
         for (key, value) in &self.parts {
             map.serialize_entry(key, value)?;
@@ -60,8 +60,10 @@ impl<'de> Visitor<'de> for FlatCacheKeyVisitor {
 
         while let Some(key) = access.next_key::<String>()? {
             match key.as_str() {
-                "version" => version = access.next_value()?,
-                "prefix" => prefix = access.next_value()?,
+                // Use "__v" and "__p" as reserved field names
+                // to avoid collision with KeyPart names like "version"
+                "__v" => version = access.next_value()?,
+                "__p" => prefix = access.next_value()?,
                 _ => {
                     let value: Option<String> = access.next_value()?;
                     parts.push((key, value));

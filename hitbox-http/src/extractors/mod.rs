@@ -7,6 +7,7 @@ use crate::CacheableHttpRequest;
 
 pub use method::Method;
 pub use path::Path;
+pub use version::Version;
 
 pub mod body;
 pub mod header;
@@ -14,6 +15,7 @@ pub mod method;
 pub mod path;
 pub mod query;
 pub mod transform;
+pub mod version;
 
 #[derive(Debug)]
 pub struct NeutralExtractor<ReqBody> {
