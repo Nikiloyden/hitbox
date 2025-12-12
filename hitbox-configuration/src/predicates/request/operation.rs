@@ -39,11 +39,7 @@ impl Operation {
                                     .into_predicates(Box::new(
                                         NeutralRequestPredicate::<ReqBody>::new(),
                                     ))?;
-                            Ok(Box::new(Or::new(
-                                predicate,
-                                acc,
-                                Box::new(NeutralRequestPredicate::<_>::new()),
-                            )) as RequestPredicate<ReqBody>)
+                            Ok(Box::new(Or::new(predicate, acc)) as RequestPredicate<ReqBody>)
                         })
                     }
                 }

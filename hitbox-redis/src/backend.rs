@@ -215,8 +215,8 @@ where
 
         // Build HSET command with data field, optionally add stale field
         let mut cmd = redis::cmd("HSET");
-        cmd.arg(&cache_key).arg("d").arg(value.data.as_ref());
-        if let Some(stale) = value.stale {
+        cmd.arg(&cache_key).arg("d").arg(value.data().as_ref());
+        if let Some(stale) = value.stale() {
             cmd.arg("s").arg(stale.timestamp_millis());
         }
 

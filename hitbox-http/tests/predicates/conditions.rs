@@ -1,7 +1,6 @@
 use bytes::Bytes;
-use hitbox::predicate::{Predicate, PredicateResult};
+use hitbox::predicate::{Predicate, PredicateExt, PredicateResult};
 use hitbox_http::predicates::NeutralRequestPredicate;
-use hitbox_http::predicates::conditions::{NotPredicate, OrPredicate};
 use hitbox_http::predicates::request::header;
 use hitbox_http::predicates::request::query;
 use hitbox_http::predicates::request::{
@@ -19,32 +18,25 @@ async fn test_conditions_or_cacheable() {
             .body(BufferedBody::Passthrough(Empty::<Bytes>::new()))
             .unwrap(),
     );
-    let neutral_predicate = NeutralRequestPredicate::new();
     let correct_predicate = NeutralRequestPredicate::new().method(http::Method::GET);
     let wrong_predicate = NeutralRequestPredicate::new().method(http::Method::POST);
-    let prediction = neutral_predicate
-        .or(correct_predicate, wrong_predicate)
-        .check(request)
-        .await;
+    let prediction = correct_predicate.or(wrong_predicate).check(request).await;
     assert!(matches!(prediction, PredicateResult::Cacheable(_)));
 }
 
 #[tokio::test]
-async fn test_conditions_or_noncacheable_base() {
+async fn test_conditions_or_right_branch() {
+    // Test that OR checks right branch when left fails
     let request = CacheableHttpRequest::from_request(
         Request::builder()
             .method("GET")
             .body(BufferedBody::Passthrough(Empty::<Bytes>::new()))
             .unwrap(),
     );
-    let wrong_base_predicate = NeutralRequestPredicate::new().method(http::Method::PATCH);
-    let correct_predicate = NeutralRequestPredicate::new().method(http::Method::GET);
     let wrong_predicate = NeutralRequestPredicate::new().method(http::Method::POST);
-    let prediction = wrong_base_predicate
-        .or(correct_predicate, wrong_predicate)
-        .check(request)
-        .await;
-    assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
+    let correct_predicate = NeutralRequestPredicate::new().method(http::Method::GET);
+    let prediction = wrong_predicate.or(correct_predicate).check(request).await;
+    assert!(matches!(prediction, PredicateResult::Cacheable(_)));
 }
 
 #[tokio::test]
@@ -55,11 +47,10 @@ async fn test_conditions_or_noncacheable() {
             .body(BufferedBody::Passthrough(Empty::<Bytes>::new()))
             .unwrap(),
     );
-    let neutral_predicate = NeutralRequestPredicate::new();
     let wrong_predicate_one = NeutralRequestPredicate::new().method(http::Method::DELETE);
     let wrong_predicate_two = NeutralRequestPredicate::new().method(http::Method::POST);
-    let prediction = neutral_predicate
-        .or(wrong_predicate_one, wrong_predicate_two)
+    let prediction = wrong_predicate_one
+        .or(wrong_predicate_two)
         .check(request)
         .await;
     assert!(matches!(prediction, PredicateResult::NonCacheable(_)));
@@ -84,9 +75,10 @@ async fn test_conditions_not() {
         "x-test".parse().unwrap(),
         "wrong-test-value".parse().unwrap(),
     ));
+    // Compose: correct_query AND (NOT wrong_path) AND (NOT wrong_header)
     let prediction = correct_query_predicate
-        .not(wrong_path_predicate)
-        .not(wrong_header_predicate)
+        .and(wrong_path_predicate.not())
+        .and(wrong_header_predicate.not())
         .check(request)
         .await;
     assert!(matches!(prediction, PredicateResult::Cacheable(_)));

@@ -6,8 +6,6 @@ rust-version.workspace = true
 
 [features]
 default = []
-# Enable test helpers (mock time provider integration)
-test-helpers = ["hitbox-core/test-helpers"]
 
 [dependencies]
 hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }

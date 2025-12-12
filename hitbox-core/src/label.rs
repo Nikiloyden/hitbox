@@ -9,7 +9,7 @@ use std::fmt;
 /// A label identifying a cache backend.
 ///
 /// Used for:
-/// - Backend identification in `Backend::name()`
+/// - Backend identification in `Backend::label()`
 /// - Response source tracking in `ResponseSource::Backend`
 /// - Metrics labels for composed backends (e.g., "composition.moka")
 ///

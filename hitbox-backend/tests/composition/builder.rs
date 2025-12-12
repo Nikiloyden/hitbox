@@ -217,5 +217,5 @@ async fn test_backend_with_policy_functional() {
     // Read via backend
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 }

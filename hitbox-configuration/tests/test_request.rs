@@ -51,7 +51,6 @@ async fn test_expression_into_predicates() {
         Expression::Predicate(Predicate::Method(MethodOperation::Eq("HEAD".to_owned())));
     let or_ = Expression::Operation(Operation::Or(vec![method_get, method_post, method_head]));
     let predicate_or = or_.into_predicates(inner).unwrap();
-    dbg!(&predicate_or);
     let request = CacheableHttpRequest::from_request(
         HttpRequest::builder()
             .method("PUT")

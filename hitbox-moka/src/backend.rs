@@ -39,7 +39,7 @@ impl Expiry<CacheKey, CacheValue<Raw>> for Expiration {
 impl Expiration {
     /// Calculate TTL from CacheValue's expire timestamp.
     fn calculate_ttl(value: &CacheValue<Raw>) -> Option<Duration> {
-        value.expire.map(|expiration| {
+        value.expire().map(|expiration| {
             let delta = expiration - Utc::now();
             // Use milliseconds for sub-second precision.
             // Handle negative delta (already expired) by returning zero duration.

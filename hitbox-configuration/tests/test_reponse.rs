@@ -83,13 +83,11 @@ response:
   - Status: 205
 ";
     let endpoint: ConfigEndpoint = serde_saphyr::from_str(yaml_str).unwrap();
-    dbg!(&endpoint.response);
-    let predicates = endpoint
+    let _predicates = endpoint
         .response
         .unwrap_or_default()
         .into_predicates::<Empty<Bytes>>()
         .unwrap();
-    dbg!(predicates);
     // let expected = Endpoint {
     //     response: Response::Flat(vec![
     //         Predicate::Status(200.try_into().unwrap()),

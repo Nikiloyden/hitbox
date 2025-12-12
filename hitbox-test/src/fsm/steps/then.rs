@@ -107,11 +107,11 @@ async fn cache_contains(world: &mut FsmWorld, expected: u32) -> Result<(), Error
 
     match &result {
         Ok(Some(cached)) => {
-            if cached.data != expected {
+            if *cached.data() != expected {
                 return Err(anyhow!(
-                    "Expected cache to contain value {}, but it contains {}",
+                    "Expected cache to contain value {}, but it contains {:?}",
                     expected,
-                    cached.data
+                    cached.data()
                 ));
             }
             Ok(())

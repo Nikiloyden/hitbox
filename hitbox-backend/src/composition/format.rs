@@ -287,21 +287,21 @@ impl Format for CompositionFormat {
             &SmolStr,
         ) = match &composition {
             CompositionEnvelope::L1(v) => (
-                &v.data,
+                v.data(),
                 &*self.l1_format,
                 &*self.l1_compressor,
                 CompositionLayer::L1,
                 &self.l1_label,
             ),
             CompositionEnvelope::L2(v) => (
-                &v.data,
+                v.data(),
                 &*self.l2_format,
                 &*self.l2_compressor,
                 CompositionLayer::L2,
                 &self.l2_label,
             ),
             CompositionEnvelope::Both { l1, .. } => (
-                &l1.data,
+                l1.data(),
                 &*self.l1_format,
                 &*self.l1_compressor,
                 CompositionLayer::L1,

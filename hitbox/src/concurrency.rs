@@ -183,7 +183,7 @@ where
                             Ok(cache_value) => {
                                 // Successfully received the cached value from the in-flight request
                                 // Convert Res::Cached back to Res using the trait method
-                                Ok(Res::from_cached(cache_value.data.clone()).await)
+                                Ok(Res::from_cached(cache_value.data().clone()).await)
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
                                 // We lagged behind and missed the message

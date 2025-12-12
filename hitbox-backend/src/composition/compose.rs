@@ -267,7 +267,7 @@ mod tests {
 
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
-        assert_eq!(result.unwrap().data.value, "test_value");
+        assert_eq!(result.unwrap().data().value, "test_value");
 
         // Verify both layers have the data
         let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -319,7 +319,7 @@ mod tests {
         // Read through composition (should use RaceReadPolicy)
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
-        assert_eq!(result.unwrap().data.value, "from_l2");
+        assert_eq!(result.unwrap().data().value, "from_l2");
 
         // With NeverRefill, L1 should NOT be populated
         let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -416,6 +416,6 @@ mod tests {
 
         let mut ctx: BoxContext = CacheContext::default().boxed();
         let result = cache.get::<MockResponse>(&key, &mut ctx).await.unwrap();
-        assert_eq!(result.unwrap().data.value, "chain_value");
+        assert_eq!(result.unwrap().data().value, "chain_value");
     }
 }

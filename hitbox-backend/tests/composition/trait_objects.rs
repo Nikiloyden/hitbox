@@ -139,7 +139,7 @@ async fn test_boxed_composition_backend() {
 
     let result = boxed.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 }
 
 #[tokio::test]
@@ -166,7 +166,7 @@ async fn test_arc_composition_backend() {
 
     let result = arc.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 
     // Arc should be cloneable
     let arc2 = arc.clone();
@@ -198,7 +198,7 @@ async fn test_ref_composition_backend() {
 
     let result = composition.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 }
 
 #[tokio::test]
@@ -228,7 +228,7 @@ async fn test_composition_as_dyn_backend() {
 
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 }
 
 #[tokio::test]
@@ -258,7 +258,7 @@ async fn test_arc_composition_as_dyn_backend() {
 
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 }
 
 #[tokio::test]
@@ -288,7 +288,7 @@ async fn test_arc_sync_composition_as_dyn_backend() {
 
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "test_value");
+    assert_eq!(result.unwrap().data().data, "test_value");
 
     // Arc trait object should be cloneable
     let backend2 = backend.clone();

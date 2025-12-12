@@ -30,8 +30,6 @@ rkyv = { workspace = true, optional = true }
 
 [features]
 default = []
-# Enable test helpers for integration testing (used by hitbox-test)
-test-helpers = []
 # Enable rkyv serialization support
 rkyv_format = ["dep:rkyv"]
 

@@ -20,7 +20,6 @@ pub type ArcResponsePredicate<ResBody> =
 pub type ArcRequestExtractor<ReqBody> =
     Arc<dyn Extractor<Subject = CacheableHttpRequest<ReqBody>> + Send + Sync>;
 
-#[derive(Debug)]
 pub struct Endpoint<ReqBody, ResBody>
 where
     ReqBody: hyper::body::Body,
@@ -30,6 +29,21 @@ where
     pub response_predicates: ArcResponsePredicate<ResBody>,
     pub extractors: ArcRequestExtractor<ReqBody>,
     pub policy: PolicyConfig,
+}
+
+impl<ReqBody, ResBody> Debug for Endpoint<ReqBody, ResBody>
+where
+    ReqBody: hyper::body::Body,
+    ResBody: hyper::body::Body,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Endpoint")
+            .field("request_predicates", &"...")
+            .field("response_predicates", &"...")
+            .field("extractors", &"...")
+            .field("policy", &self.policy)
+            .finish()
+    }
 }
 
 impl<ReqBody, ResBody> Clone for Endpoint<ReqBody, ResBody>

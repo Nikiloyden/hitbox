@@ -47,9 +47,9 @@ pub mod fsm;
 pub mod metrics;
 pub use error::CacheError;
 pub use hitbox_core::{
-    BackendLabel, CacheKey, CachePolicy, CacheState, CacheValue, CacheablePolicyData,
-    CacheableRequest, CacheableResponse, EntityPolicyConfig, Extractor, KeyPart, KeyParts,
-    Predicate, Raw, RequestCachePolicy, ResponseCachePolicy,
+    And, BackendLabel, CacheKey, CachePolicy, CacheState, CacheValue, CacheablePolicyData,
+    CacheableRequest, CacheableResponse, EntityPolicyConfig, Extractor, KeyPart, KeyParts, Neutral,
+    Not, Or, Predicate, PredicateExt, Raw, RequestCachePolicy, ResponseCachePolicy,
 };
 
 pub mod config;
@@ -60,7 +60,9 @@ pub use context::{BoxContext, CacheContext, CacheStatus, Context, ResponseSource
 pub mod policy;
 
 pub mod predicate {
-    pub use hitbox_core::{Predicate, PredicateResult};
+    pub use hitbox_core::predicate::{
+        And, Neutral, Not, Or, Predicate, PredicateExt, PredicateResult, combinators, neutral,
+    };
 }
 
 pub mod extractor {

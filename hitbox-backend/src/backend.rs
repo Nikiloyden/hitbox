@@ -279,7 +279,7 @@ pub trait CacheBackend: Backend {
             let format = self.value_format();
 
             let serialize_timer = Timer::new();
-            let serialized_value = format.serialize(&value.data, &**ctx)?;
+            let serialized_value = format.serialize(value.data(), &**ctx)?;
             crate::metrics::record_serialize(backend_label.as_str(), serialize_timer.elapsed());
 
             let compress_timer = Timer::new();
@@ -292,7 +292,7 @@ pub trait CacheBackend: Backend {
             let result = self
                 .write(
                     key,
-                    CacheValue::new(Bytes::from(compressed_value), value.expire, value.stale),
+                    CacheValue::new(Bytes::from(compressed_value), value.expire(), value.stale()),
                 )
                 .await;
             crate::metrics::record_write(backend_label.as_str(), write_timer.elapsed());
