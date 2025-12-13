@@ -48,7 +48,9 @@ pub use policy::{CachePolicy, EntityPolicyConfig};
 pub use predicate::{And, Neutral, Not, Or, Predicate, PredicateExt, PredicateResult};
 pub use request::{CacheablePolicyData, CacheableRequest, RequestCachePolicy};
 pub use response::{CacheState, CacheableResponse, ResponseCachePolicy};
+#[doc(hidden)]
 pub use smallbox::space::S4;
+#[doc(hidden)]
 pub use smol_str::SmolStr;
 pub use upstream::Upstream;
 pub use value::CacheValue;
