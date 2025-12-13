@@ -89,6 +89,8 @@ ignore = [
 # List of explicitly allowed licenses
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
+# Some licenses only appear with certain feature combinations (e.g., --all-features)
+unused-allowed-license = "allow"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -97,11 +99,10 @@ allow = [
     "Zlib",
     "Unicode-3.0",
     "MPL-2.0",
-    "CC0-1.0",
     "BSL-1.0",
     "BlueOak-1.0.0",
     "CDLA-Permissive-2.0",
-    "OpenSSL",
+    "OpenSSL",  # Required by aws-lc-sys (via testcontainers) with --all-features
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
