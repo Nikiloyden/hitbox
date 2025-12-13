@@ -58,7 +58,7 @@ async fn test_compose_trait_basic_usage() {
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "compose_api".to_string()
         }
@@ -99,7 +99,7 @@ async fn test_compose_with_custom_policy() {
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "custom_value".to_string()
         }
@@ -146,7 +146,7 @@ async fn test_compose_nested_3_levels() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "nested_value".to_string()
         }
@@ -182,7 +182,7 @@ async fn test_compose_with_builder_chaining() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "chained_value".to_string()
         }

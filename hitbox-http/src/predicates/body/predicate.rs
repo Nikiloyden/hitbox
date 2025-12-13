@@ -43,25 +43,29 @@ where
     type Subject = P::Subject;
 
     async fn check(&self, subject: Self::Subject) -> PredicateResult<Self::Subject> {
-        self.inner
-            .check(subject)
-            .await
-            .map(|subject| async move {
-                let (parts, body) = subject.into_parts();
+        let inner_result = self.inner.check(subject).await;
 
-                // Delegate to Operation::check
-                let result = self.operation.check(body).await;
+        let (was_cacheable, subject) = match inner_result {
+            PredicateResult::Cacheable(s) => (true, s),
+            PredicateResult::NonCacheable(s) => (false, s),
+        };
 
-                // Convert back using CacheableSubject
-                match result {
-                    PredicateResult::Cacheable(buffered_body) => {
-                        PredicateResult::Cacheable(P::Subject::from_parts(parts, buffered_body))
-                    }
-                    PredicateResult::NonCacheable(buffered_body) => {
-                        PredicateResult::NonCacheable(P::Subject::from_parts(parts, buffered_body))
-                    }
+        let (parts, body) = subject.into_parts();
+        let body_result = self.operation.check(body).await;
+
+        // Combine: final is Cacheable only if both inner AND body are Cacheable
+        match body_result {
+            PredicateResult::Cacheable(buffered_body) => {
+                let subject = P::Subject::from_parts(parts, buffered_body);
+                if was_cacheable {
+                    PredicateResult::Cacheable(subject)
+                } else {
+                    PredicateResult::NonCacheable(subject)
                 }
-            })
-            .await
+            }
+            PredicateResult::NonCacheable(buffered_body) => {
+                PredicateResult::NonCacheable(P::Subject::from_parts(parts, buffered_body))
+            }
+        }
     }
 }

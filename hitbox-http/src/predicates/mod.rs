@@ -1,7 +1,4 @@
-use std::{fmt::Debug, marker::PhantomData};
-
-use async_trait::async_trait;
-use hitbox::predicate::{Predicate, PredicateResult};
+use hitbox::Neutral;
 
 use crate::{CacheableHttpRequest, CacheableHttpResponse};
 
@@ -12,77 +9,8 @@ pub mod request;
 pub mod response;
 pub mod version;
 
-pub struct NeutralRequestPredicate<ReqBody> {
-    _req: PhantomData<fn(ReqBody) -> ReqBody>,
-}
+/// A neutral predicate for HTTP requests that always returns `Cacheable`.
+pub type NeutralRequestPredicate<ReqBody> = Neutral<CacheableHttpRequest<ReqBody>>;
 
-impl<ReqBody> Debug for NeutralRequestPredicate<ReqBody> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NeutralRequestPredicate")
-            .field("_req", &self._req)
-            .finish()
-    }
-}
-
-impl<ReqBody> NeutralRequestPredicate<ReqBody> {
-    pub fn new() -> Self {
-        NeutralRequestPredicate { _req: PhantomData }
-    }
-}
-
-#[async_trait]
-impl<ReqBody> Predicate for NeutralRequestPredicate<ReqBody>
-where
-    ReqBody: hyper::body::Body + Send + 'static,
-    ReqBody::Error: Send,
-{
-    type Subject = CacheableHttpRequest<ReqBody>;
-
-    async fn check(&self, subject: Self::Subject) -> PredicateResult<Self::Subject> {
-        PredicateResult::Cacheable(subject)
-    }
-}
-
-impl<ReqBody> Default for NeutralRequestPredicate<ReqBody> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Clone)]
-pub struct NeutralResponsePredicate<ResBody> {
-    _res: PhantomData<fn(ResBody) -> ResBody>,
-}
-
-impl<ResBody> NeutralResponsePredicate<ResBody> {
-    pub fn new() -> Self {
-        NeutralResponsePredicate { _res: PhantomData }
-    }
-}
-
-impl<ResBody> Debug for NeutralResponsePredicate<ResBody> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NeutralResponsePredicate")
-            // .field("_res", &self._res)
-            .finish()
-    }
-}
-
-#[async_trait]
-impl<ResBody> Predicate for NeutralResponsePredicate<ResBody>
-where
-    ResBody: hyper::body::Body + Send + 'static,
-    ResBody::Error: Send,
-{
-    type Subject = CacheableHttpResponse<ResBody>;
-
-    async fn check(&self, subject: Self::Subject) -> PredicateResult<Self::Subject> {
-        PredicateResult::Cacheable(subject)
-    }
-}
-
-impl<ResBody> Default for NeutralResponsePredicate<ResBody> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+/// A neutral predicate for HTTP responses that always returns `Cacheable`.
+pub type NeutralResponsePredicate<ResBody> = Neutral<CacheableHttpResponse<ResBody>>;

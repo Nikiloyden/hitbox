@@ -11,6 +11,14 @@ cov = "llvm-cov --workspace --all-features --lcov --output-path lcov.info --igno
 # Coverage report (summary only)
 cov-report = "llvm-cov report --summary-only --ignore-filename-regex 'hurl/|hitbox-test/'"
 
+# Documentation with docs.rs features (requires nightly)
+# Usage: cargo +nightly docsrs
+docsrs = "doc --workspace --all-features --no-deps"
+
+[env]
+# Enable docs.rs cfg for documentation builds
+RUSTDOCFLAGS = { value = "--cfg docsrs", force = false }
+
 # Local development: use path dependencies for hurl when available
 # This overrides the git dependencies defined in Cargo.toml
 # In CI (where ../hurl doesn't exist), these patches are simply ignored

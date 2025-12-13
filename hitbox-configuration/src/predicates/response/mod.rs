@@ -69,11 +69,7 @@ impl Operation {
                             let predicate = expression
                                 .into_predicates(Box::new(NeutralResponsePredicate::new())
                                     as ResponsePredicate<ReqBody>)?;
-                            Ok(Box::new(Or::new(
-                                predicate,
-                                acc,
-                                Box::new(NeutralResponsePredicate::new()),
-                            )) as ResponsePredicate<ReqBody>)
+                            Ok(Box::new(Or::new(predicate, acc)) as ResponsePredicate<ReqBody>)
                         })
                     }
                 }

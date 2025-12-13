@@ -1,3 +1,31 @@
+//! Cacheable response types and traits.
+//!
+//! This module provides types for working with cacheable responses:
+//!
+//! - [`CacheableResponse`] - Trait for types that can be cached
+//! - [`CacheState`] - Freshness state of cached data
+//! - [`ResponseCachePolicy`] - Type alias for response cache decisions
+//!
+//! ## CacheableResponse Trait
+//!
+//! The [`CacheableResponse`] trait defines how response types are converted
+//! to and from their cached representation. This allows responses to be
+//! stored efficiently in cache backends.
+//!
+//! ## Cache States
+//!
+//! Cached data can be in three states:
+//!
+//! - [`CacheState::Actual`] - Data is fresh and valid
+//! - [`CacheState::Stale`] - Data is usable but should be refreshed
+//! - [`CacheState::Expired`] - Data is no longer valid
+//!
+//! ## Result Handling
+//!
+//! This module provides a blanket implementation of `CacheableResponse` for
+//! `Result<T, E>` where `T: CacheableResponse`. This allows error responses
+//! to pass through uncached while successful responses are cached.
+
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -13,38 +41,116 @@ use crate::{
     value::CacheValue,
 };
 
-/// This trait determines which types should be cached or not.
-// pub enum CachePolicy<C>
-// where
-//     C: CacheableResponse,
-// {
-//     /// This variant should be stored in cache backend
-//     Cacheable(CachedValue<C::Cached>),
-//     /// This variant shouldn't be stored in the cache backend.
-//     NonCacheable(C),
-// }
+/// Cache policy for responses.
+///
+/// Type alias that specializes [`CachePolicy`] for response caching:
+/// - `Cacheable` variant contains a [`CacheValue`] with the cached representation
+/// - `NonCacheable` variant contains the original response
 pub type ResponseCachePolicy<C> = CachePolicy<CacheValue<<C as CacheableResponse>::Cached>, C>;
 
+/// Freshness state of cached data.
+///
+/// Represents the time-based state of a cached value relative to its
+/// staleness and expiration timestamps.
 #[derive(Debug, PartialEq, Eq)]
 pub enum CacheState<Cached> {
+    /// Data is stale but not expired (usable, should refresh in background).
     Stale(Cached),
+    /// Data is fresh and valid.
     Actual(Cached),
+    /// Data has expired (must refresh before use).
     Expired(Cached),
 }
 
+/// Trait for response types that can be cached.
+///
+/// This trait defines how responses are converted to and from their cached
+/// representation. Implementations must provide methods for:
+///
+/// - Determining if a response should be cached (`cache_policy`)
+/// - Converting to the cached format (`into_cached`)
+/// - Reconstructing from cached data (`from_cached`)
+///
+/// # Associated Types
+///
+/// - `Cached` - The serializable representation stored in cache
+/// - `Subject` - The type that predicates evaluate (for wrapper types like `Result`)
+/// - `IntoCachedFuture` - Future returned by `into_cached`
+/// - `FromCachedFuture` - Future returned by `from_cached`
+///
+/// # Blanket Implementation
+///
+/// A blanket implementation is provided for `Result<T, E>` where `T: CacheableResponse`.
+/// This allows:
+/// - `Ok(response)` to be cached if the inner response is cacheable
+/// - `Err(error)` to always pass through without caching
+///
+/// # Example Implementation
+///
+/// ```ignore
+/// use hitbox_core::{CacheableResponse, CachePolicy, EntityPolicyConfig};
+/// use hitbox_core::predicate::Predicate;
+///
+/// struct MyResponse {
+///     body: String,
+///     status: u16,
+/// }
+///
+/// impl CacheableResponse for MyResponse {
+///     type Cached = String;
+///     type Subject = Self;
+///     type IntoCachedFuture = std::future::Ready<CachePolicy<String, Self>>;
+///     type FromCachedFuture = std::future::Ready<Self>;
+///
+///     async fn cache_policy<P>(
+///         self,
+///         predicates: P,
+///         config: &EntityPolicyConfig,
+///     ) -> ResponseCachePolicy<Self>
+///     where
+///         P: Predicate<Subject = Self::Subject> + Send + Sync
+///     {
+///         // Implementation details...
+///     }
+///
+///     fn into_cached(self) -> Self::IntoCachedFuture {
+///         std::future::ready(CachePolicy::Cacheable(self.body))
+///     }
+///
+///     fn from_cached(cached: String) -> Self::FromCachedFuture {
+///         std::future::ready(MyResponse { body: cached, status: 200 })
+///     }
+/// }
+/// ```
 pub trait CacheableResponse
 where
     Self: Sized + Send + 'static,
     Self::Cached: Clone,
 {
+    /// The serializable type stored in cache.
     type Cached;
+
+    /// The type that response predicates evaluate.
+    ///
+    /// For simple responses, this is `Self`. For wrapper types like `Result<T, E>`,
+    /// this is the inner type `T`.
     type Subject: CacheableResponse;
 
-    /// Future type for `into_cached` method
+    /// Future type for `into_cached` method.
     type IntoCachedFuture: Future<Output = CachePolicy<Self::Cached, Self>> + Send;
-    /// Future type for `from_cached` method
+
+    /// Future type for `from_cached` method.
     type FromCachedFuture: Future<Output = Self> + Send;
 
+    /// Determine if this response should be cached.
+    ///
+    /// Applies predicates to determine cacheability, then converts cacheable
+    /// responses to their cached representation with TTL metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicates` - Predicates to evaluate whether the response is cacheable
+    /// * `config` - TTL configuration for the cached entry
     fn cache_policy<P>(
         self,
         predicates: P,
@@ -53,8 +159,15 @@ where
     where
         P: Predicate<Subject = Self::Subject> + Send + Sync;
 
+    /// Convert this response to its cached representation.
+    ///
+    /// Returns `Cacheable` with the serializable data, or `NonCacheable`
+    /// if the response should not be cached.
     fn into_cached(self) -> Self::IntoCachedFuture;
 
+    /// Reconstruct a response from cached data.
+    ///
+    /// Creates a new response instance from previously cached data.
     fn from_cached(cached: Self::Cached) -> Self::FromCachedFuture;
 }
 
@@ -62,7 +175,7 @@ where
 // Result<T, E> wrapper futures
 // =============================================================================
 
-/// Future for `Result<T, E>::into_cached` that wraps `T::IntoCachedFuture`.
+#[doc(hidden)]
 #[pin_project(project = ResultIntoCachedProj)]
 pub enum ResultIntoCachedFuture<T, E>
 where
@@ -93,7 +206,7 @@ where
     }
 }
 
-/// Future for `Result<T, E>::from_cached` that wraps `T::FromCachedFuture`.
+#[doc(hidden)]
 #[pin_project]
 pub struct ResultFromCachedFuture<T, E>
 where

@@ -24,7 +24,7 @@ Protocol-agnostic async core + first-class HTTP support via hitbox-http. Pluggab
 ### HTTP Caching Features
 - [HTTP Predicates](#http-predicates) Control caching with rules based on any part of request or response, including body
 - [HTTP Extractors](#http-extractors) Automatically generate cache keys from request components
-- [Framework Integration](#framework-integration) Works with Axum and any tower-based framework
+- [Framework Integration](#framework-integration) Works with Axum, Reqwest, and any tower-based framework or reqwest-middleware client
 - [YAML Configuration](#yaml-configuration) Define entire caching setup in a configuration file
 
 ---
@@ -438,13 +438,23 @@ A request to `/v1/authors/123/books/456?page=1` with `Accept-Language: en` produ
 
 ## Framework Integration
 
-Hitbox works with any tower-based web framework:
+Hitbox integrates with both server-side frameworks and HTTP clients.
+
+**Servers**
 
 | Framework | Support |
 |-----------|---------|
 | Axum | Full support via tower layer |
 
 Since Hitbox is built on tower, it integrates as a standard layer without framework-specific code. Any tower-compatible framework can use Hitbox.
+
+**Clients**
+
+| Client | Support |
+|--------|---------|
+| Reqwest | Full support via reqwest-middleware |
+
+Cache responses from external APIs using `hitbox-reqwest`. Works with `reqwest-middleware` for seamless integration.
 
 ## YAML Configuration
 

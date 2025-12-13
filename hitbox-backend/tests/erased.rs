@@ -62,7 +62,7 @@ impl Backend for MemBackend {
     async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         let mut lock = self.storage.write().await;
         let key_str = String::from_utf8(CacheKeyFormat::UrlEncoded.serialize(key)?).unwrap();
-        lock.insert(key_str, value.data);
+        lock.insert(key_str, value.data().clone());
         Ok(())
     }
 
@@ -204,7 +204,7 @@ async fn test_composition_with_cloneable_backends() {
     // Read should return the value
     let result = composition.get::<Value>(&key_both, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "both_layers");
+    assert_eq!(result.unwrap().data().name, "both_layers");
 
     // Test 2: Key that doesn't exist - should return None
     let key_missing = CacheKey::from_str("missing", "");
@@ -244,7 +244,7 @@ async fn test_composition_with_arc_dyn_backends() {
     // Read it back
     let result = composition.get::<Value>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "arc_value");
+    assert_eq!(result.unwrap().data().name, "arc_value");
 }
 
 #[tokio::test]
@@ -285,12 +285,12 @@ async fn test_composition_l1_l2_different_keys() {
     // Test 1: Read key1 - should hit L1
     let result = composition.get::<Value>(&key1, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "l1_only");
+    assert_eq!(result.unwrap().data().name, "l1_only");
 
     // Test 2: Read key2 - should miss L1, hit L2
     let result = composition.get::<Value>(&key2, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "l2_only");
+    assert_eq!(result.unwrap().data().name, "l2_only");
 
     // Test 3: Read key3 - should miss both
     let key3 = CacheKey::from_str("key3", "");
@@ -346,13 +346,13 @@ async fn test_composition_backend_as_trait_object() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_l1, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "in_l1");
+    assert_eq!(result.unwrap().data().name, "in_l1");
 
     // Test 2: Read key from L2 through trait object
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_l2, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "in_l2");
+    assert_eq!(result.unwrap().data().name, "in_l2");
 
     // Test 3: Write new key through trait object - should go to both layers
     let key_new = CacheKey::from_str("new_key", "");
@@ -374,7 +374,7 @@ async fn test_composition_backend_as_trait_object() {
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = backend.get::<Value>(&key_new, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.name, "nested_trait");
+    assert_eq!(result.unwrap().data().name, "nested_trait");
 
     // Test 4: Missing key should return None
     let key_missing = CacheKey::from_str("not_there", "");

@@ -1,9 +1,8 @@
 use bytes::Bytes;
 use criterion::{Criterion, criterion_group, criterion_main};
-use hitbox::predicate::Predicate;
+use hitbox::predicate::{Predicate, PredicateExt};
 use hitbox_http::predicates::{
     NeutralRequestPredicate,
-    conditions::{NotPredicate, OrPredicate},
     request::{
         HeaderPredicate,
         header::Operation as HeaderOperation,
@@ -154,10 +153,9 @@ fn bench_small_chains(c: &mut Criterion) {
     });
 
     group.bench_function("or_two_methods", |b| {
-        let base = NeutralRequestPredicate::new();
         let left = NeutralRequestPredicate::new().method(Method::GET);
         let right = NeutralRequestPredicate::new().method(Method::POST);
-        let predicate = base.or(left, right);
+        let predicate = left.or(right);
         b.to_async(&rt).iter(|| async {
             let req = CacheableHttpRequest::from_request(create_simple_request());
             black_box(predicate.check(black_box(req)).await)
@@ -165,8 +163,7 @@ fn bench_small_chains(c: &mut Criterion) {
     });
 
     group.bench_function("not_method", |b| {
-        let inner = NeutralRequestPredicate::new().method(Method::POST);
-        let predicate = NeutralRequestPredicate::<BufferedBody<Empty<Bytes>>>::new().not(inner);
+        let predicate = NeutralRequestPredicate::new().method(Method::POST).not();
         b.to_async(&rt).iter(|| async {
             let req = CacheableHttpRequest::from_request(create_simple_request());
             black_box(predicate.check(black_box(req)).await)

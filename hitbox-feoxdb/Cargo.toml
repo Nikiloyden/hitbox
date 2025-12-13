@@ -29,7 +29,7 @@ chrono.workspace = true
 serde = { workspace = true }
 serde_bytes = "0.11"
 bincode.workspace = true
-bytes = { version = "1", features = ["serde"] }
+bytes = { workspace = true }
 
 # Error handling
 thiserror.workspace = true

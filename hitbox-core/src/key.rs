@@ -1,3 +1,66 @@
+//! Cache key types and construction.
+//!
+//! This module provides types for building and representing cache keys:
+//!
+//! - [`CacheKey`] - The complete cache key with prefix, version, and parts
+//! - [`KeyPart`] - A single key-value component of a cache key
+//! - [`KeyParts`] - Builder for accumulating key parts during extraction
+//!
+//! ## Key Structure
+//!
+//! Cache keys have three components:
+//!
+//! 1. **Prefix** - Optional namespace for grouping related keys
+//! 2. **Version** - Numeric version for cache invalidation
+//! 3. **Parts** - List of key-value pairs extracted from requests
+//!
+//! ## Format
+//!
+//! When serialized to string, keys follow this format:
+//! `{prefix}:v{version}:key1=value1&key2=value2`
+//!
+//! - Prefix is omitted if empty
+//! - Version is omitted if zero
+//!
+//! ```
+//! use hitbox_core::{CacheKey, KeyPart};
+//!
+//! // Full format: prefix + version + parts
+//! let key = CacheKey::new("api", 1, vec![KeyPart::new("id", Some("42"))]);
+//! assert_eq!(format!("{}", key), "api:v1:id=42");
+//!
+//! // No prefix
+//! let key = CacheKey::new("", 2, vec![KeyPart::new("id", Some("42"))]);
+//! assert_eq!(format!("{}", key), "v2:id=42");
+//!
+//! // No version (v0)
+//! let key = CacheKey::new("cache", 0, vec![KeyPart::new("id", Some("42"))]);
+//! assert_eq!(format!("{}", key), "cache:id=42");
+//!
+//! // No prefix, no version
+//! let key = CacheKey::new("", 0, vec![KeyPart::new("id", Some("42"))]);
+//! assert_eq!(format!("{}", key), "id=42");
+//!
+//! // KeyPart with None value (key only, no value)
+//! let key = CacheKey::new("", 0, vec![KeyPart::new("flag", None::<&str>)]);
+//! assert_eq!(format!("{}", key), "flag");
+//!
+//! // Mixed: Some and None values
+//! let key = CacheKey::new("api", 1, vec![
+//!     KeyPart::new("method", Some("GET")),
+//!     KeyPart::new("cached", None::<&str>),
+//! ]);
+//! assert_eq!(format!("{}", key), "api:v1:method=GET&cached");
+//! ```
+//!
+//! ## Performance
+//!
+//! [`CacheKey`] uses `Arc` internally for cheap cloning - copying a key
+//! only increments a reference count rather than cloning all parts.
+//!
+//! [`KeyPart`] uses [`SmolStr`] for small string optimization - short
+//! strings (≤23 bytes) are stored inline without heap allocation.
+
 use bitcode::__private::{
     Buffer, Decoder, Encoder, Result, VariantDecoder, VariantEncoder, Vec, View,
 };
@@ -17,7 +80,37 @@ struct CacheKeyInner {
     prefix: SmolStr,
 }
 
-/// A cache key that can be cheaply cloned via Arc.
+/// A cache key identifying a cached entry.
+///
+/// Cache keys are composed of:
+/// - A **prefix** for namespacing (e.g., "api", "users")
+/// - A **version** number for cache invalidation
+/// - A list of **parts** (key-value pairs) extracted from requests
+///
+/// # Cheap Cloning
+///
+/// `CacheKey` wraps its data in [`Arc`], making `clone()` an O(1) operation
+/// that only increments a reference count. This is important because keys
+/// are frequently passed around during cache operations.
+///
+/// # Example
+///
+/// ```
+/// use hitbox_core::{CacheKey, KeyPart};
+///
+/// let key = CacheKey::new(
+///     "api",
+///     1,
+///     vec![
+///         KeyPart::new("method", Some("GET")),
+///         KeyPart::new("path", Some("/users/123")),
+///     ],
+/// );
+///
+/// assert_eq!(key.prefix(), "api");
+/// assert_eq!(key.version(), 1);
+/// assert_eq!(format!("{}", key), "api:v1:method=GET&path=/users/123");
+/// ```
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(from = "CacheKeyInner", into = "CacheKeyInner")]
 pub struct CacheKey {
@@ -91,6 +184,7 @@ impl<'de> Decode<'de> for CacheKey {
     type Decoder = CacheKeyDecoder<'de>;
 }
 
+#[doc(hidden)]
 #[derive(Default)]
 pub struct CacheKeyEncoder {
     parts: <Vec<KeyPart> as Encode>::Encoder,
@@ -120,6 +214,7 @@ impl Buffer for CacheKeyEncoder {
     }
 }
 
+#[doc(hidden)]
 #[derive(Default)]
 pub struct CacheKeyDecoder<'de> {
     parts: <Vec<KeyPart> as Decode<'de>>::Decoder,
@@ -150,18 +245,28 @@ impl<'de> Decoder<'de, CacheKey> for CacheKeyDecoder<'de> {
 }
 
 impl CacheKey {
+    /// Returns an iterator over the key parts.
     pub fn parts(&self) -> impl Iterator<Item = &KeyPart> {
         self.inner.parts.iter()
     }
 
+    /// Returns the cache key version number.
     pub fn version(&self) -> u32 {
         self.inner.version
     }
 
+    /// Returns the cache key prefix.
     pub fn prefix(&self) -> &str {
         &self.inner.prefix
     }
 
+    /// Creates a new cache key with the given components.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - Namespace prefix for the key
+    /// * `version` - Version number for cache invalidation
+    /// * `parts` - List of key-value parts
     pub fn new(prefix: impl Into<SmolStr>, version: u32, parts: Vec<KeyPart>) -> Self {
         CacheKey {
             inner: Arc::new(CacheKeyInner {
@@ -172,6 +277,9 @@ impl CacheKey {
         }
     }
 
+    /// Creates a simple cache key with a single key-value part.
+    ///
+    /// The prefix is empty and version is 0.
     pub fn from_str(key: &str, value: &str) -> Self {
         CacheKey {
             inner: Arc::new(CacheKeyInner {
@@ -182,6 +290,9 @@ impl CacheKey {
         }
     }
 
+    /// Creates a cache key from a slice of key-value pairs.
+    ///
+    /// The prefix is empty and version is 0.
     pub fn from_slice(parts: &[(&str, Option<&str>)]) -> Self {
         CacheKey {
             inner: Arc::new(CacheKeyInner {
@@ -196,6 +307,32 @@ impl CacheKey {
     }
 }
 
+/// A single component of a cache key.
+///
+/// Each part represents a key-value pair extracted from a request.
+/// The value is optional - some parts may be key-only (flags).
+///
+/// # String Optimization
+///
+/// Both key and value use [`SmolStr`] which stores small strings (≤23 bytes)
+/// inline without heap allocation. This is efficient for typical cache key
+/// components like "method", "path", "GET", etc.
+///
+/// # Example
+///
+/// ```
+/// use hitbox_core::KeyPart;
+///
+/// // Key with value
+/// let method = KeyPart::new("method", Some("GET"));
+/// assert_eq!(method.key(), "method");
+/// assert_eq!(method.value(), Some("GET"));
+///
+/// // Key without value (flag)
+/// let flag = KeyPart::new("cached", None::<&str>);
+/// assert_eq!(flag.key(), "cached");
+/// assert_eq!(flag.value(), None);
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct KeyPart {
     key: SmolStr,
@@ -220,7 +357,7 @@ impl<'de> Decode<'de> for KeyPart {
     type Decoder = KeyPartDecoder<'de>;
 }
 
-/// Custom encoder for KeyPart that handles Option<SmolStr> without lifetime issues
+#[doc(hidden)]
 #[derive(Default)]
 pub struct KeyPartEncoder {
     key: <str as Encode>::Encoder,
@@ -255,6 +392,7 @@ impl Buffer for KeyPartEncoder {
     }
 }
 
+#[doc(hidden)]
 #[derive(Default)]
 pub struct KeyPartDecoder<'de> {
     key: <&'de str as Decode<'de>>::Decoder,
@@ -290,6 +428,12 @@ impl<'de> Decoder<'de, KeyPart> for KeyPartDecoder<'de> {
 }
 
 impl KeyPart {
+    /// Creates a new key part.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key name
+    /// * `value` - Optional value associated with the key
     pub fn new<K: AsRef<str>, V: AsRef<str>>(key: K, value: Option<V>) -> Self {
         KeyPart {
             key: SmolStr::new(key),
@@ -297,15 +441,32 @@ impl KeyPart {
         }
     }
 
+    /// Returns the key name.
     pub fn key(&self) -> &str {
         &self.key
     }
 
+    /// Returns the optional value.
     pub fn value(&self) -> Option<&str> {
         self.value.as_deref()
     }
 }
 
+/// Builder for accumulating cache key parts during extraction.
+///
+/// `KeyParts` carries both the subject being processed and the accumulated
+/// key parts. This allows extractors to be chained while building up the
+/// complete cache key.
+///
+/// # Type Parameter
+///
+/// * `T` - The subject type (usually a request type)
+///
+/// # Usage
+///
+/// Extractors receive a `KeyParts<T>`, add their parts, and return it for
+/// the next extractor in the chain. Finally, `into_cache_key()` is called
+/// to produce the final [`CacheKey`].
 #[derive(Debug)]
 pub struct KeyParts<T: Sized> {
     subject: T,
@@ -313,6 +474,7 @@ pub struct KeyParts<T: Sized> {
 }
 
 impl<T> KeyParts<T> {
+    /// Creates a new `KeyParts` wrapping the given subject.
     pub fn new(subject: T) -> Self {
         KeyParts {
             subject,
@@ -320,14 +482,19 @@ impl<T> KeyParts<T> {
         }
     }
 
+    /// Adds a single key part.
     pub fn push(&mut self, part: KeyPart) {
         self.parts.push(part)
     }
 
+    /// Appends multiple key parts from a vector.
     pub fn append(&mut self, parts: &mut Vec<KeyPart>) {
         self.parts.append(parts)
     }
 
+    /// Consumes the builder and returns the subject with its cache key.
+    ///
+    /// The returned cache key has an empty prefix and version 0.
     pub fn into_cache_key(self) -> (T, CacheKey) {
         (
             self.subject,

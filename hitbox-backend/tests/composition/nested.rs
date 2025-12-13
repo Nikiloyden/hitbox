@@ -114,7 +114,7 @@ async fn test_nested_composition_static_dispatch() {
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "test_value".to_string()
         }
@@ -164,7 +164,7 @@ async fn run_refill_3_levels_test<B: CacheBackend + Send + Sync>(
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     let cached_value = result.expect("Should get value from L3");
-    assert_eq!(cached_value.data.data, "from_l3");
+    assert_eq!(cached_value.data().data, "from_l3");
 
     // Step 4: Simulate CacheFuture calling set() with the wrapped context
     cache
@@ -181,7 +181,7 @@ async fn run_refill_3_levels_test<B: CacheBackend + Send + Sync>(
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data.data, "from_l3");
+    assert_eq!(result.unwrap().data().data, "from_l3");
 }
 
 /// Shared test logic for 4-level refill with Always policy
@@ -218,7 +218,7 @@ async fn run_refill_4_levels_test<B: CacheBackend + Send + Sync>(
     let mut ctx: BoxContext = CacheContext::default().boxed();
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     let cached_value = result.expect("Should get value from L4");
-    assert_eq!(cached_value.data.data, "from_l4");
+    assert_eq!(cached_value.data().data, "from_l4");
 
     // Simulate CacheFuture calling set() to trigger refill cascade
     cache
@@ -523,7 +523,7 @@ async fn test_nested_composition_dynamic_dispatch() {
     let result = cache.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "dynamic_value".to_string()
         }
@@ -565,7 +565,7 @@ async fn test_nested_composition_dynamic_as_trait_object() {
     let result = backend.get::<TestValue>(&key, &mut ctx).await.unwrap();
     assert!(result.is_some());
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         TestValue {
             data: "trait_object_value".to_string()
         }
@@ -616,18 +616,18 @@ async fn run_ttl_preserved_test<B: CacheBackend + Send + Sync>(
 
     // Verify TTL is preserved in L1
     let l1_raw = l1.get_raw(&key).expect("L1 should have the value");
-    assert!(l1_raw.expire.is_some(), "L1 should have expire time");
+    assert!(l1_raw.expire().is_some(), "L1 should have expire time");
     assert_eq!(
-        l1_raw.expire,
+        l1_raw.expire(),
         Some(expire_time),
         "L1 expire time should match"
     );
 
     // Verify TTL is preserved in L2
     let l2_raw = l2.get_raw(&key).expect("L2 should have the value");
-    assert!(l2_raw.expire.is_some(), "L2 should have expire time");
+    assert!(l2_raw.expire().is_some(), "L2 should have expire time");
     assert_eq!(
-        l2_raw.expire,
+        l2_raw.expire(),
         Some(expire_time),
         "L2 expire time should match"
     );
@@ -638,7 +638,7 @@ async fn run_ttl_preserved_test<B: CacheBackend + Send + Sync>(
     assert!(result.is_some());
     let cache_value = result.unwrap();
     assert_eq!(
-        cache_value.expire,
+        cache_value.expire(),
         Some(expire_time),
         "Read expire time should match"
     );
@@ -670,13 +670,21 @@ async fn run_stale_preserved_test<B: CacheBackend + Send + Sync>(
 
     // Verify stale is preserved in L1
     let l1_raw = l1.get_raw(&key).expect("L1 should have the value");
-    assert!(l1_raw.stale.is_some(), "L1 should have stale time");
-    assert_eq!(l1_raw.stale, Some(stale_time), "L1 stale time should match");
+    assert!(l1_raw.stale().is_some(), "L1 should have stale time");
+    assert_eq!(
+        l1_raw.stale(),
+        Some(stale_time),
+        "L1 stale time should match"
+    );
 
     // Verify stale is preserved in L2
     let l2_raw = l2.get_raw(&key).expect("L2 should have the value");
-    assert!(l2_raw.stale.is_some(), "L2 should have stale time");
-    assert_eq!(l2_raw.stale, Some(stale_time), "L2 stale time should match");
+    assert!(l2_raw.stale().is_some(), "L2 should have stale time");
+    assert_eq!(
+        l2_raw.stale(),
+        Some(stale_time),
+        "L2 stale time should match"
+    );
 
     // Read back and verify stale is preserved
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -684,12 +692,12 @@ async fn run_stale_preserved_test<B: CacheBackend + Send + Sync>(
     assert!(result.is_some());
     let cache_value = result.unwrap();
     assert_eq!(
-        cache_value.stale,
+        cache_value.stale(),
         Some(stale_time),
         "Read stale time should match"
     );
     assert_eq!(
-        cache_value.expire,
+        cache_value.expire(),
         Some(expire_time),
         "Read expire time should match"
     );
@@ -715,8 +723,8 @@ async fn run_no_ttl_no_stale_test<B: CacheBackend + Send + Sync>(cache: B, l1: &
 
     // Verify no TTL/stale in L1
     let l1_raw = l1.get_raw(&key).expect("L1 should have the value");
-    assert!(l1_raw.expire.is_none(), "L1 should have no expire time");
-    assert!(l1_raw.stale.is_none(), "L1 should have no stale time");
+    assert!(l1_raw.expire().is_none(), "L1 should have no expire time");
+    assert!(l1_raw.stale().is_none(), "L1 should have no stale time");
 
     // Read back and verify
     let mut ctx: BoxContext = CacheContext::default().boxed();
@@ -724,11 +732,11 @@ async fn run_no_ttl_no_stale_test<B: CacheBackend + Send + Sync>(cache: B, l1: &
     assert!(result.is_some());
     let cache_value = result.unwrap();
     assert!(
-        cache_value.expire.is_none(),
+        cache_value.expire().is_none(),
         "Read should have no expire time"
     );
     assert!(
-        cache_value.stale.is_none(),
+        cache_value.stale().is_none(),
         "Read should have no stale time"
     );
 }

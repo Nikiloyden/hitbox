@@ -24,7 +24,7 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-bytes = { version = "1", features = ["serde"] }
+bytes = { workspace = true }
 smol_str = { workspace = true }
 
 # TODO: move to dev dependencies

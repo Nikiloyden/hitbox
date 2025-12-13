@@ -56,7 +56,7 @@ async fn test_sequential_l1_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -82,7 +82,7 @@ async fn test_sequential_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -129,7 +129,7 @@ async fn test_sequential_l1_error_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -159,7 +159,7 @@ async fn test_race_l1_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -185,7 +185,7 @@ async fn test_race_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -232,7 +232,7 @@ async fn test_race_l1_error_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -267,7 +267,7 @@ async fn test_parallel_both_hit_prefer_l1() {
 
     assert!(read_result.value.is_some());
     // Both have no expiry - should prefer L1 (tie-breaker)
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -293,7 +293,7 @@ async fn test_parallel_l1_miss_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -340,7 +340,7 @@ async fn test_parallel_l1_error_l2_hit() {
         .unwrap();
 
     assert!(read_result.value.is_some());
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 // =============================================================================
@@ -388,7 +388,7 @@ async fn test_parallel_both_hit_l2_fresher_ttl() {
 
     assert!(read_result.value.is_some());
     // Should prefer L2 (fresher/longer TTL)
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -432,7 +432,7 @@ async fn test_parallel_both_hit_l1_fresher_ttl() {
 
     assert!(read_result.value.is_some());
     // Should prefer L1 (fresher/longer TTL)
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -468,7 +468,7 @@ async fn test_parallel_both_hit_equal_ttl() {
 
     assert!(read_result.value.is_some());
     // Equal TTLs - should prefer L1 (tie-breaker)
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }
 
 #[tokio::test]
@@ -508,7 +508,7 @@ async fn test_parallel_both_hit_l2_no_expiry() {
 
     assert!(read_result.value.is_some());
     // L2 has no expiry (infinite) - should prefer L2
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l2"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l2"));
 }
 
 #[tokio::test]
@@ -548,5 +548,5 @@ async fn test_parallel_both_hit_l1_no_expiry() {
 
     assert!(read_result.value.is_some());
     // L1 has no expiry (infinite) - should prefer L1
-    assert_eq!(read_result.value.unwrap().data, Bytes::from("from_l1"));
+    assert_eq!(read_result.value.unwrap().data(), &Bytes::from("from_l1"));
 }

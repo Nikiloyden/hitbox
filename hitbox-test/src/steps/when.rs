@@ -201,8 +201,8 @@ async fn debug_cache(world: &mut HitboxWorld) -> Result<(), Error> {
         let key = entry.key();
         let value = entry.value();
         eprintln!("  Key: {:?}", key);
-        eprintln!("  Value expire: {:?}", value.expire);
-        eprintln!("  Value stale: {:?}", value.stale);
+        eprintln!("  Value expire: {:?}", value.expire());
+        eprintln!("  Value stale: {:?}", value.stale());
 
         // Test Backend::read
         let backend_read = world.backend.read(key).await;
@@ -220,8 +220,8 @@ async fn debug_cache(world: &mut HitboxWorld) -> Result<(), Error> {
         match &cache_get_result {
             Ok(Some(cached_value)) => {
                 eprintln!("  CacheBackend::get: Ok(Some)");
-                eprintln!("  CacheValue expire: {:?}", cached_value.expire);
-                eprintln!("  CacheValue stale: {:?}", cached_value.stale);
+                eprintln!("  CacheValue expire: {:?}", cached_value.expire());
+                eprintln!("  CacheValue stale: {:?}", cached_value.stale());
                 // Test cache_state (sync operation - just checks timestamps)
                 let cache_state = cached_value.clone().cache_state();
                 match cache_state {

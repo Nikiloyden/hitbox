@@ -1,5 +1,6 @@
-pub mod not;
-pub mod or;
+//! Logical combinators for predicates.
+//!
+//! Re-exports generic combinators from `hitbox-core`.
 
-pub use not::{Not, NotPredicate};
-pub use or::{Or, OrPredicate};
+pub use hitbox::predicate::combinators::{And, Not, Or, PredicateExt};
+pub use hitbox::predicate::neutral::Neutral;

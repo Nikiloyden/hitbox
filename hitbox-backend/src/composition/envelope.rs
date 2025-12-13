@@ -194,40 +194,46 @@ impl CompositionEnvelope {
     pub(crate) fn serialize(&self) -> BackendResult<Bytes> {
         match self {
             CompositionEnvelope::L1(value) => {
-                let header = EnvelopeHeader::new_l1(value.data.len(), value.expire, value.stale);
-                let total_size = EnvelopeHeader::SIZE + value.data.len();
+                let header =
+                    EnvelopeHeader::new_l1(value.data().len(), value.expire(), value.stale());
+                let total_size = EnvelopeHeader::SIZE + value.data().len();
                 let mut buf = Vec::with_capacity(total_size);
 
                 buf.write_all(header.as_bytes())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-                buf.write_all(&value.data)
+                buf.write_all(value.data())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
 
                 Ok(Bytes::from(buf))
             }
             CompositionEnvelope::L2(value) => {
-                let header = EnvelopeHeader::new_l2(value.data.len(), value.expire, value.stale);
-                let total_size = EnvelopeHeader::SIZE + value.data.len();
+                let header =
+                    EnvelopeHeader::new_l2(value.data().len(), value.expire(), value.stale());
+                let total_size = EnvelopeHeader::SIZE + value.data().len();
                 let mut buf = Vec::with_capacity(total_size);
 
                 buf.write_all(header.as_bytes())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-                buf.write_all(&value.data)
+                buf.write_all(value.data())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
 
                 Ok(Bytes::from(buf))
             }
             CompositionEnvelope::Both { l1, l2 } => {
-                let header =
-                    EnvelopeHeader::new_both(l1.data.len(), l2.data.len(), l1.expire, l1.stale);
-                let total_size = EnvelopeHeader::SIZE + l1.data.len() + l2.data.len();
+                let header = EnvelopeHeader::new_both(
+                    l1.data().len(),
+                    l2.data().len(),
+                    l1.expire(),
+                    l1.stale(),
+                );
+                let total_size = EnvelopeHeader::SIZE + l1.data().len() + l2.data().len();
                 let mut buf = Vec::with_capacity(total_size);
 
                 buf.write_all(header.as_bytes())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-                buf.write_all(&l1.data)
+                buf.write_all(l1.data())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
-                buf.write_all(&l2.data)
+                buf.write_all(l2.data())
                     .map_err(|e| BackendError::InternalError(Box::new(e)))?;
 
                 Ok(Bytes::from(buf))
@@ -344,9 +350,9 @@ mod tests {
 
         match deserialized {
             CompositionEnvelope::L1(value) => {
-                assert_eq!(value.data, data);
-                assert!(value.expire.is_some());
-                assert!(value.stale.is_none());
+                assert_eq!(*value.data(), data);
+                assert!(value.expire().is_some());
+                assert!(value.stale().is_none());
             }
             _ => panic!("Expected L1 variant"),
         }
@@ -369,10 +375,10 @@ mod tests {
 
         match deserialized {
             CompositionEnvelope::Both { l1, l2 } => {
-                assert_eq!(l1.data, l1_data);
-                assert_eq!(l2.data, l2_data);
-                assert!(l1.expire.is_some());
-                assert!(l1.stale.is_some());
+                assert_eq!(*l1.data(), l1_data);
+                assert_eq!(*l2.data(), l2_data);
+                assert!(l1.expire().is_some());
+                assert!(l1.stale().is_some());
             }
             _ => panic!("Expected Both variant"),
         }
@@ -393,8 +399,8 @@ mod tests {
 
         match deserialized {
             CompositionEnvelope::Both { l1, l2 } => {
-                assert_eq!(l1.data.len(), 100_000);
-                assert_eq!(l2.data.len(), 100_000);
+                assert_eq!(l1.data().len(), 100_000);
+                assert_eq!(l2.data().len(), 100_000);
             }
             _ => panic!("Expected Both variant"),
         }

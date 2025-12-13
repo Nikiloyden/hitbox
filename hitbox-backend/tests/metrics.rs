@@ -438,7 +438,7 @@ fn test_basic_backend_read_metrics() {
             let result: Option<CacheValue<TestData>> =
                 backend.get::<TestData>(&key, &mut ctx).await.unwrap();
             assert!(result.is_some());
-            assert_eq!(result.unwrap().data, data);
+            assert_eq!(*result.unwrap().data(), data);
         })
     });
 
@@ -614,7 +614,7 @@ fn test_composition_backend_read_metrics() {
             let result: Option<CacheValue<TestData>> =
                 composition.get::<TestData>(&key, &mut ctx).await.unwrap();
             assert!(result.is_some());
-            assert_eq!(result.unwrap().data, data);
+            assert_eq!(*result.unwrap().data(), data);
         })
     });
 
@@ -802,7 +802,7 @@ fn test_dyn_composition_backend_read_metrics() {
             let result: Option<CacheValue<TestData>> =
                 composition.get::<TestData>(&key, &mut ctx).await.unwrap();
             assert!(result.is_some());
-            assert_eq!(result.unwrap().data, data);
+            assert_eq!(*result.unwrap().data(), data);
         })
     });
 

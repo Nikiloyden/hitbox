@@ -104,7 +104,7 @@ async fn test_write_and_read<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached_value = result.unwrap();
-    assert_eq!(cached_value.data, response, "data should match");
+    assert_eq!(*cached_value.data(), response, "data should match");
 }
 
 async fn test_write_and_read_with_metadata<B: CacheBackend>(backend: &B) {
@@ -131,9 +131,9 @@ async fn test_write_and_read_with_metadata<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached_value = result.unwrap();
-    assert_eq!(cached_value.data, response, "data should match");
-    assert!(cached_value.expire.is_some(), "expire should be set");
-    assert!(cached_value.stale.is_some(), "stale should be set");
+    assert_eq!(*cached_value.data(), response, "data should match");
+    assert!(cached_value.expire().is_some(), "expire should be set");
+    assert!(cached_value.stale().is_some(), "stale should be set");
 }
 
 async fn test_delete_existing<B: CacheBackend>(backend: &B) {
@@ -215,7 +215,11 @@ async fn test_overwrite<B: CacheBackend>(backend: &B) {
         .await
         .expect("failed to read");
     assert!(result.is_some(), "value should exist");
-    assert_eq!(result.unwrap().data, response2, "should get updated value");
+    assert_eq!(
+        *result.unwrap().data(),
+        response2,
+        "should get updated value"
+    );
 }
 
 async fn test_multiple_keys<B: CacheBackend>(backend: &B) {
@@ -253,7 +257,7 @@ async fn test_multiple_keys<B: CacheBackend>(backend: &B) {
             .expect("failed to read");
         assert!(result.is_some(), "value should exist for key");
         assert_eq!(
-            result.unwrap().data,
+            *result.unwrap().data(),
             *expected_response,
             "data should match for key"
         );
@@ -285,7 +289,8 @@ async fn test_binary_data<B: CacheBackend>(backend: &B) {
     assert!(result.is_some(), "binary value should exist");
     let cached = result.unwrap();
     assert_eq!(
-        cached.data.data, binary_data,
+        cached.data().data,
+        binary_data,
         "binary data should match exactly"
     );
 }
@@ -341,15 +346,15 @@ async fn test_expire_metadata_exact_match<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached = result.unwrap();
-    assert_eq!(cached.data, response, "data should match");
+    assert_eq!(*cached.data(), response, "data should match");
     assert!(
-        expire_times_match(cached.expire, Some(expire_time)),
+        expire_times_match(cached.expire(), Some(expire_time)),
         "expire time should match (within {}ms tolerance): actual={:?}, expected={:?}",
         EXPIRE_DRIFT_TOLERANCE_MS,
-        cached.expire,
+        cached.expire(),
         expire_time
     );
-    assert!(cached.stale.is_none(), "stale should be None");
+    assert!(cached.stale().is_none(), "stale should be None");
 }
 
 async fn test_stale_metadata_exact_match<B: CacheBackend>(backend: &B) {
@@ -377,17 +382,17 @@ async fn test_stale_metadata_exact_match<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached = result.unwrap();
-    assert_eq!(cached.data, response, "data should match");
+    assert_eq!(*cached.data(), response, "data should match");
     assert!(
-        stale_times_match(cached.stale, Some(stale_time)),
+        stale_times_match(cached.stale(), Some(stale_time)),
         "stale time should match (at ms precision): actual={:?}, expected={:?}",
-        cached.stale,
+        cached.stale(),
         stale_time
     );
     assert!(
-        expire_times_match(cached.expire, Some(expire_time)),
+        expire_times_match(cached.expire(), Some(expire_time)),
         "expire time should match (within tolerance): actual={:?}, expected={:?}",
-        cached.expire,
+        cached.expire(),
         expire_time
     );
 }
@@ -417,17 +422,17 @@ async fn test_expire_and_stale_combined<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached = result.unwrap();
-    assert_eq!(cached.data, response, "data should match");
+    assert_eq!(*cached.data(), response, "data should match");
     assert!(
-        expire_times_match(cached.expire, Some(expire_time)),
+        expire_times_match(cached.expire(), Some(expire_time)),
         "expire time should match (within tolerance): actual={:?}, expected={:?}",
-        cached.expire,
+        cached.expire(),
         expire_time
     );
     assert!(
-        stale_times_match(cached.stale, Some(stale_time)),
+        stale_times_match(cached.stale(), Some(stale_time)),
         "stale time should match (at ms precision): actual={:?}, expected={:?}",
-        cached.stale,
+        cached.stale(),
         stale_time
     );
 
@@ -461,9 +466,9 @@ async fn test_no_metadata<B: CacheBackend>(backend: &B) {
 
     assert!(result.is_some(), "value should exist");
     let cached = result.unwrap();
-    assert_eq!(cached.data, response, "data should match");
-    assert!(cached.expire.is_none(), "expire should be None");
-    assert!(cached.stale.is_none(), "stale should be None");
+    assert_eq!(*cached.data(), response, "data should match");
+    assert!(cached.expire().is_none(), "expire should be None");
+    assert!(cached.stale().is_none(), "stale should be None");
 }
 
 /// Test UrlEncoded key + JSON value format
@@ -496,7 +501,7 @@ pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend:
     // Decompress the data before validating format
     let decompressed = backend
         .compressor()
-        .decompress(&raw_value.data)
+        .decompress(raw_value.data())
         .expect("failed to decompress");
 
     // Verify it's valid JSON
@@ -514,7 +519,7 @@ pub async fn test_url_encoded_key_json_value<B: Backend + CacheBackend>(backend:
         .await
         .expect("failed to deserialize");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data, response);
+    assert_eq!(*result.unwrap().data(), response);
 }
 
 /// Test UrlEncoded key + Bincode value format
@@ -545,7 +550,7 @@ pub async fn test_url_encoded_key_bincode_value<B: Backend + CacheBackend>(backe
     // Decompress the data before validating format
     let decompressed = backend
         .compressor()
-        .decompress(&raw_value.data)
+        .decompress(raw_value.data())
         .expect("failed to decompress");
 
     // Verify it's NOT readable JSON (binary format)
@@ -562,7 +567,7 @@ pub async fn test_url_encoded_key_bincode_value<B: Backend + CacheBackend>(backe
         .await
         .expect("failed to deserialize");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data, response);
+    assert_eq!(*result.unwrap().data(), response);
 }
 
 /// Test Bitcode key + JSON value format
@@ -593,7 +598,7 @@ pub async fn test_bitcode_key_json_value<B: Backend + CacheBackend>(backend: &B)
     // Decompress the data before validating format
     let decompressed = backend
         .compressor()
-        .decompress(&raw_value.data)
+        .decompress(raw_value.data())
         .expect("failed to decompress");
 
     // Verify value is JSON
@@ -610,7 +615,7 @@ pub async fn test_bitcode_key_json_value<B: Backend + CacheBackend>(backend: &B)
         .await
         .expect("failed to deserialize");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data, response);
+    assert_eq!(*result.unwrap().data(), response);
 }
 
 /// Test Bitcode key + Bincode value format
@@ -641,7 +646,7 @@ pub async fn test_bitcode_key_bincode_value<B: Backend + CacheBackend>(backend: 
     // Decompress the data before validating format
     let decompressed = backend
         .compressor()
-        .decompress(&raw_value.data)
+        .decompress(raw_value.data())
         .expect("failed to decompress");
 
     // Verify value is binary Bincode
@@ -657,7 +662,7 @@ pub async fn test_bitcode_key_bincode_value<B: Backend + CacheBackend>(backend: 
         .await
         .expect("failed to deserialize");
     assert!(result.is_some());
-    assert_eq!(result.unwrap().data, response);
+    assert_eq!(*result.unwrap().data(), response);
 }
 
 /// Test that compression is actually being used
@@ -700,7 +705,8 @@ where
 
     // Verify compression was applied: raw stored bytes should differ from serialized bytes
     assert_ne!(
-        raw_value.data, serialized,
+        *raw_value.data(),
+        serialized,
         "Stored data should be different from serialized data if compression is applied"
     );
 
@@ -712,7 +718,7 @@ where
         .expect("failed to deserialize from backend");
     assert!(result.is_some(), "value should exist after compression");
     assert_eq!(
-        result.unwrap().data,
+        *result.unwrap().data(),
         response,
         "data should be identical after compression roundtrip"
     );

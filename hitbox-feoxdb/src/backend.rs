@@ -29,9 +29,9 @@ struct SerializableCacheValue {
 impl From<CacheValue<Raw>> for SerializableCacheValue {
     fn from(value: CacheValue<Raw>) -> Self {
         Self {
-            data: value.data.to_vec(),
-            stale: value.stale,
-            expire: value.expire,
+            data: value.data().to_vec(),
+            stale: value.stale(),
+            expire: value.expire(),
         }
     }
 }
@@ -223,7 +223,7 @@ where
 
                 let cache_value: CacheValue<Raw> = serializable.into();
 
-                if let Some(expire_time) = cache_value.expire {
+                if let Some(expire_time) = cache_value.expire() {
                     if expire_time < Utc::now() {
                         return Ok(None);
                     }
@@ -333,7 +333,7 @@ mod tests {
         // Read
         let result = backend.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data.as_ref(), b"test-value");
+        assert_eq!(result.unwrap().data().as_ref(), b"test-value");
     }
 
     #[tokio::test]
@@ -397,7 +397,7 @@ mod tests {
         // Read
         let result = backend.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data.as_ref(), b"memory-value");
+        assert_eq!(result.unwrap().data().as_ref(), b"memory-value");
     }
 
     #[tokio::test]
@@ -419,7 +419,7 @@ mod tests {
         // Read with backend2
         let result = backend2.read(&key).await.unwrap();
         assert!(result.is_some());
-        assert_eq!(result.unwrap().data.as_ref(), b"shared-value");
+        assert_eq!(result.unwrap().data().as_ref(), b"shared-value");
     }
 
     #[tokio::test]

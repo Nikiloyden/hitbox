@@ -50,13 +50,7 @@ impl PathOperation {
                         pattern.into(),
                     ))
                 })
-                .reduce(|acc, predicate| {
-                    Box::new(Or::new(
-                        predicate,
-                        acc,
-                        Box::new(NeutralRequestPredicate::new()),
-                    ))
-                })
+                .reduce(|acc, predicate| Box::new(Or::new(predicate, acc)))
                 .ok_or(ConfigError::EmptyPathList),
         }
     }

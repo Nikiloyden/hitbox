@@ -20,7 +20,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true, features = ["clock"] }
 serde = { workspace = true }
 bitcode = { workspace = true, features = ["derive"] }
-bytes = { version = "1", features = ["serde"] }
+bytes = { workspace = true }
 smol_str = { workspace = true }
 smallbox = { workspace = true }
 pin-project = { workspace = true }
@@ -30,8 +30,6 @@ rkyv = { workspace = true, optional = true }
 
 [features]
 default = []
-# Enable test helpers for integration testing (used by hitbox-test)
-test-helpers = []
 # Enable rkyv serialization support
 rkyv_format = ["dep:rkyv"]
 
