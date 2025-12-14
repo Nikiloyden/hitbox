@@ -152,9 +152,28 @@ pub struct Body<E> {
     extraction: BodyExtraction,
 }
 
-impl<E> Body<E> {
-    pub fn new(inner: E, extraction: BodyExtraction) -> Self {
-        Self { inner, extraction }
+impl<S> Body<super::NeutralExtractor<S>> {
+    pub fn new(extraction: BodyExtraction) -> Self {
+        Self {
+            inner: super::NeutralExtractor::new(),
+            extraction,
+        }
+    }
+}
+
+pub trait BodyExtractor: Sized {
+    fn body(self, extraction: BodyExtraction) -> Body<Self>;
+}
+
+impl<E> BodyExtractor for E
+where
+    E: hitbox::Extractor,
+{
+    fn body(self, extraction: BodyExtraction) -> Body<Self> {
+        Body {
+            inner: self,
+            extraction,
+        }
     }
 }
 

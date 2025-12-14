@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 
+use super::NeutralExtractor;
 use crate::CacheableHttpRequest;
 
 #[derive(Debug)]
@@ -8,9 +9,11 @@ pub struct Method<E> {
     inner: E,
 }
 
-impl<E> Method<E> {
-    pub fn new(inner: E) -> Self {
-        Self { inner }
+impl<S> Method<NeutralExtractor<S>> {
+    pub fn new() -> Self {
+        Self {
+            inner: NeutralExtractor::new(),
+        }
     }
 }
 

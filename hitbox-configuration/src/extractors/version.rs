@@ -1,4 +1,4 @@
-use hitbox_http::extractors;
+use hitbox_http::extractors::version::VersionExtractor;
 use serde::{Deserialize, Serialize};
 
 use crate::RequestExtractor;
@@ -20,7 +20,7 @@ impl Version {
         ReqBody::Error: Send,
         ReqBody::Data: Send,
     {
-        Box::new(extractors::Version::new(inner))
+        Box::new(inner.version())
     }
 }
 

@@ -92,7 +92,7 @@ impl QueryConfig {
             .unwrap_or(extractors::query::ValueExtractor::Full);
         let transforms = into_http_transforms(self.transforms);
 
-        Ok(Box::new(extractors::query::Query::new(
+        Ok(Box::new(extractors::query::Query::new_with(
             inner,
             name_selector,
             value_extractor,
@@ -122,7 +122,7 @@ impl QueryOperation {
         ReqBody::Data: Send,
     {
         match self {
-            QueryOperation::Simple(name) => Ok(Box::new(extractors::query::Query::new(
+            QueryOperation::Simple(name) => Ok(Box::new(extractors::query::Query::new_with(
                 inner,
                 extractors::query::NameSelector::Exact(name),
                 extractors::query::ValueExtractor::Full,

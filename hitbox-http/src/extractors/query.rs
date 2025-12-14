@@ -5,6 +5,7 @@ use hitbox::{Extractor, KeyPart, KeyParts};
 use regex::Regex;
 
 pub use super::transform::Transform;
+use super::NeutralExtractor;
 use super::transform::apply_transform_chain;
 use crate::CacheableHttpRequest;
 
@@ -35,8 +36,19 @@ pub struct Query<E> {
     transforms: Vec<Transform>,
 }
 
+impl<S> Query<NeutralExtractor<S>> {
+    pub fn new(name: String) -> Self {
+        Self {
+            inner: NeutralExtractor::new(),
+            name_selector: NameSelector::Exact(name),
+            value_extractor: ValueExtractor::Full,
+            transforms: Vec::new(),
+        }
+    }
+}
+
 impl<E> Query<E> {
-    pub fn new(
+    pub fn new_with(
         inner: E,
         name_selector: NameSelector,
         value_extractor: ValueExtractor,

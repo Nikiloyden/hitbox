@@ -1,4 +1,4 @@
-use hitbox_http::extractors;
+use hitbox_http::extractors::path::PathExtractor;
 use serde::{Deserialize, Serialize};
 
 use crate::RequestExtractor;
@@ -20,6 +20,6 @@ impl Path {
         ReqBody::Error: Send,
         ReqBody::Data: Send,
     {
-        Box::new(extractors::Path::new(inner, self.0))
+        Box::new(inner.path(&self.0))
     }
 }
