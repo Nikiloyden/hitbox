@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 use regex::Regex;
 
-pub use super::transform::Transform;
 use super::NeutralExtractor;
+pub use super::transform::Transform;
 use super::transform::apply_transform_chain;
 use crate::CacheableHttpRequest;
 

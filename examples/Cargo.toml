@@ -20,6 +20,7 @@ observability = ["tracing", "dep:metrics-exporter-prometheus"]
 [dev-dependencies]
 hitbox = { path = "../hitbox", features = ["metrics"] }
 hitbox-backend = { path = "../hitbox-backend" }
+hitbox-http = { path = "../hitbox-http" }
 hitbox-tower = { path = "../hitbox-tower" }
 hitbox-moka = { path = "../hitbox-moka" }
 hitbox-redis = { path = "../hitbox-redis" }

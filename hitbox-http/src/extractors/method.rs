@@ -17,6 +17,12 @@ impl<S> Method<NeutralExtractor<S>> {
     }
 }
 
+impl<S> Default for Method<NeutralExtractor<S>> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait MethodExtractor: Sized {
     fn method(self) -> Method<Self>;
 }

@@ -68,7 +68,7 @@ impl HitboxWorld {
         let path = request_spec.url.path();
         let mut request = server.method(
             http::Method::from_str(request_spec.method.0.to_string().as_str())?,
-            &path,
+            path.as_ref(),
         );
         for header in &request_spec.headers {
             request = request.add_header(&header.name, &header.value);

@@ -43,7 +43,7 @@ use hitbox_backend::{CacheBackend, CompositionBackend, PassthroughCompressor};
 use hitbox_configuration::{Backend as ConfigBackend, ConfigEndpoint};
 use hitbox_core::Upstream;
 use hitbox_http::extractors::NeutralExtractor;
-use hitbox_http::extractors::body::{Body as BodyExtractor, BodyExtraction, JqExtraction};
+use hitbox_http::extractors::body::{BodyExtraction, BodyExtractor, JqExtraction};
 use hitbox_http::extractors::header::{
     Header, NameSelector as HeaderNameSelector, ValueExtractor as HeaderValueExtractor,
 };
@@ -254,7 +254,7 @@ fn create_extractors_with_body() -> impl hitbox::Extractor<Subject = BenchReques
         "{customer_id: .order.customer_id, shipping: .order.shipping_method}",
     )
     .unwrap();
-    BodyExtractor::new(create_extractors(), BodyExtraction::Jq(jq_extraction))
+    create_extractors().body(BodyExtraction::Jq(jq_extraction))
 }
 
 // ============================================================================

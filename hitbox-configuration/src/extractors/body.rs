@@ -102,12 +102,12 @@ impl BodyOperation {
                 // Currently only hash is supported
                 Ok(Box::new(inner.body(extractors::body::BodyExtraction::Hash)))
             }
-            BodyOperation::Jq(jq_op) => Ok(Box::new(inner.body(
-                extractors::body::BodyExtraction::Jq(
+            BodyOperation::Jq(jq_op) => Ok(Box::new(
+                inner.body(extractors::body::BodyExtraction::Jq(
                     extractors::body::JqExtraction::compile(&jq_op.jq)
                         .map_err(ConfigError::InvalidPredicate)?,
-                ),
-            ))),
+                )),
+            )),
             BodyOperation::Regex(regex_op) => {
                 let regex = Regex::new(&regex_op.regex).map_err(|e| ConfigError::InvalidRegex {
                     pattern: regex_op.regex.clone(),

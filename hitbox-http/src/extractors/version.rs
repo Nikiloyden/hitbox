@@ -18,6 +18,12 @@ impl<S> Version<NeutralExtractor<S>> {
     }
 }
 
+impl<S> Default for Version<NeutralExtractor<S>> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Extension trait for adding version extraction
 pub trait VersionExtractor: Sized {
     fn version(self) -> Version<Self>;

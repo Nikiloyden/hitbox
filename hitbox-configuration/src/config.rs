@@ -39,7 +39,7 @@ impl ConfigEndpoint {
         match &self.extractors {
             MaybeUndefined::Null => Ok(Box::new(NeutralExtractor::<ReqBody>::new())),
             MaybeUndefined::Undefined => Ok(Box::new(
-                NeutralExtractor::<ReqBody>::new().method().path("*"),
+                NeutralExtractor::<ReqBody>::new().method().path("{path}*"),
             )),
             MaybeUndefined::Value(extractors) => extractors.iter().cloned().try_rfold(
                 Box::new(NeutralExtractor::<ReqBody>::new()) as RequestExtractor<ReqBody>,
