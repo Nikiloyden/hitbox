@@ -67,3 +67,75 @@ impl Default for PolicyConfig {
         Self::Enabled(EnabledCacheConfig::default())
     }
 }
+
+impl PolicyConfig {
+    /// Create a new builder for an enabled cache configuration.
+    pub fn builder() -> PolicyConfigBuilder {
+        PolicyConfigBuilder::default()
+    }
+
+    /// Create a disabled policy configuration.
+    pub fn disabled() -> Self {
+        Self::Disabled
+    }
+}
+
+/// Builder for PolicyConfig.
+#[derive(Debug, Clone, Default)]
+pub struct PolicyConfigBuilder {
+    ttl: Option<Duration>,
+    stale: Option<Duration>,
+    stale_policy: StalePolicy,
+    concurrency: Option<ConcurrencyLimit>,
+}
+
+impl PolicyConfigBuilder {
+    /// Create a new builder with default values.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the time-to-live before cache entry becomes stale.
+    pub fn ttl(self, ttl: Duration) -> Self {
+        Self {
+            ttl: Some(ttl),
+            ..self
+        }
+    }
+
+    /// Set the duration during which stale data can still be served.
+    pub fn stale(self, stale: Duration) -> Self {
+        Self {
+            stale: Some(stale),
+            ..self
+        }
+    }
+
+    /// Set the policy for handling stale cache entries.
+    pub fn stale_policy(self, policy: StalePolicy) -> Self {
+        Self {
+            stale_policy: policy,
+            ..self
+        }
+    }
+
+    /// Set the concurrency limit for dogpile prevention.
+    pub fn concurrency(self, limit: ConcurrencyLimit) -> Self {
+        Self {
+            concurrency: Some(limit),
+            ..self
+        }
+    }
+
+    /// Build the PolicyConfig with enabled caching.
+    pub fn build(self) -> PolicyConfig {
+        PolicyConfig::Enabled(EnabledCacheConfig {
+            ttl: self.ttl,
+            stale: self.stale,
+            policy: CacheBehaviorPolicy {
+                stale: self.stale_policy,
+            },
+            concurrency: self.concurrency,
+        })
+    }
+}
