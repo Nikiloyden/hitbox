@@ -1,8 +1,7 @@
 //! Path predicate configuration.
 
-use hitbox_http::predicates::NeutralRequestPredicate;
 use hitbox_http::predicates::conditions::Or;
-use hitbox_http::predicates::request::Path;
+use hitbox_http::predicates::request::{Path, PathPredicate};
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
 
@@ -41,15 +40,10 @@ impl PathOperation {
         ReqBody::Data: Send,
     {
         match self {
-            PathOperation::Pattern(pattern) => Ok(Box::new(Path::new(inner, pattern.into()))),
+            PathOperation::Pattern(pattern) => Ok(Box::new(inner.path(pattern))),
             PathOperation::In { r#in: patterns } => patterns
                 .into_iter()
-                .map(|pattern| -> RequestPredicate<ReqBody> {
-                    Box::new(Path::new(
-                        Box::new(NeutralRequestPredicate::new()),
-                        pattern.into(),
-                    ))
-                })
+                .map(|pattern| -> RequestPredicate<ReqBody> { Box::new(Path::new(pattern.into())) })
                 .reduce(|acc, predicate| Box::new(Or::new(predicate, acc)))
                 .ok_or(ConfigError::EmptyPathList),
         }

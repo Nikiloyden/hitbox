@@ -1,6 +1,6 @@
 use std::num::NonZeroU16;
 
-use hitbox_http::predicates::response::{StatusClass, StatusCode};
+use hitbox_http::predicates::response::{StatusClass, StatusCode, StatusCodePredicate};
 use http::StatusCode as HttpStatusCode;
 use hyper::body::Body as HttpBody;
 use serde::{Deserialize, Serialize};
@@ -116,7 +116,7 @@ impl Operation {
         match self {
             Operation::Eq(eq) => {
                 let status = parse_status_code(eq.status().get())?;
-                Ok(Box::new(StatusCode::new(inner, status)))
+                Ok(Box::new(inner.status_code(status)))
             }
             Operation::In(r#in) => {
                 let status_codes = parse_status_codes(r#in.statuses())?;

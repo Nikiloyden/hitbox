@@ -1,6 +1,7 @@
 use crate::CacheableHttpRequest;
 use actix_router::ResourceDef;
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 
 #[derive(Debug)]
@@ -9,9 +10,12 @@ pub struct Path<P> {
     inner: P,
 }
 
-impl<P> Path<P> {
-    pub fn new(inner: P, resource: ResourceDef) -> Self {
-        Self { resource, inner }
+impl<S> Path<Neutral<S>> {
+    pub fn new(resource: ResourceDef) -> Self {
+        Self {
+            resource,
+            inner: Neutral::new(),
+        }
     }
 }
 

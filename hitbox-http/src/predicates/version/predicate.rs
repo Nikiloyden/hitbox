@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 use http::Version;
 
@@ -11,9 +12,12 @@ pub struct HttpVersion<P> {
     pub(crate) inner: P,
 }
 
-impl<P> HttpVersion<P> {
-    pub fn new(inner: P, operation: Operation) -> Self {
-        Self { operation, inner }
+impl<S> HttpVersion<Neutral<S>> {
+    pub fn new(operation: Operation) -> Self {
+        Self {
+            operation,
+            inner: Neutral::new(),
+        }
     }
 }
 

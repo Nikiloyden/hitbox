@@ -1,4 +1,4 @@
-use hitbox_http::predicates::request::Method;
+use hitbox_http::predicates::request::{Method, MethodPredicate};
 use http::Method as HttpMethod;
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ impl MethodOperation {
         match self {
             MethodOperation::Eq(method) => {
                 let http_method = parse_method(&method)?;
-                Ok(Box::new(Method::new(inner, http_method.as_str())?))
+                Ok(Box::new(inner.method(http_method)))
             }
             MethodOperation::In(methods) => {
                 let http_methods = parse_methods(&methods)?;

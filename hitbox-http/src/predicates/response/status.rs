@@ -1,5 +1,6 @@
 use crate::CacheableHttpResponse;
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -50,14 +51,16 @@ pub struct StatusCode<P> {
     inner: P,
 }
 
-impl<P> StatusCode<P> {
-    pub fn new(inner: P, status_code: http::StatusCode) -> Self {
+impl<S> StatusCode<Neutral<S>> {
+    pub fn new(status_code: http::StatusCode) -> Self {
         Self {
             operation: Operation::Eq(status_code),
-            inner,
+            inner: Neutral::new(),
         }
     }
+}
 
+impl<P> StatusCode<P> {
     pub fn new_in(inner: P, codes: Vec<http::StatusCode>) -> Self {
         Self {
             operation: Operation::In(codes),
@@ -92,7 +95,10 @@ where
     P: Predicate,
 {
     fn status_code(self, status_code: http::StatusCode) -> StatusCode<Self> {
-        StatusCode::new(self, status_code)
+        StatusCode {
+            operation: Operation::Eq(status_code),
+            inner: self,
+        }
     }
 
     fn status_code_in(self, codes: Vec<http::StatusCode>) -> StatusCode<Self> {

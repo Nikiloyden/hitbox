@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 use hyper::body::Body as HttpBody;
 
@@ -11,6 +12,15 @@ use crate::CacheableSubject;
 pub struct Body<P> {
     pub(crate) operation: Operation,
     pub(crate) inner: P,
+}
+
+impl<S> Body<Neutral<S>> {
+    pub fn new(operation: Operation) -> Self {
+        Self {
+            operation,
+            inner: Neutral::new(),
+        }
+    }
 }
 
 pub trait BodyPredicate: Sized {
