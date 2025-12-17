@@ -1,3 +1,33 @@
+//! Axum Integration Example
+//!
+//! Demonstrates server-side HTTP caching with the Axum web framework.
+//!
+//! Features shown:
+//! - Per-route cache configuration with different TTLs
+//! - Request predicates: Cache-Control header bypass (RFC 9111)
+//! - Response predicates: status code and JQ body expressions
+//! - Cache key extraction from query parameters and path segments
+//!
+//! Run:
+//!   cargo run -p hitbox-examples --example axum
+//!
+//! Endpoints:
+//!   - http://localhost:3000/tasks              - Task list (cached, TTL: 60s)
+//!   - http://localhost:3000/tasks?page=1       - Paginated task list
+//!   - http://localhost:3000/tasks?status=pending - Filtered by status
+//!   - http://localhost:3000/tasks/{id}         - Task details (cached, TTL: 300s)
+//!   - http://localhost:3000/health             - Health check (not cached)
+//!
+//! Try it:
+//!   curl -v http://localhost:3000/tasks                    # Cache miss, then hit
+//!   curl -v http://localhost:3000/tasks?page=1&limit=3     # Different cache key
+//!   curl -v http://localhost:3000/tasks?status=pending     # Filtered results
+//!   curl -v http://localhost:3000/tasks/1                  # Task details
+//!   curl -v http://localhost:3000/health                   # Always fresh
+//!
+//! Bypass cache with Cache-Control header (RFC 9111):
+//!   curl -v -H 'Cache-Control: no-cache' http://localhost:3000/tasks
+
 use std::time::Duration;
 
 use axum::{
@@ -17,18 +47,13 @@ use hitbox_http::{
     predicates::{
         body::{BodyPredicate, JqExpression, JqOperation, Operation as BodyOperation},
         header::{Header as RequestHeader, Operation as HeaderOperation},
-        // Uncomment for method/path predicates (see example in list_config):
-        // request::{Method as RequestMethod, PathPredicate},
         response::StatusCode as ResponseStatusCode,
     },
 };
 use hitbox_tower::Cache;
-// Uncomment for method predicate: use http::Method;
 use serde::{Deserialize, Serialize};
 
-// =============================================================================
 // Domain Types
-// =============================================================================
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Task {
@@ -69,9 +94,7 @@ pub struct TaskList {
     pub limit: u32,
 }
 
-// =============================================================================
 // Mock Data
-// =============================================================================
 
 fn get_all_tasks() -> Vec<Task> {
     vec![
@@ -118,9 +141,7 @@ fn get_all_tasks() -> Vec<Task> {
     ]
 }
 
-// =============================================================================
 // Handlers
-// =============================================================================
 
 async fn list_tasks(Query(params): Query<ListParams>) -> Json<TaskList> {
     tracing::info!(
@@ -172,9 +193,7 @@ async fn health() -> &'static str {
     "OK"
 }
 
-// =============================================================================
 // Main
-// =============================================================================
 
 #[tokio::main]
 async fn main() {
@@ -188,16 +207,6 @@ async fn main() {
 
     // Cache config for task list endpoint
     // Cache key includes: pagination params
-    //
-    // Note: Method and path predicates are not needed here because the cache
-    // layer is applied per-route in axum. The router already ensures only
-    // GET /tasks requests reach this cache layer. Example of how to use them:
-    //
-    //     RequestMethod::new(Method::GET)
-    //         .unwrap()
-    //         .path("/tasks".to_string())
-    //         .and(HeaderPredicate::new(...).not())
-    //
     let list_config = Endpoint::builder()
         .request_predicate(
             // Skip cache if Cache-Control: no-cache (RFC 9111)
@@ -260,20 +269,6 @@ async fn main() {
         .route("/health", get(health));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("listening on {}", listener.local_addr().unwrap());
-    println!();
-    println!("The X-Cache-Status header shows the cache status (hit/miss/stale).");
-    println!();
-    println!("Try these endpoints:");
-    println!("  curl -v http://localhost:3000/tasks");
-    println!("  curl -v http://localhost:3000/tasks?page=1&limit=3");
-    println!("  curl -v http://localhost:3000/tasks?status=pending");
-    println!("  curl -v http://localhost:3000/tasks/1");
-    println!("  curl -v http://localhost:3000/health");
-    println!();
-    println!("Bypass cache with Cache-Control header (RFC 9111):");
-    println!("  curl -v -H 'Cache-Control: no-cache' http://localhost:3000/tasks");
-    println!("  curl -v -H 'Cache-Control: no-cache' http://localhost:3000/tasks/1");
-    println!();
+    tracing::info!("Listening on http://{}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
 }

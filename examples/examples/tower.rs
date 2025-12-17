@@ -1,56 +1,156 @@
+//! Example of using hitbox with a plain Tower service and Hyper server.
+//!
+//! This example demonstrates how to use hitbox-tower Cache layer
+//! with a generic tower::Service and hyper HTTP server (without axum).
+//!
+//! Run:
+//!   cargo run --example tower
+//!
+//! Endpoints:
+//!   - http://localhost:3001/         - Hello World (cached, TTL: 30s)
+//!   - http://localhost:3001/time     - Current timestamp (cached, TTL: 5s)
+//!   - http://localhost:3001/health   - Health check (not cached)
+//!
+//! Try it:
+//!   curl -v http://localhost:3001/           # Cache miss, then hit
+//!   curl -v http://localhost:3001/time       # Shows cached time
+//!   curl -v http://localhost:3001/health     # Always fresh
+
+use std::convert::Infallible;
+use std::future::Future;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Duration;
+
 use bytes::Bytes;
+use hitbox::policy::PolicyConfig;
+use hitbox_configuration::Endpoint;
+use hitbox_http::{
+    extractors::{Method as MethodExtractor, path::PathExtractor},
+    predicates::request::Method as RequestMethod,
+};
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
+use http::{Request, Response, StatusCode};
 use http_body_util::Full;
-use std::net::SocketAddr;
+use hyper::server::conn::http1;
+use hyper_util::rt::TokioIo;
+use hyper_util::service::TowerToHyperService;
 use tokio::net::TcpListener;
+use tower::{Service, ServiceBuilder};
 
-use http::{Request, Response};
+/// Simple handler service that routes requests based on path
+#[derive(Clone)]
+struct HelloService;
 
-async fn handle(_: Request<Full<Bytes>>) -> http::Result<Response<Full<Bytes>>> {
-    Ok(Response::new("Hello, World!".into()))
-    // Err(http::Error::from(Method::from_bytes(&[0x01]).unwrap_err()))
+impl<B> Service<Request<B>> for HelloService
+where
+    B: Send + 'static,
+{
+    type Response = Response<Full<Bytes>>;
+    type Error = Infallible;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, req: Request<B>) -> Self::Future {
+        let path = req.uri().path().to_string();
+
+        Box::pin(async move {
+            // Simulate some work
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            let response = match path.as_str() {
+                "/" => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "text/plain")
+                    .body(Full::new(Bytes::from("Hello from Tower + Hitbox!")))
+                    .unwrap(),
+
+                "/time" => {
+                    let now = chrono::Utc::now().to_rfc3339();
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "text/plain")
+                        .body(Full::new(Bytes::from(format!("Current time: {}", now))))
+                        .unwrap()
+                }
+
+                "/health" => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "text/plain")
+                    .body(Full::new(Bytes::from("OK")))
+                    .unwrap(),
+
+                _ => Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header("content-type", "text/plain")
+                    .body(Full::new(Bytes::from("Not Found")))
+                    .unwrap(),
+            };
+
+            Ok(response)
+        })
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Initialize tracing
     let subscriber = tracing_subscriber::fmt()
         .pretty()
-        .with_env_filter("debug,hitbox=trace")
+        .with_env_filter("info,hitbox=debug")
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let inmemory = MokaBackend::builder(10_000).build();
+    // Create Moka in-memory cache backend
+    let backend = MokaBackend::builder(10_000).build();
 
-    let _service = tower::ServiceBuilder::new()
-        .layer(Cache::builder().backend(inmemory).build())
-        // .layer(Cache::builder().backend(redis).build())
-        // .layer(
-        //     Cache::builder()
-        //         .backend(Arc::new(redis) as Arc<dyn Backend>)
-        //         .build(),
-        // )
-        .service_fn(handle);
+    // Cache configuration for all cacheable endpoints
+    // - Only cache GET requests
+    // - Cache key includes: method + path
+    // - TTL: 30 seconds
+    let cache_config = Endpoint::builder()
+        .request_predicate(RequestMethod::new(http::Method::GET).unwrap())
+        .extractor(MethodExtractor::new().path("/{path}*"))
+        .policy(PolicyConfig::builder().ttl(Duration::from_secs(30)).build())
+        .build();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let _listener = TcpListener::bind(addr).await?;
+    // Build the cache layer
+    let cache_layer = Cache::builder()
+        .backend(backend)
+        .config(cache_config)
+        .build();
 
-    // loop {
-    //     let (stream, _) = listener.accept().await?;
-    //     let io = TokioIo::new(stream);
-    //
-    //     tokio::task::spawn(async move {
-    //         if let Err(err) = http1::Builder::new()
-    //             .serve_connection(io, service_fn(echo))
-    //             .await
-    //         {
-    //             println!("Error serving connection: {:?}", err);
-    //         }
-    //     });
-    // }
-    // Server::bind(&addr)
-    //     .serve(Shared::new(service))
-    //     .await
-    //     .expect("server error");
-    Ok(())
+    // Create the service stack with caching
+    let service = ServiceBuilder::new()
+        .layer(cache_layer)
+        .service(HelloService);
+
+    // Bind to address
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+    let listener = TcpListener::bind(addr).await?;
+    tracing::info!("Listening on http://{}", addr);
+
+    // Accept connections
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let io = TokioIo::new(stream);
+        let svc = service.clone();
+
+        tokio::task::spawn(async move {
+            // Convert tower service to hyper service
+            let hyper_service = TowerToHyperService::new(svc);
+
+            if let Err(err) = http1::Builder::new()
+                .serve_connection(io, hyper_service)
+                .await
+            {
+                tracing::error!(?err, "Error serving connection");
+            }
+        });
+    }
 }

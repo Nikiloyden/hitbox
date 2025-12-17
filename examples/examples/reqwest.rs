@@ -1,9 +1,31 @@
-//! Example of using hitbox-reqwest with reqwest-middleware.
+//! Reqwest Client Caching Example
 //!
-//! This example demonstrates how to add caching to a reqwest client
-//! using the hitbox caching framework with Moka in-memory backend.
+//! Demonstrates client-side HTTP caching with the reqwest HTTP client.
+//!
+//! Features shown:
+//! - Integration with reqwest-middleware
+//! - Moka in-memory backend for client-side caching
+//! - Request predicate: only cache GET requests
+//! - Cache key extraction from request method and path
+//!
+//! Run:
+//!   cargo run -p hitbox-examples --example reqwest
+//!
+//! What it does:
+//!   - Fetches GitHub API data for the hitbox repository
+//!   - First request: cache miss (fetches from GitHub)
+//!   - Second request: cache hit (returns cached response)
+//!
+//! The X-Cache-Status header indicates cache status (hit/miss/stale).
 
-use hitbox_configuration::ConfigEndpoint;
+use std::time::Duration;
+
+use hitbox::policy::PolicyConfig;
+use hitbox_configuration::Endpoint;
+use hitbox_http::{
+    extractors::{Method as MethodExtractor, path::PathExtractor},
+    predicates::request::Method as RequestMethod,
+};
 use hitbox_moka::MokaBackend;
 use hitbox_reqwest::CacheMiddleware;
 use reqwest::Client;
@@ -19,22 +41,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a Moka in-memory backend
     let backend = MokaBackend::builder(1000).build();
 
-    // Configure cache endpoint using YAML configuration
-    let config_yaml = r#"
-    request:
-    - Method: GET
-    extractors:
-    - Method: {}
-    - Path: "/{path}*"
-    policy:
-      Enabled:
-        ttl: 60s
-    "#;
-
-    let config = serde_saphyr::from_str::<ConfigEndpoint>(config_yaml)
-        .expect("Failed to parse config")
-        .into_endpoint()
-        .expect("Failed to create endpoint");
+    // Configure cache endpoint using builder pattern
+    // - Only cache GET requests
+    // - Cache key includes: method + path
+    // - TTL: 60 seconds
+    let config = Endpoint::builder()
+        .request_predicate(RequestMethod::new(http::Method::GET).unwrap())
+        .extractor(MethodExtractor::new().path("/{path}*"))
+        .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
+        .build();
 
     // Create the cache middleware using builder pattern
     let cache_middleware = CacheMiddleware::builder()
@@ -50,33 +65,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // GitHub API for hitbox repo (requires User-Agent header)
     let url = "https://api.github.com/repos/hit-box/hitbox";
 
-    println!("=== First request (cache miss) ===");
+    tracing::info!("First request (cache miss)");
     let response = client
         .get(url)
         .header("User-Agent", "hitbox-example/1.0")
         .send()
         .await?;
-    println!("Status: {}", response.status());
-    println!(
-        "X-Cache-Status: {:?}",
-        response.headers().get("X-Cache-Status")
+    tracing::info!(
+        status = %response.status(),
+        cache_status = ?response.headers().get("X-Cache-Status"),
+        "Response received"
     );
     let body = response.text().await?;
-    println!("Body length: {} bytes", body.len());
+    tracing::info!(body_length = body.len(), "Body received");
 
-    println!("\n=== Second request (should be cache hit) ===");
+    tracing::info!("Second request (should be cache hit)");
     let response = client
         .get(url)
         .header("User-Agent", "hitbox-example/1.0")
         .send()
         .await?;
-    println!("Status: {}", response.status());
-    println!(
-        "X-Cache-Status: {:?}",
-        response.headers().get("X-Cache-Status")
+    tracing::info!(
+        status = %response.status(),
+        cache_status = ?response.headers().get("X-Cache-Status"),
+        "Response received"
     );
     let body = response.text().await?;
-    println!("Body length: {} bytes", body.len());
+    tracing::info!(body_length = body.len(), "Body received");
 
     Ok(())
 }
