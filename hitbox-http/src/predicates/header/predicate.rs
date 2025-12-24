@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 use http::HeaderMap;
 
@@ -10,9 +11,12 @@ pub struct Header<P> {
     pub(crate) inner: P,
 }
 
-impl<P> Header<P> {
-    pub fn new(inner: P, operation: Operation) -> Self {
-        Self { operation, inner }
+impl<S> Header<Neutral<S>> {
+    pub fn new(operation: Operation) -> Self {
+        Self {
+            operation,
+            inner: Neutral::new(),
+        }
     }
 }
 

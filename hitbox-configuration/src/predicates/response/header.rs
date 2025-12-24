@@ -1,6 +1,6 @@
 //! Response header predicate configuration.
 
-use hitbox_http::predicates::response::Header;
+use hitbox_http::predicates::response::HeaderPredicate;
 use hyper::body::Body as HttpBody;
 
 use crate::ResponsePredicate;
@@ -24,7 +24,7 @@ where
         |inner, (header_name, header_value)| -> Result<ResponsePredicate<ReqBody>, ConfigError> {
             let name = parse_header_name(&header_name)?;
             let operation = header_value_to_operation(name, header_value)?;
-            Ok(Box::new(Header::new(inner, operation)))
+            Ok(Box::new(inner.header(operation)))
         },
     )
 }

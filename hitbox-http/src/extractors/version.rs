@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 
+use super::NeutralExtractor;
 use crate::CacheableHttpRequest;
 
 /// Extractor for HTTP version
@@ -9,9 +10,17 @@ pub struct Version<E> {
     inner: E,
 }
 
-impl<E> Version<E> {
-    pub fn new(inner: E) -> Self {
-        Self { inner }
+impl<S> Version<NeutralExtractor<S>> {
+    pub fn new() -> Self {
+        Self {
+            inner: NeutralExtractor::new(),
+        }
+    }
+}
+
+impl<S> Default for Version<NeutralExtractor<S>> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

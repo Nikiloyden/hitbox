@@ -1,5 +1,6 @@
 use crate::CacheableHttpRequest;
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 
 #[derive(Debug)]
@@ -14,17 +15,19 @@ pub struct Method<P> {
     inner: P,
 }
 
-impl<P> Method<P> {
-    pub fn new<E, T>(inner: P, method: T) -> Result<Self, E>
+impl<S> Method<Neutral<S>> {
+    pub fn new<E, T>(method: T) -> Result<Self, E>
     where
         T: TryInto<http::Method, Error = E>,
     {
         Ok(Method {
             operation: Operation::Eq(method.try_into()?),
-            inner,
+            inner: Neutral::new(),
         })
     }
+}
 
+impl<P> Method<P> {
     pub fn new_in(inner: P, methods: Vec<http::Method>) -> Self {
         Method {
             operation: Operation::In(methods),

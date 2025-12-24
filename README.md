@@ -1,5 +1,9 @@
 # Hitbox
 
+[![Build status](https://github.com/hit-box/hitbox/actions/workflows/CI.yml/badge.svg)](https://github.com/hit-box/hitbox/actions?query=workflow)
+[![Coverage Status](https://codecov.io/gh/hit-box/hitbox/branch/main/graph/badge.svg?token=tgAm8OBLkY)](https://codecov.io/gh/hit-box/hitbox)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Highly customizable async caching framework for Rust designed for high-performance applications.
 
 Protocol-agnostic async core + first-class HTTP support via hitbox-http. Pluggable backends from in-memory to distributed solutions such as Redis. Built on tower, works with any tokio-based service.
@@ -7,6 +11,8 @@ Protocol-agnostic async core + first-class HTTP support via hitbox-http. Pluggab
 - [Features](#features)
 - [Motivation](#motivation)
 - [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [License](#license)
 
 ## Features
 
@@ -18,8 +24,7 @@ Protocol-agnostic async core + first-class HTTP support via hitbox-http. Pluggab
 - [Serialization](#serialization) Choose between bincode, rkyv, JSON, or RON formats
 - [Compression](#compression) Reduce storage size with zstd or gzip compression
 - [Observability](#observability) Track cache status, latency, backend I/O, and offload tasks
-- [Predicate Trait](#predicate-trait) Protocol-agnostic trait to control what gets cached
-- [Extractor Trait](#extractor-trait) Protocol-agnostic trait to generate cache keys from any request type
+- [Predicate and Extractor Traits](#predicate-and-extractor-traits) Protocol-agnostic traits to control caching and generate cache keys
 
 ### HTTP Caching Features
 - [HTTP Predicates](#http-predicates) Control caching with rules based on any part of request or response, including body
@@ -44,34 +49,33 @@ Stale cache enables serving outdated data while refreshing in the background. Ea
 **Code example**
 
 ```rust
-let offload = OffloadConfig::builder()
+// Configure how background tasks are executed
+let offload_config = OffloadConfig::builder()
     .max_concurrent_tasks(10)
     .timeout(Duration::from_secs(30))
     .deduplicate(true)
     .build();
 
-let manager = OffloadManager::new(offload);
+let manager = OffloadManager::new(offload_config);
+
+// Configure stale policy via PolicyConfig
+let policy = PolicyConfig::builder()
+    .ttl(Duration::from_secs(60))
+    .stale(Duration::from_secs(300))
+    .stale_policy(StalePolicy::OffloadRevalidate)
+    .build();
+
+// Add manager to Cache via .offload()
+let cache = Cache::builder()
+    .backend(backend)
+    .config(policy)
+    .offload(manager)
+    .build();
 ```
-
-<details>
-<summary>Stale policy YAML configuration</summary>
-
-```yaml
-policy:
-  Enabled:
-    ttl: 60      # fresh for 60 seconds
-    stale: 300   # serve stale for additional 300 seconds
-    policy:
-      stale: OffloadRevalidate
-```
-
-Note: OffloadManager settings are configured via Rust code only.
-
-</details>
 
 ## Dogpile Prevention
 
-When a cache entry expires or is missing, multiple simultaneous requests can trigger redundant upstream calls—this is the "dogpile" or "thundering herd" problem.
+When a cache entry expires or is missing, multiple simultaneous requests can trigger redundant upstream calls - this is the "dogpile" or "thundering herd" problem.
 
 Hitbox uses a configurable concurrency limit per cache key:
 - First N requests (where N = concurrency limit) proceed to upstream
@@ -79,35 +83,28 @@ Hitbox uses a configurable concurrency limit per cache key:
 - When any request completes, it broadcasts the result to all waiters
 - Waiters receive the response without calling upstream
 
-With `concurrency: 1`, only one request fetches from upstream while others wait. But if that single request is slow, all waiting requests become slow too. Setting `concurrency: 2` or higher allows parallel fetches—the first to complete broadcasts to all waiters, reducing the impact of slow upstream responses.
+With `concurrency: 1`, only one request fetches from upstream while others wait. But if that single request is slow, all waiting requests become slow too. Setting `concurrency: 2` or higher allows parallel fetches - the first to complete broadcasts to all waiters, reducing the impact of slow upstream responses.
 
 **Code example**
 
 ```rust
 // Create concurrency manager for dogpile prevention
-let concurrency_manager = Arc::new(BroadcastConcurrencyManager::<Response>::new());
+let concurrency_manager = BroadcastConcurrencyManager::<Response>::new();
 
 // Configure policy with concurrency limit
-let policy = PolicyConfig::Enabled(EnabledCacheConfig {
-    ttl: Some(60),
-    stale: Some(300),
-    concurrency: Some(1),  // Only one request fetches, others wait
-    ..Default::default()
-});
+let policy = PolicyConfig::builder()
+    .ttl(Duration::from_secs(60))
+    .stale(Duration::from_secs(300))
+    .concurrency(1)  // Only one request fetches, others wait
+    .build();
+
+// Add concurrency manager to Cache
+let cache = Cache::builder()
+    .backend(backend)
+    .config(policy)
+    .concurrency_manager(concurrency_manager)
+    .build();
 ```
-
-<details>
-<summary>YAML configuration</summary>
-
-```yaml
-policy:
-  Enabled:
-    ttl: 60
-    stale: 300
-    concurrency: 1  # Only one request fetches, others wait
-```
-
-</details>
 
 ## Pluggable Backends
 
@@ -138,51 +135,15 @@ let redis = RedisBackend::builder()
 let feoxdb = FeOxDbBackend::builder()
     .path("/tmp/cache".into())
     .build()?;
+
+// ...
+
+// Use backend with Cache
+let cache = Cache::builder()
+    .backend(moka)
+    .config(policy)
+    .build();
 ```
-
-<details>
-<summary>YAML configuration</summary>
-
-```yaml
-# Moka (in-memory)
-backend:
-  type: Moka
-  max_capacity: 10000
-  key:
-    format: Bitcode
-  value:
-    format: Bincode
-    compression:
-      type: Zstd
-      level: 3
-```
-
-```yaml
-# Redis (distributed)
-backend:
-  type: Redis
-  connection_string: "redis://localhost:6379"
-  key:
-    format: Bitcode
-  value:
-    format: Bincode
-```
-
-```yaml
-# FeOxDB (embedded persistent)
-backend:
-  type: FeOxDb
-  path: "/tmp/cache.db"
-  key:
-    format: UrlEncoded
-  value:
-    format: Bincode
-    compression:
-      type: Gzip
-      level: 6
-```
-
-</details>
 
 ## Composable Backends
 
@@ -198,82 +159,25 @@ Compose multiple backends into tiered cache hierarchies, similar to CPU cache le
 
 ```rust
 // L1 (Moka) + L2 (Redis) composition
-let cache = moka.compose(redis, offload);
+let offload = OffloadManager::with_defaults();
+let backend = moka.compose(redis, offload);
 
 // With custom policies
-let policy = CompositionPolicy::new()
+let composition_policy = CompositionPolicy::new()
     .read(RaceReadPolicy::new())
     .write(SequentialWritePolicy::new())
     .refill(RefillPolicy::Always);
 
-let cache = moka.compose_with(redis, offload, policy);
+let backend = moka.compose_with(redis, offload, composition_policy);
+
+// ...
+
+// Use composed backend with Cache
+let cache = Cache::builder()
+    .backend(backend)
+    .config(policy)
+    .build();
 ```
-
-<details>
-<summary>YAML configuration</summary>
-
-```yaml
-# L1 (Moka) + L2 (Redis) composition
-backend:
-  type: Composition
-  l1:
-    type: Moka
-    max_capacity: 10000
-    key:
-      format: Bitcode
-    value:
-      format: Bincode
-  l2:
-    type: Redis
-    connection_string: "redis://localhost:6379"
-    key:
-      format: Bitcode
-    value:
-      format: Bincode
-  policy:
-    read: Sequential
-    write: OptimisticParallel
-    refill: Never
-```
-
-```yaml
-# Nested L1/L2/L3 hierarchy
-backend:
-  type: Composition
-  l1:
-    type: Moka
-    max_capacity: 1000
-    key:
-      format: Bitcode
-    value:
-      format: Bincode
-  l2:
-    type: Composition
-    l1:
-      type: Moka
-      max_capacity: 10000
-      key:
-        format: Bitcode
-      value:
-        format: Bincode
-    l2:
-      type: Redis
-      connection_string: "redis://localhost:6379"
-      key:
-        format: Bitcode
-      value:
-        format: Bincode
-    policy:
-      read: Sequential
-      write: OptimisticParallel
-      refill: Never
-  policy:
-    read: Race
-    write: OptimisticParallel
-    refill: Always
-```
-
-</details>
 
 ## Serialization
 
@@ -294,84 +198,14 @@ Track cache performance with built-in metrics (via `metrics` crate):
 
 Integrates with any `metrics`-compatible exporter (Prometheus, StatsD, etc.).
 
-## Predicate Trait
+## Predicate and Extractor Traits
 
-The `Predicate` trait is a protocol-agnostic abstraction for controlling what gets cached. It defines a single async method that determines whether a given subject (request or response) should be cached.
+Hitbox provides two protocol-agnostic traits for extending caching to any protocol (GraphQL, gRPC, PostgreSQL wire protocol, etc.):
 
-```rust
-pub trait Predicate: Debug {
-    type Subject;
-    async fn check(&self, subject: Self::Subject) -> PredicateResult<Self::Subject>;
-}
+- **Predicate** controls what gets cached. Implement `check` to return `Cacheable` or `NonCacheable` for your request/response type.
+- **Extractor** generates cache keys. Implement `get` to extract key components from requests. Multiple extractors can be chained, each contributing parts to the final key.
 
-pub enum PredicateResult<S> {
-    Cacheable(S),
-    NonCacheable(S),
-}
-```
-
-Implement this trait to add caching rules for any protocol—GraphQL, gRPC, PostgreSQL wire protocol, or your own custom protocol. The `Subject` type represents your request or response type, and `check` returns whether it should be cached along with the (potentially modified) subject.
-
-**Example: Custom Protocol Predicate**
-
-```rust
-use hitbox_core::{Predicate, PredicateResult};
-
-#[derive(Debug)]
-struct GraphQLQueryPredicate;
-
-#[async_trait]
-impl Predicate for GraphQLQueryPredicate {
-    type Subject = GraphQLRequest;
-
-    async fn check(&self, req: Self::Subject) -> PredicateResult<Self::Subject> {
-        // Only cache queries, not mutations or subscriptions
-        if req.operation_type() == OperationType::Query {
-            PredicateResult::Cacheable(req)
-        } else {
-            PredicateResult::NonCacheable(req)
-        }
-    }
-}
-```
-
-Hitbox provides a complete HTTP implementation in `hitbox-http` with predicates for method, path, headers, status codes, and body content—use it as a reference when implementing your own protocol support.
-
-## Extractor Trait
-
-The `Extractor` trait is a protocol-agnostic abstraction for generating cache keys from requests. It defines a single async method that extracts key components from a subject.
-
-```rust
-pub trait Extractor: Debug {
-    type Subject;
-    async fn get(&self, subject: Self::Subject) -> KeyParts<Self::Subject>;
-}
-```
-
-`KeyParts` accumulates extracted values that combine into a final cache key. Implement this trait to define how cache keys are built for any protocol. Multiple extractors can be chained together, each contributing parts to the final key.
-
-**Example: Custom Protocol Extractor**
-
-```rust
-use hitbox_core::{Extractor, KeyParts};
-
-#[derive(Debug)]
-struct GraphQLOperationExtractor;
-
-#[async_trait]
-impl Extractor for GraphQLOperationExtractor {
-    type Subject = GraphQLRequest;
-
-    async fn get(&self, req: Self::Subject) -> KeyParts<Self::Subject> {
-        KeyParts::new(req)
-            .part("operation", req.operation_name())
-            .part("query_hash", hash(req.query()))
-            .part("variables_hash", hash(req.variables()))
-    }
-}
-```
-
-The HTTP implementation in `hitbox-http` provides extractors for method, path parameters, query strings, headers, and body content—serving as a reference for building protocol-specific extractors.
+Hitbox provides a complete HTTP implementation in `hitbox-http`—use it as a reference when implementing your own protocol support.
 
 ## HTTP Predicates
 
@@ -380,34 +214,27 @@ HTTP Predicates control what gets cached. Request predicates filter incoming req
 **Code example**
 
 ```rust
-NeutralRequestPredicate::new()
-    .method(Method::GET)
-    .path("/api/authors/{id}".into())
-    .header(header::Operation::Eq(
-        "x-api-key".parse().unwrap(),
-        "secret123".parse().unwrap(),
-    ))
+use http::{Method, StatusCode, header::CACHE_CONTROL};
+use hitbox_http::predicates::{
+    request::Method as RequestMethod,
+    response::StatusCode as ResponseStatusCode,
+    header::{Header as RequestHeader, Operation as HeaderOperation},
+};
 
-NeutralResponsePredicate::new()
-    .status_code(StatusCode::OK)
+// Request predicate: cache GET requests to /api/authors/{id}, skip if Cache-Control: no-cache
+RequestMethod::new(Method::GET)
+    .unwrap()
+    .path("/api/authors/{id}".to_string())
+    .and(
+        RequestHeader::new(HeaderOperation::Contains(
+            CACHE_CONTROL,
+            "no-cache".to_string(),
+        )).not()
+    )
+
+// Response predicate: only cache successful responses
+ResponseStatusCode::new(StatusCode::OK)
 ```
-
-<details>
-<summary>YAML configuration</summary>
-
-```yaml
-request:
-  - Method: GET
-  - Path: "/api/authors/{id}"
-  - Header:
-      x-api-key: "secret123"
-
-response:
-  - Status: 200
-  - Status: Success  # matches any 2xx
-```
-
-</details>
 
 ## HTTP Extractors
 
@@ -416,25 +243,21 @@ HTTP Extractors build cache keys from request components. They extract values fr
 **Code example**
 
 ```rust
-NeutralExtractor::new()
+use hitbox_http::extractors::{
+    Method as MethodExtractor,
+    Path as PathExtractor,
+    query::QueryExtractor,
+    header::HeaderExtractor,
+};
+
+// Extract method, path params, query params, and headers for cache key
+MethodExtractor::new()
     .path("/v1/authors/{author_id}/books/{book_id}")
-    .query("page".into())
-    .header("Accept-Language".into())
+    .query("page".to_string())
+    .header("Accept-Language".to_string())
 ```
 
-<details>
-<summary>YAML configuration</summary>
-
-```yaml
-extractors:
-  - Path: "/v1/authors/{author_id}/books/{book_id}"
-  - Query: page
-  - Header: Accept-Language
-```
-
-</details>
-
-A request to `/v1/authors/123/books/456?page=1` with `Accept-Language: en` produces a cache key with `author_id`, `book_id`, `page`, and `Accept-Language` components.
+A request to `/v1/authors/123/books/456?page=1` with `Accept-Language: en` produces a cache key with `method`, `author_id`, `book_id`, `page`, and `Accept-Language` components.
 
 ## Framework Integration
 
@@ -493,7 +316,7 @@ policy:
     concurrency: 1
 ```
 
-Change caching rules at runtime—no recompilation needed.
+Change caching rules at runtime - no recompilation needed.
 
 ---
 
@@ -519,17 +342,18 @@ At the same time, Hitbox is not just an abstract foundation. It already provides
 [dependencies]
 hitbox = { version = "0.1", features = ["moka"] }
 hitbox-tower = "0.1"
-hitbox-http = "0.1"
+hitbox-configuration = "0.1"
 ```
 
 ### Basic Usage
 
 ```rust
+use std::time::Duration;
 use axum::{Router, routing::get, extract::Path};
+use hitbox::policy::PolicyConfig;
+use hitbox_configuration::Endpoint;
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
-use hitbox_http::HttpEndpoint;
-use hitbox::policy::{PolicyConfig, EnabledCacheConfig};
 
 // Handlers
 async fn get_users() -> &'static str { "users list" }
@@ -539,22 +363,24 @@ async fn get_user(Path(id): Path<String>) -> String { format!("user {id}") }
 let backend = MokaBackend::builder(10_000).build();
 
 // Users list - long TTL (60s)
-let users_config = HttpEndpoint {
-    policy: PolicyConfig::Enabled(EnabledCacheConfig {
-        ttl: Some(60),
-        stale: Some(30),
-        ..Default::default()
-    }),
-};
+let users_config = Endpoint::builder()
+    .policy(
+        PolicyConfig::builder()
+            .ttl(Duration::from_secs(60))
+            .stale(Duration::from_secs(30))
+            .build()
+    )
+    .build();
 
 // Single user - short TTL (10s)
-let user_config = HttpEndpoint {
-    policy: PolicyConfig::Enabled(EnabledCacheConfig {
-        ttl: Some(10),
-        stale: Some(5),
-        ..Default::default()
-    }),
-};
+let user_config = Endpoint::builder()
+    .policy(
+        PolicyConfig::builder()
+            .ttl(Duration::from_secs(10))
+            .stale(Duration::from_secs(5))
+            .build()
+    )
+    .build();
 
 // Build cache layers
 let users_cache = Cache::builder()
@@ -579,3 +405,22 @@ let app = Router::new()
 - [Stale Cache](#stale-cache) - Configure TTL and background revalidation
 - [Composable Backends](#composable-backends) - Add Redis as L2
 - [Examples](./examples) - More complete examples
+
+## Project Structure
+
+| Crate | Description |
+|-------|-------------|
+| `hitbox` | Main crate with policy configuration, stale cache, and feature flags for backends |
+| `hitbox-core` | Core traits (`Predicate`, `Extractor`) and types for protocol-agnostic caching |
+| `hitbox-backend` | `Backend` trait and utilities for implementing storage backends |
+| `hitbox-http` | HTTP-specific predicates and extractors for request/response caching |
+| `hitbox-tower` | Tower middleware integration (`Cache` layer) for server-side caching |
+| `hitbox-configuration` | YAML/file-based configuration support |
+| `hitbox-moka` | In-memory backend using [Moka](https://github.com/moka-rs/moka) |
+| `hitbox-redis` | Distributed backend using Redis |
+| `hitbox-feoxdb` | Embedded persistent backend using FeOxDB |
+| `hitbox-reqwest` | Client-side caching for [reqwest](https://github.com/seanmonstar/reqwest) via reqwest-middleware |
+
+## License
+
+This project is licensed under the [MIT license](LICENSE).

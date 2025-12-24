@@ -147,7 +147,7 @@ impl HeaderOperation {
             }
         };
 
-        Ok(Box::new(HttpHeader::new(
+        Ok(Box::new(HttpHeader::new_with(
             inner,
             name_selector,
             value_extractor,

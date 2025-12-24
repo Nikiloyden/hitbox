@@ -43,7 +43,7 @@ use hitbox_backend::{CacheBackend, CompositionBackend, PassthroughCompressor};
 use hitbox_configuration::{Backend as ConfigBackend, ConfigEndpoint};
 use hitbox_core::Upstream;
 use hitbox_http::extractors::NeutralExtractor;
-use hitbox_http::extractors::body::{Body as BodyExtractor, BodyExtraction, JqExtraction};
+use hitbox_http::extractors::body::{BodyExtraction, BodyExtractor, JqExtraction};
 use hitbox_http::extractors::header::{
     Header, NameSelector as HeaderNameSelector, ValueExtractor as HeaderValueExtractor,
 };
@@ -181,13 +181,13 @@ fn create_extractors() -> impl hitbox::Extractor<Subject = BenchRequest> + Send 
     let with_path = with_method.path("/v1/users/{user_id}/orders");
 
     // Query extractors
-    let with_query1 = Query::new(
+    let with_query1 = Query::new_with(
         with_path,
         QueryNameSelector::Exact("include".to_string()),
         QueryValueExtractor::Full,
         Vec::new(),
     );
-    let with_query2 = Query::new(
+    let with_query2 = Query::new_with(
         with_query1,
         QueryNameSelector::Exact("fields".to_string()),
         QueryValueExtractor::Full,
@@ -195,7 +195,7 @@ fn create_extractors() -> impl hitbox::Extractor<Subject = BenchRequest> + Send 
     );
 
     // Header: tenant-id (plain)
-    let with_tenant = Header::new(
+    let with_tenant = Header::new_with(
         with_query2,
         HeaderNameSelector::Exact("x-tenant-id".to_string()),
         HeaderValueExtractor::Full,
@@ -203,7 +203,7 @@ fn create_extractors() -> impl hitbox::Extractor<Subject = BenchRequest> + Send 
     );
 
     // Header: authorization with hash transform (for privacy in cache key)
-    let with_auth = Header::new(
+    let with_auth = Header::new_with(
         with_tenant,
         HeaderNameSelector::Exact("authorization".to_string()),
         HeaderValueExtractor::Full,
@@ -211,7 +211,7 @@ fn create_extractors() -> impl hitbox::Extractor<Subject = BenchRequest> + Send 
     );
 
     // Header: idempotency key
-    Header::new(
+    Header::new_with(
         with_auth,
         HeaderNameSelector::Exact("x-idempotency-key".to_string()),
         HeaderValueExtractor::Full,
@@ -254,7 +254,7 @@ fn create_extractors_with_body() -> impl hitbox::Extractor<Subject = BenchReques
         "{customer_id: .order.customer_id, shipping: .order.shipping_method}",
     )
     .unwrap();
-    BodyExtractor::new(create_extractors(), BodyExtraction::Jq(jq_extraction))
+    create_extractors().body(BodyExtraction::Jq(jq_extraction))
 }
 
 // ============================================================================

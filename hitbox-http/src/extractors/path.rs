@@ -2,6 +2,7 @@ use actix_router::ResourceDef;
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyPart, KeyParts};
 
+use super::NeutralExtractor;
 use crate::CacheableHttpRequest;
 
 #[derive(Debug)]
@@ -10,10 +11,10 @@ pub struct Path<E> {
     resource: ResourceDef,
 }
 
-impl<E> Path<E> {
-    pub fn new(inner: E, resource: String) -> Self {
+impl<S> Path<NeutralExtractor<S>> {
+    pub fn new(resource: &str) -> Self {
         Self {
-            inner,
+            inner: NeutralExtractor::new(),
             resource: ResourceDef::from(resource),
         }
     }

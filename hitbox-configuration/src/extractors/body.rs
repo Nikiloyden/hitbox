@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use hitbox_http::extractors;
+use hitbox_http::extractors::body::BodyExtractor;
 use hyper::body::Body as HttpBody;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -99,18 +100,14 @@ impl BodyOperation {
         match self {
             BodyOperation::Transforms(_) => {
                 // Currently only hash is supported
-                Ok(Box::new(extractors::body::Body::new(
-                    inner,
-                    extractors::body::BodyExtraction::Hash,
-                )))
+                Ok(Box::new(inner.body(extractors::body::BodyExtraction::Hash)))
             }
-            BodyOperation::Jq(jq_op) => Ok(Box::new(extractors::body::Body::new(
-                inner,
-                extractors::body::BodyExtraction::Jq(
+            BodyOperation::Jq(jq_op) => Ok(Box::new(
+                inner.body(extractors::body::BodyExtraction::Jq(
                     extractors::body::JqExtraction::compile(&jq_op.jq)
                         .map_err(ConfigError::InvalidPredicate)?,
-                ),
-            ))),
+                )),
+            )),
             BodyOperation::Regex(regex_op) => {
                 let regex = Regex::new(&regex_op.regex).map_err(|e| ConfigError::InvalidRegex {
                     pattern: regex_op.regex.clone(),
@@ -131,8 +128,7 @@ impl BodyOperation {
                             .collect(),
                     ),
                 };
-                Ok(Box::new(extractors::body::Body::new(
-                    inner,
+                Ok(Box::new(inner.body(
                     extractors::body::BodyExtraction::Regex(extractors::body::RegexExtraction {
                         regex,
                         key: regex_op.key,

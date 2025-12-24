@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use hitbox_http::predicates::request::Query;
+use hitbox_http::predicates::request::QueryPredicate;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -89,16 +89,13 @@ impl QueryOperation {
             .rfold(inner, |inner, (key, param_op)| {
                 let op = param_op.to_operation();
                 match op {
-                    Operation::Eq(value) => Box::new(Query::new(
-                        inner,
+                    Operation::Eq(value) => Box::new(inner.query(
                         hitbox_http::predicates::request::query::Operation::Eq(key, value),
                     )),
-                    Operation::In(values) => Box::new(Query::new(
-                        inner,
+                    Operation::In(values) => Box::new(inner.query(
                         hitbox_http::predicates::request::query::Operation::In(key, values),
                     )),
-                    Operation::Exists => Box::new(Query::new(
-                        inner,
+                    Operation::Exists => Box::new(inner.query(
                         hitbox_http::predicates::request::query::Operation::Exist(key),
                     )),
                 }

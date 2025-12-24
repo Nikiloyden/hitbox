@@ -32,7 +32,12 @@ use std::time::Duration;
 
 use axum::{Router, routing::get};
 use hitbox::concurrency::NoopConcurrencyManager;
-use hitbox_configuration::ConfigEndpoint;
+use hitbox::policy::PolicyConfig;
+use hitbox_configuration::Endpoint;
+use hitbox_http::{
+    extractors::{Method as MethodExtractor, path::PathExtractor},
+    predicates::request::{Method as RequestMethod, PathPredicate},
+};
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
@@ -165,49 +170,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = MokaBackend::builder(1024 * 1024).build();
 
     // Root cache - long TTL (60s), simple cache key by method only
-    let root_config = serde_saphyr::from_str::<ConfigEndpoint>(
-        r"
-        request:
-          - Method: GET
-          - Path: /
-        extractors:
-          - Method: {}
-          - Path: /
-        policy:
-          Enabled:
-            ttl: 60s
-            stale: 30s
-        ",
-    )?
-    .into_endpoint()?;
+    // Request predicate: GET method + path "/"
+    // Extractor: method + path "/"
+    // Policy: TTL 60s, stale 30s
+    let root_config = Endpoint::builder()
+        .request_predicate(
+            RequestMethod::new(http::Method::GET)
+                .unwrap()
+                .path("/".to_string()),
+        )
+        .extractor(MethodExtractor::new().path("/"))
+        .policy(
+            PolicyConfig::builder()
+                .ttl(Duration::from_secs(60))
+                .stale(Duration::from_secs(30))
+                .build(),
+        )
+        .build();
 
     // Greet cache - short TTL (10s), cache key includes path parameter
-    let greet_config = serde_saphyr::from_str::<ConfigEndpoint>(
-        r"
-        request:
-          - Method: GET
-          - Path: /greet/{name}
-        extractors:
-          - Method: {}
-          - Path: /greet/{name}
-        policy:
-          Enabled:
-            ttl: 10s
-            stale: 5s
-        ",
-    )?
-    .into_endpoint()?;
+    // Request predicate: GET method + path "/greet/{name}"
+    // Extractor: method + path "/greet/{name}"
+    // Policy: TTL 10s, stale 5s
+    let greet_config = Endpoint::builder()
+        .request_predicate(
+            RequestMethod::new(http::Method::GET)
+                .unwrap()
+                .path("/greet/{name}".to_string()),
+        )
+        .extractor(MethodExtractor::new().path("/greet/{name}"))
+        .policy(
+            PolicyConfig::builder()
+                .ttl(Duration::from_secs(10))
+                .stale(Duration::from_secs(5))
+                .build(),
+        )
+        .build();
 
     // Health check - caching disabled
-    let health_config = serde_saphyr::from_str::<ConfigEndpoint>(
-        r"
-        request:
-          - Method: GET
-          - Path: /health
-        policy: Disabled
-        ",
-    )?
-    .into_endpoint()?;
+    // Request predicate: GET method + path "/health"
+    // Policy: Disabled
+    let health_config = Endpoint::builder()
+        .request_predicate(
+            RequestMethod::new(http::Method::GET)
+                .unwrap()
+                .path("/health".to_string()),
+        )
+        .policy(PolicyConfig::disabled())
+        .build();
 
     // Build cache layers with different configurations (concurrency manager disabled)
     let root_cache = Cache::builder()

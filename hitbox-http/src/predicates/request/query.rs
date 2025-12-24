@@ -1,5 +1,6 @@
 use crate::CacheableHttpRequest;
 use async_trait::async_trait;
+use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
 
 #[derive(Debug)]
@@ -15,9 +16,12 @@ pub struct Query<P> {
     inner: P,
 }
 
-impl<P> Query<P> {
-    pub fn new(inner: P, operation: Operation) -> Self {
-        Self { operation, inner }
+impl<S> Query<Neutral<S>> {
+    pub fn new(operation: Operation) -> Self {
+        Self {
+            operation,
+            inner: Neutral::new(),
+        }
     }
 }
 

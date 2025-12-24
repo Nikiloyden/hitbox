@@ -5,6 +5,7 @@ use hitbox::{Extractor, KeyPart, KeyParts};
 use http::HeaderValue;
 use regex::Regex;
 
+use super::NeutralExtractor;
 pub use super::transform::Transform;
 use super::transform::apply_transform_chain;
 use crate::CacheableHttpRequest;
@@ -36,8 +37,19 @@ pub struct Header<E> {
     transforms: Vec<Transform>,
 }
 
+impl<S> Header<NeutralExtractor<S>> {
+    pub fn new(name: String) -> Self {
+        Self {
+            inner: NeutralExtractor::new(),
+            name_selector: NameSelector::Exact(name),
+            value_extractor: ValueExtractor::Full,
+            transforms: Vec::new(),
+        }
+    }
+}
+
 impl<E> Header<E> {
-    pub fn new(
+    pub fn new_with(
         inner: E,
         name_selector: NameSelector,
         value_extractor: ValueExtractor,
