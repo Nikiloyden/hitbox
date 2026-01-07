@@ -1,3 +1,10 @@
+//! Core backend traits for cache storage implementations.
+//!
+//! This module defines two levels of abstraction:
+//!
+//! - [`Backend`] - Low-level dyn-compatible trait for raw byte operations
+//! - [`CacheBackend`] - High-level trait with typed operations (automatic via blanket impl)
+
 use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
@@ -8,11 +15,28 @@ use hitbox_core::{
 };
 
 use crate::{
-    BackendError, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
-    format::{Format, FormatExt, JsonFormat},
+    BackendError, CacheKeyFormat, Compressor, PassthroughCompressor,
+    format::{BincodeFormat, Format, FormatExt},
     metrics::Timer,
 };
 
+/// Status of a delete operation.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeleteStatus {
+    /// Record successfully deleted.
+    ///
+    /// The `u32` count indicates how many cache layers deleted the key.
+    /// For single backends this is always `1`, but for [`CompositionBackend`]
+    /// the counts are summed (e.g., `Deleted(2)` means both L1 and L2 had the key).
+    ///
+    /// [`CompositionBackend`]: crate::composition::CompositionBackend
+    Deleted(u32),
+
+    /// Record was not found in the cache.
+    Missing,
+}
+
+/// Result type for backend operations.
 pub type BackendResult<T> = Result<T, BackendError>;
 
 /// Type alias for a dynamically dispatched Backend that is Send but not Sync.
@@ -21,30 +45,50 @@ pub type UnsyncBackend = dyn Backend + Send;
 /// Type alias for a dynamically dispatched Backend that is Send + Sync.
 pub type SyncBackend = dyn Backend + Send + Sync;
 
+/// Low-level cache storage trait for raw byte operations.
+///
+/// Implement this trait to create a custom cache backend. The trait operates on
+/// raw bytes ([`CacheValue<Raw>`]), with serialization handled by [`CacheBackend`].
+///
+/// # Dyn-Compatibility
+///
+/// This trait is dyn-compatible. Blanket implementations are provided for:
+/// - `&dyn Backend`
+/// - `Box<dyn Backend>`
+/// - `Arc<dyn Backend + Send>` ([`UnsyncBackend`])
+/// - `Arc<dyn Backend + Send + Sync>` ([`SyncBackend`])
 #[async_trait]
 pub trait Backend: Sync + Send {
+    /// Read raw cached data by key.
+    ///
+    /// Returns `Ok(Some(value))` on hit, `Ok(None)` on miss.
     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>>;
 
+    /// Write raw data to cache.
     async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()>;
 
+    /// Remove data from cache.
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus>;
 
-    /// Returns the label of this backend for source path composition.
+    /// Backend label for metrics and source path composition.
     ///
-    /// This is used to build hierarchical source paths like "composition.l1.moka"
-    /// when backends are nested within CompositionBackend.
+    /// Used to build hierarchical paths like `"composition.moka"` in
+    /// [`CompositionBackend`](crate::CompositionBackend).
     fn label(&self) -> BackendLabel {
         BackendLabel::new_static("backend")
     }
 
+    /// Serialization format for cached values. Default: [`BincodeFormat`].
     fn value_format(&self) -> &dyn Format {
-        &JsonFormat
+        &BincodeFormat
     }
 
+    /// Key serialization format. Default: [`CacheKeyFormat::Bitcode`].
     fn key_format(&self) -> &CacheKeyFormat {
         &CacheKeyFormat::Bitcode
     }
 
+    /// Compressor for cached values. Default: [`PassthroughCompressor`].
     fn compressor(&self) -> &dyn Compressor {
         &PassthroughCompressor
     }
@@ -179,7 +223,24 @@ impl Backend for Arc<SyncBackend> {
 /// This trait provides typed `get`, `set`, and `delete` operations that handle
 /// serialization/deserialization and context tracking. The context is passed
 /// as a mutable reference and updated in-place during operations.
+///
+/// Automatically implemented for all [`Backend`] implementations.
+///
+/// <div class="warning">
+///
+/// Typically, you don't need to implement this trait yourself - the default
+/// implementation handles serialization, compression, and metrics automatically.
+///
+/// If you do provide a custom implementation, be aware that when your backend
+/// is used as a trait object (`dyn Backend`, `Box<dyn Backend>`, etc.), the
+/// blanket implementation will be used instead of your custom one.
+///
+/// </div>
 pub trait CacheBackend: Backend {
+    /// Retrieve a typed value from cache.
+    ///
+    /// Handles decompression and deserialization automatically using the
+    /// backend's configured [`Format`] and [`Compressor`].
     fn get<T>(
         &self,
         key: &CacheKey,
@@ -257,6 +318,10 @@ pub trait CacheBackend: Backend {
         }
     }
 
+    /// Store a typed value in cache.
+    ///
+    /// Handles serialization and compression automatically using the
+    /// backend's configured [`Format`] and [`Compressor`].
     fn set<T>(
         &self,
         key: &CacheKey,
@@ -310,6 +375,9 @@ pub trait CacheBackend: Backend {
         }
     }
 
+    /// Delete a value from cache.
+    ///
+    /// Delegates to [`Backend::remove`].
     fn delete(
         &self,
         key: &CacheKey,

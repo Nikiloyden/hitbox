@@ -2,10 +2,13 @@ use bytes::Bytes;
 use hitbox_core::{BoxContext, Raw};
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::Context;
+use crate::context::Context;
 
-/// RON (Rusty Object Notation) format - human-readable alternative to JSON
-#[derive(Debug, Clone, Copy)]
+/// RON (Rusty Object Notation) serialization format.
+///
+/// Human-readable format with Rust-like syntax. Produces more compact output
+/// than JSON with better readability. Binary data uses `b'...'` notation.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct RonFormat;
 
 impl Format for RonFormat {

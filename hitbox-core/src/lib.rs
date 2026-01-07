@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 //! # hitbox-core
 //!
 //! Core traits and types for the Hitbox asynchronous caching framework.

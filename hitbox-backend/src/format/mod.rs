@@ -1,10 +1,36 @@
-use bytes::Bytes;
+//! Serialization formats for cached values.
+//!
+//! Cache backends need to serialize values to bytes for storage. The [`Format`] trait
+//! provides a dyn-compatible interface that allows backends to select serialization
+//! format at runtime.
+//!
+//! See the [crate-level documentation](crate#serialization-formats) for a comparison
+//! of available formats.
+//!
+//! # Why dyn-compatible?
+//!
+//! The [`Backend`](crate::Backend) trait returns its format via `value_format() -> &dyn Format`.
+//! This design enables:
+//!
+//! - **Runtime format selection**: Choose format based on configuration, not compile-time generics
+//! - **Heterogeneous backends**: Combine backends with different formats in composition layers
+//! - **Format switching**: Change serialization strategy without recompiling
+//!
+//! Making [`Format`] dyn-compatible required a callback-based API ([`Format::with_serializer`],
+//! [`Format::with_deserializer`]) instead of returning serializers directly. This avoids
+//! self-referential lifetime issues that would prevent trait object usage.
+//!
+//! # Extending with Custom Formats
+//!
+//! Implement [`Format`] to add custom serialization. Use [`FormatTypeId::Custom`] with
+//! a unique identifier string to ensure your format can be distinguished from built-in ones.
+
 use hitbox_core::{Cacheable, Raw};
 use thiserror::Error;
 
 use hitbox_core::BoxContext;
 
-use crate::Context;
+use crate::context::Context;
 
 #[cfg(feature = "rkyv_format")]
 use ::rkyv::{api::high::to_bytes_in, from_bytes, rancor, util::AlignedVec};
@@ -20,6 +46,20 @@ use ::bincode::{Decode, Encode};
 // Import the BincodeVecWriter from bincode module
 use self::bincode::BincodeVecWriter;
 
+/// Opaque bincode encoder wrapper.
+///
+/// This type is exposed in [`FormatSerializer::Bincode`] but cannot be
+/// constructed outside this crate. Use [`FormatSerializer::Serde`] for
+/// custom format implementations.
+pub struct BincodeEncoder<'a>(pub(crate) &'a mut EncoderImpl<BincodeVecWriter, Configuration>);
+
+/// Opaque bincode decoder wrapper.
+///
+/// This type is exposed in [`FormatDeserializer::Bincode`] but cannot be
+/// constructed outside this crate. Use [`FormatDeserializer::Serde`] for
+/// custom format implementations.
+pub struct BincodeDecoder<'a>(pub(crate) &'a mut DecoderImpl<SliceReader<'a>, Configuration, ()>);
+
 mod bincode;
 mod json;
 #[cfg(feature = "rkyv_format")]
@@ -29,14 +69,18 @@ mod ron;
 pub use bincode::BincodeFormat;
 pub use json::JsonFormat;
 #[cfg(feature = "rkyv_format")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rkyv_format")))]
 pub use rkyv::RkyvFormat;
 pub use ron::RonFormat;
 
+/// Errors from serialization and deserialization operations.
 #[derive(Error, Debug)]
 pub enum FormatError {
+    /// Serialization failed.
     #[error(transparent)]
     Serialize(Box<dyn std::error::Error + Send>),
 
+    /// Deserialization failed.
     #[error(transparent)]
     Deserialize(Box<dyn std::error::Error + Send>),
 }
@@ -78,27 +122,42 @@ impl RkyvValidationError {
     }
 }
 
-/// Unique identifier for format types, used to compare format equality
+/// Identifies a format type for equality comparison.
+///
+/// Since [`Format`] is dyn-compatible, you cannot compare formats with `TypeId`.
+/// This enum provides a stable identifier that works across trait objects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FormatTypeId {
+    /// JSON format.
     Json,
+    /// Bincode format.
     Bincode,
+    /// RON format.
     Ron,
+    /// Rkyv format.
     Rkyv,
-    /// For user-defined custom formats. The string should be a unique identifier.
+    /// User-defined format. The string must be globally unique.
     Custom(&'static str),
 }
 
-/// Unified serializer enum that can hold serde, rkyv, or bincode serializers
+/// Serializer passed to [`Format::with_serializer`] callbacks.
+///
+/// Wraps different serialization backends (serde, rkyv, bincode) in a unified interface.
+/// Call [`serialize`](Self::serialize) with any [`Cacheable`] value.
 pub enum FormatSerializer<'a> {
+    /// Serde-based serializer (used by JSON, RON).
     Serde(&'a mut dyn erased_serde::Serializer),
+    /// Rkyv serializer (zero-copy).
     #[cfg(feature = "rkyv_format")]
     Rkyv(&'a mut AlignedVec),
-    Bincode(&'a mut EncoderImpl<BincodeVecWriter, Configuration>),
+    /// Bincode serializer (opaque, cannot be constructed externally).
+    Bincode(BincodeEncoder<'a>),
 }
 
 impl<'a> FormatSerializer<'a> {
-    /// Serialize a value - handles serde, rkyv, and bincode based on serializer type
+    /// Serializes a value using the underlying format.
+    ///
+    /// Dispatches to the appropriate serialization backend automatically.
     pub fn serialize<T>(&mut self, value: &T) -> Result<(), FormatError>
     where
         T: Cacheable,
@@ -124,22 +183,30 @@ impl<'a> FormatSerializer<'a> {
             FormatSerializer::Bincode(enc) => {
                 // Use Compat wrapper to bridge serde and bincode
                 let compat = Compat(value);
-                Encode::encode(&compat, enc).map_err(|e| FormatError::Serialize(Box::new(e)))
+                Encode::encode(&compat, enc.0).map_err(|e| FormatError::Serialize(Box::new(e)))
             }
         }
     }
 }
 
-/// Unified deserializer enum that can hold serde, rkyv, or bincode deserializers
+/// Deserializer passed to [`Format::with_deserializer`] callbacks.
+///
+/// Wraps different deserialization backends in a unified interface.
+/// Call [`deserialize`](Self::deserialize) to reconstruct the original value.
 pub enum FormatDeserializer<'a> {
+    /// Serde-based deserializer (used by JSON, RON).
     Serde(&'a mut dyn erased_serde::Deserializer<'a>),
+    /// Rkyv deserializer (validates and deserializes archived bytes).
     #[cfg(feature = "rkyv_format")]
-    Rkyv(&'a [u8]), // For rkyv, we just need access to the archived bytes
-    Bincode(&'a mut DecoderImpl<SliceReader<'a>, Configuration, ()>),
+    Rkyv(&'a [u8]),
+    /// Bincode deserializer (opaque, cannot be constructed externally).
+    Bincode(BincodeDecoder<'a>),
 }
 
 impl<'a> FormatDeserializer<'a> {
-    /// Deserialize a value - handles serde, rkyv, and bincode based on deserializer type
+    /// Deserializes a value using the underlying format.
+    ///
+    /// Dispatches to the appropriate deserialization backend automatically.
     pub fn deserialize<T>(&mut self) -> Result<T, FormatError>
     where
         T: Cacheable,
@@ -158,32 +225,42 @@ impl<'a> FormatDeserializer<'a> {
             FormatDeserializer::Bincode(dec) => {
                 // Use Compat wrapper to decode from bincode
                 let compat: Compat<T> =
-                    Decode::decode(dec).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
+                    Decode::decode(dec.0).map_err(|e| FormatError::Deserialize(Box::new(e)))?;
                 Ok(compat.0)
             }
         }
     }
 }
 
-/// Unified serialization interface that bridges serde and rkyv
-/// This trait allows different serialization libraries to work with the same Format interface
-pub trait FormatSerialize {
-    /// Serialize the value to bytes
-    fn serialize(&self) -> Result<Bytes, FormatError>;
-}
-
-/// Object-safe format trait (uses erased-serde for type erasure)
-/// This trait can be used with `&dyn Format` for dynamic dispatch
+/// Dyn-compatible serialization format.
+///
+/// Uses a callback-based API to work around lifetime constraints that would
+/// prevent returning serializers directly from trait methods.
+///
+/// # For Implementors
+///
+/// Implement [`with_serializer`](Self::with_serializer) and [`with_deserializer`](Self::with_deserializer)
+/// to provide serialization/deserialization. The callback receives a [`FormatSerializer`] or
+/// [`FormatDeserializer`] that handles the actual conversion.
+///
+/// # For Callers
+///
+/// Use [`FormatExt::serialize`] and [`FormatExt::deserialize`] instead of calling
+/// the callback methods directly. The extension trait provides a cleaner API.
 pub trait Format: std::fmt::Debug + Send + Sync {
-    /// Provides access to a serializer via a callback to avoid lifetime issues
+    /// Serializes a value through a callback.
+    ///
+    /// Creates a serializer, passes it to the callback, and returns the serialized bytes.
     fn with_serializer(
         &self,
         f: &mut dyn FnMut(&mut FormatSerializer) -> Result<(), FormatError>,
         context: &dyn Context,
     ) -> Result<Raw, FormatError>;
 
-    /// Provides access to a deserializer via a callback to avoid lifetime issues.
-    /// The context is passed by mutable reference and can be modified/upgraded during deserialization.
+    /// Deserializes a value through a callback.
+    ///
+    /// Creates a deserializer from the data and passes it to the callback.
+    /// The context can be modified during deserialization (e.g., to upgrade schema versions).
     fn with_deserializer(
         &self,
         data: &[u8],
@@ -191,17 +268,19 @@ pub trait Format: std::fmt::Debug + Send + Sync {
         ctx: &mut BoxContext,
     ) -> Result<(), FormatError>;
 
-    /// Clone this format into a box (for object safety)
+    /// Clones this format into a boxed trait object.
     fn clone_box(&self) -> Box<dyn Format>;
 
-    /// Returns a unique identifier for this format type.
-    /// Used to compare format equality without knowing the concrete type.
+    /// Returns this format's type identifier.
     fn format_type_id(&self) -> FormatTypeId;
 }
 
-/// Extension trait providing generic serialize/deserialize methods
-/// This is automatically implemented for all Format types
+/// Ergonomic serialization methods for [`Format`].
+///
+/// Provides typed `serialize` and `deserialize` methods. This trait is automatically
+/// implemented for all `Format` types via blanket implementation.
 pub trait FormatExt: Format {
+    /// Serializes a value to raw bytes.
     fn serialize<T>(&self, value: &T, context: &dyn Context) -> Result<Raw, FormatError>
     where
         T: Cacheable,
@@ -209,6 +288,7 @@ pub trait FormatExt: Format {
         self.with_serializer(&mut |serializer| serializer.serialize(value), context)
     }
 
+    /// Deserializes raw bytes into a value.
     fn deserialize<T>(&self, data: &Raw, ctx: &mut BoxContext) -> Result<T, FormatError>
     where
         T: Cacheable,

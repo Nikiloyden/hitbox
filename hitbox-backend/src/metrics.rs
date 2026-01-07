@@ -64,6 +64,7 @@ impl Default for Timer {
 lazy_static! {
     // Read operation metrics
 
+    /// Metric name for total read operations counter.
     pub static ref BACKEND_READ_TOTAL: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_read_total",
@@ -71,6 +72,8 @@ lazy_static! {
         );
         "hitbox_backend_read_total"
     };
+
+    /// Metric name for read duration histogram.
     pub static ref BACKEND_READ_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_read_duration_seconds",
@@ -79,6 +82,8 @@ lazy_static! {
         );
         "hitbox_backend_read_duration_seconds"
     };
+
+    /// Metric name for total bytes read counter.
     pub static ref BACKEND_READ_BYTES: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_read_bytes_total",
@@ -86,6 +91,8 @@ lazy_static! {
         );
         "hitbox_backend_read_bytes_total"
     };
+
+    /// Metric name for read errors counter.
     pub static ref BACKEND_READ_ERRORS: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_read_errors_total",
@@ -96,6 +103,7 @@ lazy_static! {
 
     // Write operation metrics
 
+    /// Metric name for total write operations counter.
     pub static ref BACKEND_WRITE_TOTAL: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_write_total",
@@ -103,6 +111,8 @@ lazy_static! {
         );
         "hitbox_backend_write_total"
     };
+
+    /// Metric name for write duration histogram.
     pub static ref BACKEND_WRITE_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_write_duration_seconds",
@@ -111,6 +121,8 @@ lazy_static! {
         );
         "hitbox_backend_write_duration_seconds"
     };
+
+    /// Metric name for total bytes written counter.
     pub static ref BACKEND_WRITE_BYTES: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_write_bytes_total",
@@ -118,6 +130,8 @@ lazy_static! {
         );
         "hitbox_backend_write_bytes_total"
     };
+
+    /// Metric name for write errors counter.
     pub static ref BACKEND_WRITE_ERRORS: &'static str = {
         metrics::describe_counter!(
             "hitbox_backend_write_errors_total",
@@ -128,6 +142,7 @@ lazy_static! {
 
     // Processing duration metrics
 
+    /// Metric name for decompression duration histogram.
     pub static ref BACKEND_DECOMPRESS_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_decompress_duration_seconds",
@@ -136,6 +151,8 @@ lazy_static! {
         );
         "hitbox_backend_decompress_duration_seconds"
     };
+
+    /// Metric name for compression duration histogram.
     pub static ref BACKEND_COMPRESS_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_compress_duration_seconds",
@@ -144,6 +161,8 @@ lazy_static! {
         );
         "hitbox_backend_compress_duration_seconds"
     };
+
+    /// Metric name for deserialization duration histogram.
     pub static ref BACKEND_DESERIALIZE_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_deserialize_duration_seconds",
@@ -152,6 +171,8 @@ lazy_static! {
         );
         "hitbox_backend_deserialize_duration_seconds"
     };
+
+    /// Metric name for serialization duration histogram.
     pub static ref BACKEND_SERIALIZE_DURATION: &'static str = {
         metrics::describe_histogram!(
             "hitbox_backend_serialize_duration_seconds",
@@ -164,6 +185,7 @@ lazy_static! {
 
 // Read metrics
 
+/// Record a read operation with duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_read(backend: &str, duration: Duration) {
@@ -172,10 +194,12 @@ pub fn record_read(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record a read operation (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_read(_backend: &str, _duration: Duration) {}
 
+/// Record bytes read from cache.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_read_bytes(backend: &str, bytes: usize) {
@@ -183,22 +207,26 @@ pub fn record_read_bytes(backend: &str, bytes: usize) {
         .increment(bytes as u64);
 }
 
+/// Record bytes read (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_read_bytes(_backend: &str, _bytes: usize) {}
 
+/// Record a read error.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_read_error(backend: &str) {
     metrics::counter!(*BACKEND_READ_ERRORS, "backend" => backend.to_string()).increment(1);
 }
 
+/// Record a read error (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_read_error(_backend: &str) {}
 
 // Write metrics
 
+/// Record a write operation with duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_write(backend: &str, duration: Duration) {
@@ -207,10 +235,12 @@ pub fn record_write(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record a write operation (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_write(_backend: &str, _duration: Duration) {}
 
+/// Record bytes written to cache.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_write_bytes(backend: &str, bytes: usize) {
@@ -218,22 +248,26 @@ pub fn record_write_bytes(backend: &str, bytes: usize) {
         .increment(bytes as u64);
 }
 
+/// Record bytes written (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_write_bytes(_backend: &str, _bytes: usize) {}
 
+/// Record a write error.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_write_error(backend: &str) {
     metrics::counter!(*BACKEND_WRITE_ERRORS, "backend" => backend.to_string()).increment(1);
 }
 
+/// Record a write error (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_write_error(_backend: &str) {}
 
 // Processing metrics
 
+/// Record decompression duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_decompress(backend: &str, duration: Duration) {
@@ -241,10 +275,12 @@ pub fn record_decompress(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record decompression duration (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_decompress(_backend: &str, _duration: Duration) {}
 
+/// Record compression duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_compress(backend: &str, duration: Duration) {
@@ -252,10 +288,12 @@ pub fn record_compress(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record compression duration (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_compress(_backend: &str, _duration: Duration) {}
 
+/// Record deserialization duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_deserialize(backend: &str, duration: Duration) {
@@ -263,10 +301,12 @@ pub fn record_deserialize(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record deserialization duration (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_deserialize(_backend: &str, _duration: Duration) {}
 
+/// Record serialization duration.
 #[cfg(feature = "metrics")]
 #[inline]
 pub fn record_serialize(backend: &str, duration: Duration) {
@@ -274,6 +314,7 @@ pub fn record_serialize(backend: &str, duration: Duration) {
         .record(duration.as_secs_f64());
 }
 
+/// Record serialization duration (no-op when `metrics` feature disabled).
 #[cfg(not(feature = "metrics"))]
 #[inline]
 pub fn record_serialize(_backend: &str, _duration: Duration) {}

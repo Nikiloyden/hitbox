@@ -1,20 +1,26 @@
 use bytes::Bytes;
 use hitbox_core::{BoxContext, Raw};
 
-use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::Context;
+use super::{
+    BincodeDecoder, BincodeEncoder, Format, FormatDeserializer, FormatError, FormatSerializer,
+    FormatTypeId,
+};
+use crate::context::Context;
 
-// Newtype wrapper for Vec<u8> to implement bincode's Writer trait
-// (bincode has an internal VecWriter but it's not publicly exported)
+/// Writer wrapper for bincode serialization.
+///
+/// Bincode's internal `VecWriter` is not publicly exported, so this provides
+/// the same functionality. This type is exposed in `FormatSerializer::Bincode`
+/// but cannot be constructed outside this crate.
 #[derive(Default)]
-pub struct BincodeVecWriter(Vec<u8>);
+pub(crate) struct BincodeVecWriter(Vec<u8>);
 
 impl BincodeVecWriter {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self(Vec::new())
     }
 
-    pub fn into_vec(self) -> Vec<u8> {
+    pub(crate) fn into_vec(self) -> Vec<u8> {
         self.0
     }
 }
@@ -26,8 +32,11 @@ impl ::bincode::enc::write::Writer for BincodeVecWriter {
     }
 }
 
-/// Bincode format
-#[derive(Debug, Clone, Copy)]
+/// Fast, compact binary serialization.
+///
+/// Produces the smallest output among serde-based formats with good performance.
+/// Not human-readable. Uses bincode's standard configuration.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct BincodeFormat;
 
 impl Format for BincodeFormat {
@@ -40,8 +49,8 @@ impl Format for BincodeFormat {
         let config = ::bincode::config::standard();
         let mut encoder = ::bincode::enc::EncoderImpl::new(writer, config);
 
-        // Create FormatSerializer::Bincode variant with concrete EncoderImpl
-        let mut format_ser = FormatSerializer::Bincode(&mut encoder);
+        // Create FormatSerializer::Bincode variant with opaque wrapper
+        let mut format_ser = FormatSerializer::Bincode(BincodeEncoder(&mut encoder));
         f(&mut format_ser)?;
 
         // Extract the buffer from the encoder
@@ -62,8 +71,8 @@ impl Format for BincodeFormat {
         let context = (); // Context for the decoder
         let mut decoder = ::bincode::de::DecoderImpl::new(reader, config, context);
 
-        // Create FormatDeserializer::Bincode variant with concrete DecoderImpl
-        let mut format_deserializer = FormatDeserializer::Bincode(&mut decoder);
+        // Create FormatDeserializer::Bincode variant with opaque wrapper
+        let mut format_deserializer = FormatDeserializer::Bincode(BincodeDecoder(&mut decoder));
         f(&mut format_deserializer)?;
 
         Ok(())

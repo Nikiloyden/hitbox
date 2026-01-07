@@ -2,9 +2,13 @@ use bytes::Bytes;
 use hitbox_core::{BoxContext, Raw};
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::Context;
+use crate::context::Context;
 
-/// JSON format (default)
+/// JSON serialization format.
+///
+/// Produces larger output than binary formats but can be inspected with
+/// standard tools. Binary data is serialized as byte arrays (`[104, 101, ...]`),
+/// not readable strings.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JsonFormat;
 

@@ -53,6 +53,10 @@ zstd = ["dep:zstd"]
 metrics = ["dep:metrics", "dep:lazy_static"]
 rkyv_format = ["dep:rkyv", "hitbox-core/rkyv_format"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 criterion = { workspace = true, features = ["html_reports"] }

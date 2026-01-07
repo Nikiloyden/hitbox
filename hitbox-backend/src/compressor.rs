@@ -1,22 +1,42 @@
+//! Compression strategies for cached values.
+//!
+//! This module provides compressors that reduce the size of cached data.
+//!
+//! # Available Compressors
+//!
+//! | Compressor | Ratio | Speed | Feature |
+//! |------------|-------|-------|---------|
+//! | [`PassthroughCompressor`] | None | Fastest | - |
+//! | `GzipCompressor` | Good | Medium | `gzip` |
+//! | `ZstdCompressor` | Best | Fast | `zstd` |
+
 use thiserror::Error;
 
+/// Error type for compression operations.
 #[derive(Debug, Error)]
 pub enum CompressionError {
+    /// Compression operation failed.
     #[error("Compression failed: {0}")]
     CompressionFailed(String),
+
+    /// Decompression operation failed.
     #[error("Decompression failed: {0}")]
     DecompressionFailed(String),
 }
 
-/// Trait for compressing and decompressing cached values
+/// Trait for compressing and decompressing cached values.
+///
+/// Implement this trait to provide custom compression algorithms.
+/// The trait is dyn-compatible with blanket impls for `Box<dyn Compressor>`
+/// and `Arc<dyn Compressor>`.
 pub trait Compressor: Send + Sync + std::fmt::Debug {
-    /// Compress the input data
+    /// Compress the input data.
     fn compress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError>;
 
-    /// Decompress the input data
+    /// Decompress the input data.
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, CompressionError>;
 
-    /// Clone this compressor into a box (for object safety)
+    /// Clone this compressor into a box.
     fn clone_box(&self) -> Box<dyn Compressor>;
 }
 
@@ -70,6 +90,7 @@ impl Compressor for PassthroughCompressor {
 
 /// Gzip compression with configurable level
 #[cfg(feature = "gzip")]
+#[cfg_attr(docsrs, doc(cfg(feature = "gzip")))]
 #[derive(Debug, Clone, Copy)]
 pub struct GzipCompressor {
     level: u32,
@@ -132,6 +153,7 @@ impl Compressor for GzipCompressor {
 
 /// Zstd compression with configurable level
 #[cfg(feature = "zstd")]
+#[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
 #[derive(Debug, Clone, Copy)]
 pub struct ZstdCompressor {
     level: i32,
