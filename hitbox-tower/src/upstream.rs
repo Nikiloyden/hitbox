@@ -1,3 +1,14 @@
+//! Upstream adapter for bridging Tower services to Hitbox.
+//!
+//! This module provides [`TowerUpstream`](crate::upstream::TowerUpstream), an adapter
+//! that implements Hitbox's [`Upstream`] trait for Tower services. This allows the
+//! caching layer to call the wrapped service on cache misses.
+//!
+//! Users typically don't interact with this module directly — it's used internally
+//! by [`CacheService`](crate::service::CacheService).
+//!
+//! [`Upstream`]: hitbox_core::Upstream
+
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -12,8 +23,18 @@ use hyper::body::Body as HttpBody;
 use pin_project::pin_project;
 use tower::Service;
 
-/// Future returned by `TowerUpstream::call`.
-/// Wraps the underlying service future and converts the response.
+/// Future returned by [`TowerUpstream::call`].
+///
+/// Wraps the underlying service future and converts the response from
+/// `Response<ResBody>` to [`CacheableHttpResponse<ResBody>`].
+///
+/// # When You'll Encounter This
+///
+/// You typically don't create this directly. It appears as the `Future` type
+/// in [`TowerUpstream`]'s [`Upstream`] implementation.
+///
+/// [`Upstream`]: hitbox_core::Upstream
+/// [`CacheableHttpResponse<ResBody>`]: hitbox_http::CacheableHttpResponse
 #[pin_project]
 pub struct TowerUpstreamFuture<F, ResBody, E> {
     #[pin]
@@ -22,6 +43,7 @@ pub struct TowerUpstreamFuture<F, ResBody, E> {
 }
 
 impl<F, ResBody, E> TowerUpstreamFuture<F, ResBody, E> {
+    /// Creates a new future wrapping the service's response future.
     pub fn new(inner: F) -> Self {
         Self {
             inner,
@@ -51,14 +73,35 @@ where
     }
 }
 
-/// Adapter that implements `Upstream` trait for Tower services.
-/// Handles conversion between HTTP types and cacheable types.
+/// Adapter that implements Hitbox's [`Upstream`] trait for Tower services.
+///
+/// `TowerUpstream` bridges the gap between Tower's [`Service`] trait and Hitbox's
+/// [`Upstream`] trait. It converts [`CacheableHttpRequest`] to `http::Request`
+/// for the service call, and wraps responses in [`CacheableHttpResponse`].
+///
+/// # When You'll Encounter This
+///
+/// You typically don't create this directly. It's used internally by
+/// [`CacheService`](crate::service::CacheService) to call the upstream service
+/// on cache misses.
+///
+/// # Type Parameters
+///
+/// * `S` - The Tower service being adapted
+/// * `ReqBody` - Request body type
+/// * `ResBody` - Response body type
+///
+/// [`Upstream`]: hitbox_core::Upstream
+/// [`Service`]: tower::Service
+/// [`CacheableHttpRequest`]: hitbox_http::CacheableHttpRequest
+/// [`CacheableHttpResponse`]: hitbox_http::CacheableHttpResponse
 pub struct TowerUpstream<S, ReqBody, ResBody> {
     service: S,
     _phantom: PhantomData<(ReqBody, ResBody)>,
 }
 
 impl<S, ReqBody, ResBody> TowerUpstream<S, ReqBody, ResBody> {
+    /// Creates a new upstream adapter wrapping the given service.
     pub fn new(service: S) -> Self {
         Self {
             service,

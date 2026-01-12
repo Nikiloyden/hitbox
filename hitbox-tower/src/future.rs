@@ -1,3 +1,13 @@
+//! Future types for the cache service.
+//!
+//! This module provides [`CacheServiceFuture`](crate::future::CacheServiceFuture),
+//! the future returned by [`CacheService::call`]. It wraps the inner cache future
+//! and adds cache status headers to responses.
+//!
+//! Users typically don't interact with this module directly.
+//!
+//! [`CacheService::call`]: crate::service::CacheService
+
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -10,9 +20,24 @@ use http::header::HeaderName;
 use http::{HeaderValue, Response};
 use pin_project::pin_project;
 
-/// Wrapper future that adds cache status headers to the response.
-/// This future wraps `CacheFuture` and handles the final transformation
-/// from cacheable response to HTTP response with cache headers.
+/// Future returned by [`CacheService::call`](crate::service::CacheService).
+///
+/// This future wraps the inner `CacheFuture` and performs the final transformation:
+/// converting [`CacheableHttpResponse`] to `http::Response` and adding the cache
+/// status header (`HIT`/`MISS`/`STALE`).
+///
+/// # When You'll Encounter This
+///
+/// You typically don't create this directly. It's the `Future` type returned when
+/// calling the [`CacheService`](crate::service::CacheService) as a Tower service.
+///
+/// # Type Parameters
+///
+/// * `F` - The inner future (typically `CacheFuture`)
+/// * `ResBody` - Response body type
+/// * `E` - Error type from the upstream service
+///
+/// [`CacheableHttpResponse`]: hitbox_http::CacheableHttpResponse
 #[pin_project]
 pub struct CacheServiceFuture<F, ResBody, E>
 where
@@ -29,6 +54,7 @@ where
     F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
 {
+    /// Creates a new future that will add cache status headers to the response.
     pub fn new(inner: F, cache_status_header: HeaderName) -> Self {
         Self {
             inner,

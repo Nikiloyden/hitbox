@@ -36,6 +36,7 @@ bytes = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true, features = ["async", "async_tokio"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+http-body-util = { workspace = true }
 
 [[bench]]
 name = "cache_service_benchmark"
