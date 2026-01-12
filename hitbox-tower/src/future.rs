@@ -6,6 +6,7 @@ use futures::Future;
 use futures::ready;
 use hitbox::{CacheContext, CacheStatus};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
+use http::header::HeaderName;
 use http::{HeaderValue, Response};
 use pin_project::pin_project;
 
@@ -20,6 +21,7 @@ where
 {
     #[pin]
     inner: F,
+    cache_status_header: HeaderName,
 }
 
 impl<F, ResBody, E> CacheServiceFuture<F, ResBody, E>
@@ -27,8 +29,11 @@ where
     F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
 {
-    pub fn new(inner: F) -> Self {
-        Self { inner }
+    pub fn new(inner: F, cache_status_header: HeaderName) -> Self {
+        Self {
+            inner,
+            cache_status_header,
+        }
     }
 }
 
@@ -50,7 +55,7 @@ where
         let response = result.map(|cacheable_response| {
             let mut response = cacheable_response.into_response();
 
-            // Add X-Cache-Status header based on cache context
+            // Add cache status header based on cache context
             let status_value = match cache_context.status {
                 CacheStatus::Hit => HeaderValue::from_static("HIT"),
                 CacheStatus::Miss => HeaderValue::from_static("MISS"),
@@ -58,7 +63,7 @@ where
             };
             response
                 .headers_mut()
-                .insert("X-Cache-Status", status_value);
+                .insert(this.cache_status_header.clone(), status_value);
 
             response
         });

@@ -5,9 +5,13 @@ use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox_core::DisabledOffload;
 use hitbox_http::HttpEndpoint;
 use hitbox_moka::MokaBackend;
+use http::header::HeaderName;
 use tower::Layer;
 
 use crate::service::CacheService;
+
+/// Default header name for cache status (HIT/MISS/STALE).
+pub const DEFAULT_CACHE_STATUS_HEADER: HeaderName = HeaderName::from_static("x-cache-status");
 
 #[derive(Clone)]
 pub struct Cache<B, C, CM, O = DisabledOffload> {
@@ -15,20 +19,8 @@ pub struct Cache<B, C, CM, O = DisabledOffload> {
     pub configuration: C,
     pub offload: O,
     pub concurrency_manager: CM,
-}
-
-impl<B, C, CM> Cache<B, C, CM, DisabledOffload>
-where
-    C: Default,
-{
-    pub fn new(backend: B) -> Cache<B, C, NoopConcurrencyManager, DisabledOffload> {
-        Cache {
-            backend: Arc::new(backend),
-            configuration: Default::default(),
-            offload: DisabledOffload,
-            concurrency_manager: NoopConcurrencyManager,
-        }
-    }
+    /// Header name for cache status (HIT/MISS/STALE).
+    pub cache_status_header: HeaderName,
 }
 
 impl<S, B, C, CM, O> Layer<S> for Cache<B, C, CM, O>
@@ -46,6 +38,7 @@ where
             self.configuration.clone(),
             self.offload.clone(),
             self.concurrency_manager.clone(),
+            self.cache_status_header.clone(),
         )
     }
 }
@@ -62,6 +55,7 @@ pub struct CacheBuilder<B, C, CM, O = DisabledOffload> {
     configuration: C,
     offload: O,
     concurrency_manager: CM,
+    cache_status_header: Option<HeaderName>,
 }
 
 impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
@@ -71,6 +65,7 @@ impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOff
             configuration: HttpEndpoint::default(),
             offload: DisabledOffload,
             concurrency_manager: NoopConcurrencyManager,
+            cache_status_header: None,
         }
     }
 }
@@ -91,6 +86,7 @@ where
             configuration: self.configuration,
             offload: self.offload,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
@@ -100,6 +96,7 @@ where
             configuration,
             offload: self.offload,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
@@ -109,6 +106,7 @@ where
             configuration: self.configuration,
             offload: self.offload,
             concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
@@ -118,6 +116,23 @@ where
             configuration: self.configuration,
             offload,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self.cache_status_header,
+        }
+    }
+
+    /// Sets the header name for cache status.
+    ///
+    /// The cache status header indicates whether a response was served from cache.
+    /// Possible values are `HIT`, `MISS`, or `STALE`.
+    ///
+    /// Defaults to `x-cache-status` if not set.
+    pub fn cache_status_header(self, header_name: HeaderName) -> Self {
+        CacheBuilder {
+            backend: self.backend,
+            configuration: self.configuration,
+            offload: self.offload,
+            concurrency_manager: self.concurrency_manager,
+            cache_status_header: Some(header_name),
         }
     }
 
@@ -127,6 +142,9 @@ where
             configuration: self.configuration,
             offload: self.offload,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self
+                .cache_status_header
+                .unwrap_or(DEFAULT_CACHE_STATUS_HEADER),
         }
     }
 }

@@ -13,7 +13,7 @@
 //! - **[Cache key extraction]** - Build cache keys from request components
 //! - **[Multiple backend support]** - Use [in-memory], [file storage], or [distributed] backends
 //! - **[Dogpile prevention]** - Optional concurrency control to prevent thundering herd
-//! - **Cache status headers** - Automatic `X-Cache-Status` header (HIT/MISS/STALE)
+//! - **Cache status headers** - Automatic `X-Cache-Status` header (HIT/MISS/STALE), configurable name
 //!
 //! [Request and response predicates]: hitbox_http::predicates
 //! [Cache key extraction]: hitbox_http::extractors
@@ -95,13 +95,16 @@
 //!
 //! # Response Headers
 //!
-//! The middleware adds an `X-Cache-Status` header to every response:
+//! The middleware adds a cache status header to every response (default: `X-Cache-Status`):
 //!
 //! | Value   | Meaning |
 //! |---------|---------|
 //! | `HIT`   | Response served from cache |
 //! | `MISS`  | Response fetched from upstream (may be cached) |
 //! | `STALE` | Stale cache served (background refresh may occur) |
+//!
+//! To use a custom header name, call [`.cache_status_header()`](CacheMiddlewareBuilder::cache_status_header)
+//! on the builder. The default is `x-cache-status`.
 //!
 //! # Re-exports
 //!
@@ -129,7 +132,7 @@
 mod middleware;
 mod upstream;
 
-pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder};
+pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder, DEFAULT_CACHE_STATUS_HEADER};
 pub use upstream::ReqwestUpstream;
 
 // Re-export hitbox-http types for convenience

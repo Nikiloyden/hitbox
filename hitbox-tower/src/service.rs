@@ -5,6 +5,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use hitbox::{backend::CacheBackend, fsm::CacheFuture};
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
+use http::header::HeaderName;
 use http::{Request, Response};
 use hyper::body::Body as HttpBody;
 use tower::Service;
@@ -18,6 +19,7 @@ pub struct CacheService<S, B, C, CM, O = DisabledOffload> {
     configuration: C,
     offload: O,
     concurrency_manager: CM,
+    cache_status_header: HeaderName,
 }
 
 impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
@@ -27,6 +29,7 @@ impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
         configuration: C,
         offload: O,
         concurrency_manager: CM,
+        cache_status_header: HeaderName,
     ) -> Self {
         CacheService {
             upstream,
@@ -34,6 +37,7 @@ impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
             configuration,
             offload,
             concurrency_manager,
+            cache_status_header,
         }
     }
 }
@@ -53,6 +57,7 @@ where
             configuration: self.configuration.clone(),
             offload: self.offload.clone(),
             concurrency_manager: self.concurrency_manager.clone(),
+            cache_status_header: self.cache_status_header.clone(),
         }
     }
 }
@@ -128,6 +133,6 @@ where
         );
 
         // Wrap in CacheServiceFuture to add cache headers
-        CacheServiceFuture::new(cache_future)
+        CacheServiceFuture::new(cache_future, self.cache_status_header.clone())
     }
 }
