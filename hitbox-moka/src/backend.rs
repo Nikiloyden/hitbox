@@ -1,68 +1,80 @@
+//! Moka backend implementation.
+
 use async_trait::async_trait;
-use chrono::Utc;
 use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
 use hitbox_backend::Backend;
 use hitbox_backend::format::{Format, JsonFormat};
 use hitbox_backend::{
     BackendResult, CacheKeyFormat, Compressor, DeleteStatus, PassthroughCompressor,
 };
-use moka::{Expiry, future::Cache};
-use std::time::{Duration, Instant};
+use moka::future::Cache;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Expiration;
-
-impl Expiry<CacheKey, CacheValue<Raw>> for Expiration {
-    fn expire_after_create(
-        &self,
-        _key: &CacheKey,
-        value: &CacheValue<Raw>,
-        _created_at: Instant,
-    ) -> Option<Duration> {
-        Self::calculate_ttl(value)
-    }
-
-    fn expire_after_update(
-        &self,
-        _key: &CacheKey,
-        value: &CacheValue<Raw>,
-        _updated_at: Instant,
-        _duration_until_expiry: Option<Duration>,
-    ) -> Option<Duration> {
-        // Use the NEW value's expiration time, not the old one.
-        // The default implementation returns `duration_until_expiry` which
-        // would preserve the OLD expiration time, causing premature expiration.
-        Self::calculate_ttl(value)
-    }
-}
-
-impl Expiration {
-    /// Calculate TTL from CacheValue's expire timestamp.
-    fn calculate_ttl(value: &CacheValue<Raw>) -> Option<Duration> {
-        value.expire().map(|expiration| {
-            let delta = expiration - Utc::now();
-            // Use milliseconds for sub-second precision.
-            // Handle negative delta (already expired) by returning zero duration.
-            let millis = delta.num_milliseconds();
-            if millis <= 0 {
-                Duration::ZERO
-            } else {
-                Duration::from_millis(millis as u64)
-            }
-        })
-    }
-}
-
+/// In-memory cache backend powered by Moka.
+///
+/// `MokaBackend` provides a high-performance, concurrent in-memory cache with
+/// automatic entry expiration. It uses Moka's async cache internally, which
+/// offers lock-free reads and fine-grained locking for writes.
+///
+/// # Type Parameters
+///
+/// * `S` - Serialization format for cache values. Implements [`Format`].
+///   Default: [`JsonFormat`].
+/// * `C` - Compression strategy for cache values. Implements [`Compressor`].
+///   Default: [`PassthroughCompressor`] (no compression).
+///
+/// # Examples
+///
+/// Basic usage with defaults:
+///
+/// ```
+/// use hitbox_moka::MokaBackend;
+///
+/// let backend = MokaBackend::builder(10_000).build();
+/// ```
+///
+/// With custom serialization format:
+///
+/// ```
+/// use hitbox_moka::MokaBackend;
+/// use hitbox_backend::format::BincodeFormat;
+///
+/// let backend = MokaBackend::builder(10_000)
+///     .value_format(BincodeFormat)
+///     .build();
+/// ```
+///
+/// # Performance
+///
+/// - **Read operations**: Lock-free, O(1) average
+/// - **Write operations**: Fine-grained locking, O(1) average
+/// - **Memory**: Bounded by `max_capacity` entries
+///
+/// # Caveats
+///
+/// - Data is **not persisted** — cache is lost on process restart
+/// - Data is **not shared** across processes — use Redis for distributed caching
+/// - Expiration is **best-effort** — expired entries may briefly remain readable
+///   until Moka's background eviction runs
+///
+/// [`Format`]: hitbox_backend::format::Format
+/// [`JsonFormat`]: hitbox_backend::format::JsonFormat
+/// [`Compressor`]: hitbox_backend::Compressor
+/// [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
 #[derive(Clone)]
 pub struct MokaBackend<S = JsonFormat, C = PassthroughCompressor>
 where
     S: Format,
     C: Compressor,
 {
+    /// The underlying Moka async cache instance.
     pub cache: Cache<CacheKey, CacheValue<Raw>>,
+    /// Format used to serialize cache keys.
     pub key_format: CacheKeyFormat,
+    /// Format used to serialize cache values.
     pub serializer: S,
+    /// Compressor used for cache values.
     pub compressor: C,
+    /// Label identifying this backend in multi-tier compositions.
     pub label: BackendLabel,
 }
 
@@ -83,6 +95,10 @@ where
 }
 
 impl MokaBackend<JsonFormat, PassthroughCompressor> {
+    /// Creates a new builder for `MokaBackend` with the specified maximum capacity.
+    ///
+    /// The `max_capacity` determines the maximum number of entries the cache can hold.
+    /// When the cache reaches capacity, the least recently used entries are evicted.
     pub fn builder(
         max_capacity: u64,
     ) -> crate::builder::MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
