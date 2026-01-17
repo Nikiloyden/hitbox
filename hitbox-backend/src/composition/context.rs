@@ -38,18 +38,6 @@ pub struct CompositionContext {
 }
 
 impl CompositionContext {
-    /// Create a new composition context with a default inner context.
-    ///
-    /// If the layer is L2, read mode is set to `Refill` to signal that
-    /// the data should be written back to L1 for cache refill.
-    pub fn new(layer: CompositionLayer, format: CompositionFormat) -> Self {
-        Self {
-            inner: CacheContext::default().boxed(),
-            layer,
-            format,
-        }
-    }
-
     /// Wrap an existing context with composition-specific data.
     ///
     /// If the layer is L2, read mode is set to `Refill` to signal that
@@ -70,16 +58,6 @@ impl CompositionContext {
     /// Returns a reference to the inner context.
     pub fn inner(&self) -> &BoxContext {
         &self.inner
-    }
-
-    /// Returns a mutable reference to the inner context.
-    pub fn inner_mut(&mut self) -> &mut BoxContext {
-        &mut self.inner
-    }
-
-    /// Takes the inner context, replacing it with a default.
-    pub fn take_inner(&mut self) -> BoxContext {
-        std::mem::replace(&mut self.inner, CacheContext::default().boxed())
     }
 }
 

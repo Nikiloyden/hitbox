@@ -13,7 +13,8 @@ use super::context::{CompositionContext, CompositionLayer, upgrade_context};
 use super::envelope::CompositionEnvelope;
 use crate::format::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
 use crate::metrics::Timer;
-use crate::{Compressor, Context};
+use crate::context::Context;
+use crate::Compressor;
 
 /// Format implementation for CompositionBackend that handles multi-layer serialization.
 ///
@@ -334,5 +335,122 @@ impl Format for CompositionFormat {
     fn format_type_id(&self) -> FormatTypeId {
         // CompositionFormat is a custom format
         FormatTypeId::Custom("composition")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::{BincodeFormat, FormatExt, JsonFormat};
+    use crate::PassthroughCompressor;
+    use hitbox_core::CacheContext;
+    use serde::{Deserialize, Serialize};
+
+    #[cfg(feature = "rkyv_format")]
+    use rkyv::{Archive, Serialize as RkyvSerialize};
+
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    #[cfg_attr(
+        feature = "rkyv_format",
+        derive(Archive, RkyvSerialize, rkyv::Deserialize)
+    )]
+    struct TestData {
+        id: u32,
+        name: String,
+        values: Vec<i32>,
+    }
+
+    impl TestData {
+        fn large() -> Self {
+            TestData {
+                id: 42,
+                name: "test".repeat(100),
+                values: (0..1000).collect(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_same_format_optimization() {
+        let composition = CompositionFormat::new(
+            Arc::new(JsonFormat),
+            Arc::new(JsonFormat),
+            Arc::new(PassthroughCompressor),
+            Arc::new(PassthroughCompressor),
+            SmolStr::new_static("test.l1"),
+            SmolStr::new_static("test.l2"),
+        );
+
+        let data = TestData::large();
+        let ctx = CacheContext::default();
+        let serialized = composition.serialize(&data, &ctx).unwrap();
+
+        let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
+        let deserialized: TestData = composition
+            .deserialize(&serialized, &mut boxed_ctx)
+            .unwrap();
+        assert_eq!(data, deserialized);
+    }
+
+    #[test]
+    fn test_different_formats() {
+        let composition = CompositionFormat::new(
+            Arc::new(JsonFormat),
+            Arc::new(BincodeFormat),
+            Arc::new(PassthroughCompressor),
+            Arc::new(PassthroughCompressor),
+            SmolStr::new_static("test.l1"),
+            SmolStr::new_static("test.l2"),
+        );
+
+        let data = TestData::large();
+        let ctx = CacheContext::default();
+        let serialized = composition.serialize(&data, &ctx).unwrap();
+
+        let mut boxed_ctx: BoxContext = CacheContext::default().boxed();
+        let deserialized: TestData = composition
+            .deserialize(&serialized, &mut boxed_ctx)
+            .unwrap();
+        assert_eq!(data, deserialized);
+    }
+
+    #[test]
+    fn test_serialization_size_comparison() {
+        let data = TestData::large();
+        let ctx = CacheContext::default();
+
+        let json_format = JsonFormat;
+        let json_size = json_format.serialize(&data, &ctx).unwrap().len();
+
+        let composition_same = CompositionFormat::new(
+            Arc::new(JsonFormat),
+            Arc::new(JsonFormat),
+            Arc::new(PassthroughCompressor),
+            Arc::new(PassthroughCompressor),
+            SmolStr::new_static("test.l1"),
+            SmolStr::new_static("test.l2"),
+        );
+        let composition_same_size = composition_same.serialize(&data, &ctx).unwrap().len();
+
+        let composition_diff = CompositionFormat::new(
+            Arc::new(JsonFormat),
+            Arc::new(BincodeFormat),
+            Arc::new(PassthroughCompressor),
+            Arc::new(PassthroughCompressor),
+            SmolStr::new_static("test.l1"),
+            SmolStr::new_static("test.l2"),
+        );
+        let composition_diff_size = composition_diff.serialize(&data, &ctx).unwrap().len();
+
+        // Composition should be roughly 2x the single format size (plus small bincode overhead)
+        assert!(
+            composition_same_size < json_size * 2 + 100,
+            "Same format composition size should be ~2x single format"
+        );
+
+        assert!(
+            composition_diff_size > json_size,
+            "Different formats should be larger than single JSON"
+        );
     }
 }

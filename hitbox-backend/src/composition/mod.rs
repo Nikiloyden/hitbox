@@ -1,52 +1,57 @@
-//! Composition backend that provides multi-tier caching by combining two backends.
+//! Multi-tier caching by combining two backends.
 //!
 //! This backend implements a layered caching strategy where:
-//! - L1 (first layer): Typically a fast local cache (e.g., Moka)
-//! - L2 (second layer): Typically a distributed cache (e.g., Redis)
+//! - **L1** (first layer): Fast local cache (e.g., Moka)
+//! - **L2** (second layer): Distributed cache (e.g., Redis)
 //!
-//! # Read Strategy
-//! 1. Check L1 → Hit: return value
-//! 2. Check L2 → Hit: populate L1, return value
-//! 3. Miss: return None (upstream will be called, then set() populates both layers)
+//! # Policies
 //!
-//! # Write Strategy
-//! - Write-through: Writes to both L1 and L2
-//! - L1 is written first for fast local access
-//! - If either write fails, logs warning but continues (best-effort)
+//! Behavior is controlled by configurable policies. See the [`policy`] module for details.
 //!
-//! # Delete Strategy
-//! - Deletes from both layers
-//! - Returns success if at least one deletion succeeds
+//! ## Read Policies
+//! - [`policy::SequentialReadPolicy`] - Try L1, then L2 on miss **(default)**
+//! - [`policy::RaceReadPolicy`] - Race both layers, return first hit
+//! - [`policy::ParallelReadPolicy`] - Query both in parallel, prefer fresher
+//!
+//! ## Write Policies
+//! - [`policy::SequentialWritePolicy`] - Write L1, then L2
+//! - [`policy::OptimisticParallelWritePolicy`] - Write both in parallel **(default)**
+//! - [`policy::RaceWritePolicy`] - Race both, background the slower
+//!
+//! ## Refill Policy
+//! - [`policy::RefillPolicy::Always`] - Populate L1 after L2 hit
+//! - [`policy::RefillPolicy::Never`] - Skip L1 population **(default)**
 //!
 //! # Example
+//!
 //! ```ignore
-//! use hitbox_backend::CompositionBackend;
-//! use hitbox_moka::MokaBackend;
-//! use hitbox_redis::RedisBackend;
+//! use hitbox_backend::composition::{Compose, CompositionPolicy};
+//! use hitbox_backend::composition::policy::{RaceReadPolicy, RefillPolicy};
 //!
-//! let moka = MokaBackend::builder(1000).build();
-//! let redis = RedisBackend::new(client);
-//! let backend = CompositionBackend::new(moka, redis, offload);
-//! ```
+//! // Default policies
+//! let cache = moka.compose(redis, offload);
 //!
-//! # Using the Compose Trait
-//! ```ignore
-//! use hitbox_backend::composition::Compose;
+//! // Custom policies
+//! let policy = CompositionPolicy::new()
+//!     .read(RaceReadPolicy::new())
+//!     .refill(RefillPolicy::Always);
 //!
-//! // Fluent API for composition
-//! let cache = moka.compose(redis);
+//! let cache = moka.compose(redis, offload).with_policy(policy);
 //! ```
 
 pub mod compose;
-pub mod context;
-pub mod envelope;
-pub mod format;
 pub mod policy;
 
+mod context;
+mod envelope;
+mod format;
+
 pub use compose::Compose;
-pub use context::{CompositionContext, CompositionLayer, upgrade_context};
-pub use format::CompositionFormat;
 pub use policy::CompositionPolicy;
+
+// Re-exports for submodules (not part of public API)
+pub(crate) use context::{CompositionContext, CompositionLayer};
+pub(crate) use format::CompositionFormat;
 
 use crate::format::Format;
 use crate::metrics::Timer;

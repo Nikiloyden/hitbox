@@ -9,9 +9,12 @@ use crate::label::BackendLabel;
 /// Whether the request resulted in a cache hit, miss, or stale data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheStatus {
+    /// Cache hit - valid cached data was found and returned.
     Hit,
+    /// Cache miss - no cached data was found.
     #[default]
     Miss,
+    /// Stale data - cached data was found but has exceeded its freshness window.
     Stale,
 }
 

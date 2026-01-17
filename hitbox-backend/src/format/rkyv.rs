@@ -3,7 +3,7 @@ use hitbox_core::{BoxContext, Raw};
 use rkyv::util::AlignedVec;
 
 use super::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
-use crate::Context;
+use crate::context::Context;
 
 /// Rkyv format - high-performance zero-copy serialization (rkyv 0.8)
 ///
@@ -27,6 +27,8 @@ use crate::Context;
 /// // Custom buffer size for large payloads
 /// let format = RkyvFormat::with_buffer_hint(128 * 1024);
 /// ```
+#[cfg(feature = "rkyv_format")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rkyv_format")))]
 #[derive(Debug, Clone, Copy)]
 pub struct RkyvFormat {
     /// Initial buffer capacity hint in bytes.

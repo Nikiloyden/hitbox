@@ -1,6 +1,9 @@
-//! Backend context re-exports.
+//! Cache operation context.
 //!
-//! The unified `Context` trait and `ReadMode` enum are now defined in `hitbox-core`.
-//! This module re-exports them for convenience.
+//! Re-exports [`Context`] and [`ReadMode`] from `hitbox-core`.
+//!
+//! In composition backends, context is wrapped in an internal `CompositionContext`
+//! that tracks which cache layer (L1/L2) provided the data. This enables proper
+//! refill behavior when data is found in L2 but missing from L1.
 
 pub use hitbox_core::{Context, ReadMode};

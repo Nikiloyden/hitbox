@@ -1,68 +1,123 @@
-// #![warn(missing_docs)]
-//! Traits and structs for hitbox backend interaction.
+#![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+//! Backend abstraction layer for the Hitbox caching framework.
 //!
-//! If you want implement your own backend, you in the right place.
-mod backend;
+//! This crate provides the core traits and utilities for implementing cache backends.
+//! It defines how cached data is stored, retrieved, serialized, and compressed.
+//!
+//! # Overview
+//!
+//! The crate is organized around several key concepts:
+//!
+//! - **[`Backend`]** - Low-level dyn-compatible trait for raw byte storage operations (read/write/remove)
+//! - **[`CacheBackend`]** - High-level trait with typed operations that handle serialization
+//! - **[`Format`](format::Format)** - Serialization format abstraction (JSON, Bincode, RON, Rkyv)
+//! - **[`Compressor`]** - Compression abstraction (Passthrough, Gzip, Zstd)
+//! - **[`CompositionBackend`]** - Multi-tier caching (L1/L2)
+//!
+//! # Implementing a Backend
+//!
+//! To implement your own backend, implement the [`Backend`] trait:
+//!
+//! ```
+//! use std::collections::HashMap;
+//! use std::sync::RwLock;
+//! use hitbox_backend::{Backend, BackendResult, DeleteStatus};
+//! use hitbox_core::{BackendLabel, CacheKey, CacheValue, Raw};
+//! use async_trait::async_trait;
+//!
+//! struct InMemoryBackend {
+//!     store: RwLock<HashMap<CacheKey, CacheValue<Raw>>>,
+//! }
+//!
+//! #[async_trait]
+//! impl Backend for InMemoryBackend {
+//!     async fn read(&self, key: &CacheKey) -> BackendResult<Option<CacheValue<Raw>>> {
+//!         Ok(self.store.read().unwrap().get(key).cloned())
+//!     }
+//!
+//!     async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
+//!         self.store.write().unwrap().insert(key.clone(), value);
+//!         Ok(())
+//!     }
+//!
+//!     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
+//!         match self.store.write().unwrap().remove(key) {
+//!             Some(_) => Ok(DeleteStatus::Deleted(1)),
+//!             None => Ok(DeleteStatus::Missing),
+//!         }
+//!     }
+//!
+//!     fn label(&self) -> BackendLabel {
+//!         BackendLabel::new_static("in-memory")
+//!     }
+//!
+//!     // Optional: override defaults for value_format, key_format, compressor
+//! }
+//! ```
+//!
+//! Once you implement [`Backend`], you get [`CacheBackend`] for free via blanket implementation.
+//! This provides typed `get`, `set`, and `delete` operations with automatic serialization.
+//!
+//! # Feature Flags
+//!
+//! - `gzip` - Enable Gzip compression via `GzipCompressor`
+//! - `zstd` - Enable Zstd compression via `ZstdCompressor`
+//! - `metrics` - Enable observability metrics for backend operations
+//! - `rkyv_format` - Enable zero-copy Rkyv serialization via `RkyvFormat`
+//!
+//! # Serialization Formats
+//!
+//! | Format | Speed | Size | Human-readable |
+//! |--------|-------|------|----------------|
+//! | [`BincodeFormat`](format::BincodeFormat) | Fast | Compact | No |
+//! | [`JsonFormat`](format::JsonFormat) | Slow | Large | Partial* |
+//! | [`RonFormat`](format::RonFormat) | Medium | Medium | Yes |
+//! | `RkyvFormat` | Fastest | Compact | No |
+//!
+//! *\* JSON serializes binary data as byte arrays `[104, 101, ...]`, not readable strings.*
+//!
+//! # Compression Options
+//!
+//! | Compressor | Ratio | Speed |
+//! |------------|-------|-------|
+//! | [`PassthroughCompressor`] | None | Fastest |
+//! | `GzipCompressor` | Good | Medium |
+//! | `ZstdCompressor` | Best | Fast |
+//!
+//! # Multi-Tier Caching
+//!
+//! Use [`CompositionBackend`] to combine backends into
+//! L1/L2/L3 hierarchies:
+//!
+//! ```ignore
+//! use hitbox_backend::composition::Compose;
+//!
+//! // Fast local cache (L1) with distributed cache fallback (L2)
+//! let backend = moka.compose(redis, offload);
+//! ```
+//!
+//! See the [`composition`] module for details on read/write/refill policies.
+pub mod backend;
 pub mod composition;
 pub mod compressor;
 pub mod context;
+pub mod error;
 pub mod format;
-mod key;
-pub mod metrics;
+pub mod key;
+pub(crate) mod metrics;
 
-pub use backend::{Backend, BackendResult, CacheBackend, SyncBackend, UnsyncBackend};
+pub use backend::{Backend, BackendResult, CacheBackend, DeleteStatus, SyncBackend, UnsyncBackend};
 pub use composition::{Compose, CompositionBackend};
 #[cfg(feature = "gzip")]
+#[cfg_attr(docsrs, doc(cfg(feature = "gzip")))]
 pub use compressor::GzipCompressor;
 #[cfg(feature = "zstd")]
+#[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
 pub use compressor::ZstdCompressor;
 pub use compressor::{CompressionError, Compressor, PassthroughCompressor};
-pub use context::{Context, ReadMode};
-use format::FormatError;
+pub use error::BackendError;
 #[cfg(feature = "rkyv_format")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rkyv_format")))]
 pub use format::RkyvFormat;
-pub use key::{CacheKeyFormat, KeySerializer, UrlEncodedKeySerializer};
-use thiserror::Error;
-
-/// Proxy Error describes general groups of errors in backend interaction process.
-#[derive(Debug, Error)]
-pub enum BackendError {
-    /// Internal backend error, state or computation error.
-    ///
-    /// Any error not bounded with network interaction.
-    #[error(transparent)]
-    InternalError(Box<dyn std::error::Error + Send>),
-    /// Network interaction error.
-    #[error(transparent)]
-    ConnectionError(Box<dyn std::error::Error + Send>),
-    /// Serializing\Deserializing data error.
-    #[error(transparent)]
-    FormatError(#[from] FormatError),
-    /// Compressing\Decompressing data error.
-    #[error(transparent)]
-    CompressionError(#[from] CompressionError),
-}
-
-/// Status of a delete operation.
-#[derive(Debug, PartialEq, Eq)]
-pub enum DeleteStatus {
-    /// Record successfully deleted.
-    ///
-    /// The `u32` count indicates how many cache layers deleted the key.
-    /// For single backends this is always `1`, but for [`CompositionBackend`]
-    /// the counts are summed (e.g., `Deleted(2)` means both L1 and L2 had the key).
-    ///
-    /// [`CompositionBackend`]: crate::composition::CompositionBackend
-    Deleted(u32),
-    /// Record was not found in the cache.
-    Missing,
-}
-
-/// Enum for representing status of Lock object in backend.
-#[derive(Debug, PartialEq, Eq)]
-pub enum LockStatus {
-    /// Lock successfully created and acquired.
-    Acquired,
-    /// Lock object already acquired (locked).
-    Locked,
-}
+pub use key::CacheKeyFormat;
