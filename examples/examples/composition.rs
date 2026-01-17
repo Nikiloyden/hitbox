@@ -49,8 +49,9 @@ async fn main() {
         .init();
 
     // L1: Moka (in-memory)
-    let moka = hitbox_moka::MokaBackend::builder(1024 * 1024)
+    let moka = hitbox_moka::MokaBackend::builder()
         .label("moka")
+        .max_entries(1024 * 1024)
         .build();
 
     // L2: FeOxDB (file-based)

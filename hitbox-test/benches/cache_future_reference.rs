@@ -270,7 +270,7 @@ fn bench_compare_cache_write(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // ===== Static backend setup =====
-    let static_backend = MokaBackend::builder(10000)
+    let static_backend = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
@@ -336,7 +336,7 @@ fn bench_compare_cache_read(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // ===== Static backend setup =====
-    let static_backend = MokaBackend::builder(10000)
+    let static_backend = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
@@ -423,11 +423,11 @@ fn bench_compare_composition_read(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // ===== Static CompositionBackend setup (concrete types) =====
-    let static_l1 = MokaBackend::builder(10000)
+    let static_l1 = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
-    let static_l2 = MokaBackend::builder(10000)
+    let static_l2 = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
@@ -465,13 +465,13 @@ fn bench_compare_composition_read(c: &mut Criterion) {
 
     // ===== Dynamic CompositionBackend setup (all levels are dyn Backend) =====
     let dyn_l1: Arc<dyn Backend + Send> = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
     );
     let dyn_l2: Arc<dyn Backend + Send> = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
@@ -536,11 +536,11 @@ fn bench_compare_composition_write(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // ===== Static CompositionBackend setup (concrete types) =====
-    let static_l1 = MokaBackend::builder(10000)
+    let static_l1 = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
-    let static_l2 = MokaBackend::builder(10000)
+    let static_l2 = MokaBackend::builder().max_entries(10000)
         .value_format(BincodeFormat)
         .compressor(PassthroughCompressor)
         .build();
@@ -569,13 +569,13 @@ fn bench_compare_composition_write(c: &mut Criterion) {
 
     // ===== Dynamic CompositionBackend setup (all levels are dyn Backend) =====
     let dyn_l1: Arc<dyn Backend + Send> = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
     );
     let dyn_l2: Arc<dyn Backend + Send> = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
@@ -763,7 +763,7 @@ fn bench_compare_cache_future_hit(c: &mut Criterion) {
 
     // ===== Static dispatch setup =====
     let static_backend = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
@@ -916,7 +916,7 @@ fn bench_compare_cache_future_miss(c: &mut Criterion) {
 
     // ===== Static dispatch setup =====
     let static_backend = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
@@ -1144,7 +1144,7 @@ fn bench_compare_body_cache_future_hit(c: &mut Criterion) {
 
     // ===== Static dispatch setup with body =====
     let static_backend = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),
@@ -1296,7 +1296,7 @@ fn bench_compare_body_cache_future_miss(c: &mut Criterion) {
 
     // ===== Static dispatch setup with body =====
     let static_backend = Arc::new(
-        MokaBackend::builder(10000)
+        MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build(),

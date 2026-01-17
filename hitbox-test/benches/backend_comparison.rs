@@ -100,7 +100,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
         let response = generate_response(size_bytes);
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
-        let backend = MokaBackend::builder(10000)
+        let backend = MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -128,7 +128,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
         let response = generate_response(size_bytes);
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
-        let backend = MokaBackend::builder(10000)
+        let backend = MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -169,7 +169,7 @@ fn moka_backend_benchmarks(c: &mut Criterion) {
         let response = generate_response(size_bytes);
         group.throughput(Throughput::Bytes(size_bytes as u64 * 2));
 
-        let backend = MokaBackend::builder(10000)
+        let backend = MokaBackend::builder().max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();

@@ -55,18 +55,62 @@ impl Expiration {
     }
 }
 
+/// Marker type: capacity has not been configured yet.
+///
+/// This is the initial state of a [`MokaBackendBuilder`]. You must call either
+/// [`max_entries()`](MokaBackendBuilder::max_entries) or
+/// [`max_bytes()`](MokaBackendBuilder::max_bytes) before calling `build()`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCapacity;
+
+/// Marker type: entry-count capacity has been configured.
+///
+/// The cache will hold at most `n` entries, evicting least recently used
+/// entries when capacity is exceeded.
+#[derive(Debug, Clone, Copy)]
+pub struct EntryCapacity(pub(crate) u64);
+
+/// Marker type: byte-based capacity has been configured.
+///
+/// The cache will use at most `n` bytes (approximate), evicting least recently
+/// used entries when the memory budget is exceeded.
+#[derive(Debug, Clone, Copy)]
+pub struct ByteCapacity(pub(crate) u64);
+
 /// Builder for creating and configuring a [`MokaBackend`].
 ///
 /// Use [`MokaBackend::builder`] to create a new builder instance.
 ///
+/// # Capacity Configuration (Required)
+///
+/// You must configure capacity using exactly one of:
+/// - [`max_entries(n)`](Self::max_entries) - limit by entry count
+/// - [`max_bytes(n)`](Self::max_bytes) - limit by approximate memory usage
+///
+/// These methods use the typestate pattern to enforce compile-time guarantees:
+/// - `build()` is only available after setting capacity
+/// - You cannot set both entry and byte limits
+///
 /// # Examples
 ///
-/// Basic usage:
+/// Entry-based capacity:
 ///
 /// ```
 /// use hitbox_moka::MokaBackend;
 ///
-/// let backend = MokaBackend::builder(10_000).build();
+/// let backend = MokaBackend::builder()
+///     .max_entries(10_000)
+///     .build();
+/// ```
+///
+/// Byte-based capacity (100 MB):
+///
+/// ```
+/// use hitbox_moka::MokaBackend;
+///
+/// let backend = MokaBackend::builder()
+///     .max_bytes(100 * 1024 * 1024)
+///     .build();
 /// ```
 ///
 /// With custom configuration:
@@ -76,8 +120,9 @@ impl Expiration {
 /// use hitbox_backend::format::BincodeFormat;
 /// use hitbox_backend::{CacheKeyFormat, GzipCompressor};
 ///
-/// let backend = MokaBackend::builder(50_000)
+/// let backend = MokaBackend::builder()
 ///     .label("sessions")
+///     .max_bytes(50_000_000)
 ///     .key_format(CacheKeyFormat::UrlEncoded)
 ///     .value_format(BincodeFormat)
 ///     .compressor(GzipCompressor::default())
@@ -87,27 +132,26 @@ impl Expiration {
 /// **Note:** [`GzipCompressor`](hitbox_backend::GzipCompressor) and
 /// [`ZstdCompressor`](hitbox_backend::ZstdCompressor) require enabling the `gzip`
 /// or `zstd` feature on `hitbox-backend`.
-pub struct MokaBackendBuilder<S = JsonFormat, C = PassthroughCompressor>
+pub struct MokaBackendBuilder<Cap, S = JsonFormat, C = PassthroughCompressor>
 where
     S: Format,
     C: Compressor,
 {
-    builder: CacheBuilder<CacheKey, CacheValue<Raw>, Cache<CacheKey, CacheValue<Raw>>>,
+    capacity: Cap,
     key_format: CacheKeyFormat,
     serializer: S,
     compressor: C,
     label: BackendLabel,
 }
 
-impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
-    /// Creates a new builder with the specified maximum capacity.
+impl MokaBackendBuilder<NoCapacity, JsonFormat, PassthroughCompressor> {
+    /// Creates a new builder with no capacity configured.
     ///
-    /// When the cache exceeds `max_capacity` entries, least recently used
-    /// entries are evicted.
-    pub fn new(max_capacity: u64) -> Self {
-        let builder = CacheBuilder::new(max_capacity);
+    /// You must call [`max_entries()`](Self::max_entries) or
+    /// [`max_bytes()`](Self::max_bytes) before calling `build()`.
+    pub fn new() -> Self {
         Self {
-            builder,
+            capacity: NoCapacity,
             key_format: CacheKeyFormat::Bitcode,
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
@@ -116,7 +160,72 @@ impl MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
     }
 }
 
-impl<S, C> MokaBackendBuilder<S, C>
+impl Default for MokaBackendBuilder<NoCapacity, JsonFormat, PassthroughCompressor> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<S, C> MokaBackendBuilder<NoCapacity, S, C>
+where
+    S: Format,
+    C: Compressor,
+{
+    /// Sets the maximum number of entries the cache can hold.
+    ///
+    /// When the cache exceeds this capacity, least recently used entries are
+    /// evicted.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hitbox_moka::MokaBackend;
+    ///
+    /// let backend = MokaBackend::builder()
+    ///     .max_entries(10_000)
+    ///     .build();
+    /// ```
+    pub fn max_entries(self, capacity: u64) -> MokaBackendBuilder<EntryCapacity, S, C> {
+        MokaBackendBuilder {
+            capacity: EntryCapacity(capacity),
+            key_format: self.key_format,
+            serializer: self.serializer,
+            compressor: self.compressor,
+            label: self.label,
+        }
+    }
+
+    /// Sets the maximum memory budget in bytes.
+    ///
+    /// The cache will use approximately this many bytes for stored values,
+    /// evicting least recently used entries when the budget is exceeded.
+    ///
+    /// The byte count includes:
+    /// - Serialized value data
+    /// - Fixed overhead estimate for keys and metadata (~112 bytes per entry)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hitbox_moka::MokaBackend;
+    ///
+    /// // 100 MB cache
+    /// let backend = MokaBackend::builder()
+    ///     .max_bytes(100 * 1024 * 1024)
+    ///     .build();
+    /// ```
+    pub fn max_bytes(self, bytes: u64) -> MokaBackendBuilder<ByteCapacity, S, C> {
+        MokaBackendBuilder {
+            capacity: ByteCapacity(bytes),
+            key_format: self.key_format,
+            serializer: self.serializer,
+            compressor: self.compressor,
+            label: self.label,
+        }
+    }
+}
+
+impl<Cap, S, C> MokaBackendBuilder<Cap, S, C>
 where
     S: Format,
     C: Compressor,
@@ -171,12 +280,12 @@ where
     /// | [`JsonFormat`] | Slow | Large | Yes |
     /// | [`BincodeFormat`](hitbox_backend::format::BincodeFormat) | Fast | Compact | No |
     /// | [`RonFormat`](hitbox_backend::format::RonFormat) | Medium | Medium | Yes |
-    pub fn value_format<NewS>(self, serializer: NewS) -> MokaBackendBuilder<NewS, C>
+    pub fn value_format<NewS>(self, serializer: NewS) -> MokaBackendBuilder<Cap, NewS, C>
     where
         NewS: Format,
     {
         MokaBackendBuilder {
-            builder: self.builder,
+            capacity: self.capacity,
             key_format: self.key_format,
             serializer,
             compressor: self.compressor,
@@ -207,25 +316,33 @@ where
     /// - Large cached values (>10KB)
     /// - Memory-constrained environments
     /// - When composing with network backends (compression done once, reused)
-    pub fn compressor<NewC>(self, compressor: NewC) -> MokaBackendBuilder<S, NewC>
+    pub fn compressor<NewC>(self, compressor: NewC) -> MokaBackendBuilder<Cap, S, NewC>
     where
         NewC: Compressor,
     {
         MokaBackendBuilder {
-            builder: self.builder,
+            capacity: self.capacity,
             key_format: self.key_format,
             serializer: self.serializer,
             compressor,
             label: self.label,
         }
     }
+}
 
-    /// Builds the [`MokaBackend`] with the configured settings.
+impl<S, C> MokaBackendBuilder<EntryCapacity, S, C>
+where
+    S: Format,
+    C: Compressor,
+{
+    /// Builds the [`MokaBackend`] with entry-count based capacity.
     ///
     /// Consumes the builder and returns a fully configured backend ready for use.
     pub fn build(self) -> MokaBackend<S, C> {
-        let expiry = Expiration;
-        let cache = self.builder.expire_after(expiry).build();
+        let cache: Cache<CacheKey, CacheValue<Raw>> = CacheBuilder::new(self.capacity.0)
+            .expire_after(Expiration)
+            .build();
+
         MokaBackend {
             cache,
             key_format: self.key_format,
@@ -233,5 +350,43 @@ where
             compressor: self.compressor,
             label: self.label,
         }
+    }
+}
+
+impl<S, C> MokaBackendBuilder<ByteCapacity, S, C>
+where
+    S: Format + 'static,
+    C: Compressor + 'static,
+{
+    /// Builds the [`MokaBackend`] with byte-based capacity.
+    ///
+    /// Consumes the builder and returns a fully configured backend ready for use.
+    /// The cache will use a weigher function to track approximate memory usage.
+    pub fn build(self) -> MokaBackend<S, C> {
+        let cache: Cache<CacheKey, CacheValue<Raw>> = CacheBuilder::new(self.capacity.0)
+            .weigher(Self::byte_weigher)
+            .expire_after(Expiration)
+            .build();
+
+        MokaBackend {
+            cache,
+            key_format: self.key_format,
+            serializer: self.serializer,
+            compressor: self.compressor,
+            label: self.label,
+        }
+    }
+
+    /// Weigher function that calculates the approximate byte cost of a cache entry.
+    fn byte_weigher(_key: &CacheKey, value: &CacheValue<Raw>) -> u32 {
+        // Primary cost: serialized value bytes
+        let value_bytes = value.data().len();
+
+        // Fixed overhead estimate for key + metadata:
+        // - CacheKey: Arc + CacheKeyInner (~64 bytes typical)
+        // - CacheValue metadata: 2x Option<DateTime> (~48 bytes)
+        const OVERHEAD: usize = 112;
+
+        (OVERHEAD + value_bytes).min(u32::MAX as usize) as u32
     }
 }

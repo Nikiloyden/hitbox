@@ -19,7 +19,7 @@
 //! use hitbox_moka::MokaBackend;
 //!
 //! // Create a backend with capacity for 10,000 entries
-//! let backend = MokaBackend::builder(10_000).build();
+//! let backend = MokaBackend::builder().max_entries(10_000).build();
 //! ```
 //!
 //! # Memory Management
@@ -107,7 +107,7 @@
 //! use hitbox_backend::composition::Compose;
 //!
 //! // Fast local cache (L1) backed by Redis (L2)
-//! let l1 = MokaBackend::builder(10_000).build();
+//! let l1 = MokaBackend::builder().max_entries(10_000).build();
 //! let l2 = RedisBackend::builder().server("redis://localhost/").build()?;
 //!
 //! let backend = l1.compose(l2, offload_manager);
@@ -120,4 +120,4 @@ mod backend;
 mod builder;
 
 pub use backend::MokaBackend;
-pub use builder::MokaBackendBuilder;
+pub use builder::{ByteCapacity, EntryCapacity, MokaBackendBuilder, NoCapacity};

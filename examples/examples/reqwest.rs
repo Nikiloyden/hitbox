@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Create a Moka in-memory backend
-    let backend = MokaBackend::builder(1000).build();
+    let backend = MokaBackend::builder().max_entries(1000).build();
 
     // Configure cache endpoint using builder pattern
     // - Only cache GET requests

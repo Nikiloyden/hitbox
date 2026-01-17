@@ -29,7 +29,7 @@ use moka::future::Cache;
 /// ```
 /// use hitbox_moka::MokaBackend;
 ///
-/// let backend = MokaBackend::builder(10_000).build();
+/// let backend = MokaBackend::builder().max_entries(10_000).build();
 /// ```
 ///
 /// With custom serialization format:
@@ -38,7 +38,8 @@ use moka::future::Cache;
 /// use hitbox_moka::MokaBackend;
 /// use hitbox_backend::format::BincodeFormat;
 ///
-/// let backend = MokaBackend::builder(10_000)
+/// let backend = MokaBackend::builder()
+///     .max_entries(10_000)
 ///     .value_format(BincodeFormat)
 ///     .build();
 /// ```
@@ -95,14 +96,17 @@ where
 }
 
 impl MokaBackend<JsonFormat, PassthroughCompressor> {
-    /// Creates a new builder for `MokaBackend` with the specified maximum capacity.
+    /// Creates a new builder for `MokaBackend`.
     ///
-    /// The `max_capacity` determines the maximum number of entries the cache can hold.
-    /// When the cache reaches capacity, the least recently used entries are evicted.
+    /// You must configure capacity using [`max_entries()`] or [`max_bytes()`] before
+    /// calling `build()`.
+    ///
+    /// [`max_entries()`]: crate::builder::MokaBackendBuilder::max_entries
+    /// [`max_bytes()`]: crate::builder::MokaBackendBuilder::max_bytes
     pub fn builder(
-        max_capacity: u64,
-    ) -> crate::builder::MokaBackendBuilder<JsonFormat, PassthroughCompressor> {
-        crate::builder::MokaBackendBuilder::new(max_capacity)
+    ) -> crate::builder::MokaBackendBuilder<crate::builder::NoCapacity, JsonFormat, PassthroughCompressor>
+    {
+        crate::builder::MokaBackendBuilder::new()
     }
 }
 

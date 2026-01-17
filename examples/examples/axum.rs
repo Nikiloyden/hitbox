@@ -203,7 +203,7 @@ async fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let memory_backend = hitbox_moka::MokaBackend::builder(1024 * 1024).build();
+    let memory_backend = hitbox_moka::MokaBackend::builder().max_entries(1024 * 1024).build();
 
     // Cache config for task list endpoint
     // Cache key includes: pagination params

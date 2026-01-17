@@ -119,7 +119,7 @@
 //! use hitbox_redis::RedisBackend;
 //!
 //! // Fast local cache (L1) backed by Redis (L2)
-//! let l1 = MokaBackend::builder(10_000).build();
+//! let l1 = MokaBackend::builder().max_entries(10_000).build();
 //! let l2 = RedisBackend::builder()
 //!     .server("redis://redis.example.com:6379/")
 //!     .build()?;
