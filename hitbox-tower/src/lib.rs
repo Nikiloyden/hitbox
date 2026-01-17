@@ -7,8 +7,7 @@
 //! # When to Use This Crate
 //!
 //! Use `hitbox-tower` when you have a Tower-based HTTP server (e.g., Axum, Hyper)
-//! and want to add caching as middleware. For reqwest client-side caching, see
-//! [`hitbox-reqwest`](https://docs.rs/hitbox-reqwest).
+//! and want to add caching as middleware.
 //!
 //! # Core Concepts
 //!
@@ -19,7 +18,7 @@
 //!   Returns `Cacheable` or `NonCacheable`. See [`hitbox_http::predicates`].
 //!
 //! - **[Extractor]**: Generates cache key parts from HTTP components (method, path,
-//!   headers, query). See [`hitbox_http::extractors`].
+//!   headers, query etc.). See [`hitbox_http::extractors`].
 //!
 //! - **[Backend]**: Storage for cached responses. Use [`hitbox_moka`] for in-memory,
 //!   or other backends for distributed caching.
