@@ -11,10 +11,10 @@ use smol_str::SmolStr;
 
 use super::context::{CompositionContext, CompositionLayer, upgrade_context};
 use super::envelope::CompositionEnvelope;
+use crate::Compressor;
+use crate::context::Context;
 use crate::format::{Format, FormatDeserializer, FormatError, FormatSerializer, FormatTypeId};
 use crate::metrics::Timer;
-use crate::context::Context;
-use crate::Compressor;
 
 /// Format implementation for CompositionBackend that handles multi-layer serialization.
 ///
@@ -341,8 +341,8 @@ impl Format for CompositionFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::format::{BincodeFormat, FormatExt, JsonFormat};
     use crate::PassthroughCompressor;
+    use crate::format::{BincodeFormat, FormatExt, JsonFormat};
     use hitbox_core::CacheContext;
     use serde::{Deserialize, Serialize};
 

@@ -15,13 +15,89 @@ use tracing::trace;
 
 use crate::error::Error;
 
-/// Redis cache backend based on redis-rs crate.
+/// Distributed cache backend powered by Redis.
 ///
-/// This struct provides Redis as a storage [`Backend`] for hitbox.
-/// It uses a [`ConnectionManager`] for asynchronous network interaction.
+/// `RedisBackend` provides a high-performance distributed cache using Redis
+/// as the storage layer. It uses a multiplexed connection ([`ConnectionManager`])
+/// for efficient async operations, allowing many concurrent requests to share
+/// a single underlying connection.
 ///
+/// # Type Parameters
+///
+/// * `S` - Serialization format for cache values. Implements [`Format`].
+///   Default: [`BincodeFormat`] (compact binary, recommended for production).
+/// * `C` - Compression strategy for cache values. Implements [`Compressor`].
+///   Default: [`PassthroughCompressor`] (no compression).
+///
+/// # Examples
+///
+/// Basic usage with defaults:
+///
+/// ```no_run
+/// use hitbox_redis::RedisBackend;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = RedisBackend::builder()
+///     .server("redis://localhost:6379/")
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// With custom serialization format:
+///
+/// ```no_run
+/// use hitbox_redis::RedisBackend;
+/// use hitbox_backend::format::JsonFormat;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = RedisBackend::builder()
+///     .server("redis://localhost:6379/")
+///     .value_format(JsonFormat)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Performance
+///
+/// - **Read operations**: Single pipelined request (`HMGET` + `PTTL`)
+/// - **Write operations**: Single pipelined request (`HSET` + `EXPIRE`)
+/// - **Connection**: Lazy initialization, multiplexed for concurrent access
+///
+/// # Caveats
+///
+/// - **Network latency**: Expect ~0.5-2ms per operation depending on network
+/// - **Connection failure**: Operations will fail if Redis is unreachable
+/// - **Expire time approximation**: The `expire` timestamp returned on read is
+///   calculated as `now + PTTL`, which may drift by the network round-trip time
+///
+/// # Design Rationale
+///
+/// ## Why Hash instead of String?
+///
+/// Redis Hashes (`HSET`/`HMGET`) are used instead of simple strings (`SET`/`GET`)
+/// to store metadata alongside the cached data:
+///
+/// - The `"d"` field holds the serialized (and optionally compressed) data
+/// - The `"s"` field holds the stale timestamp for stale-while-revalidate support
+/// - The TTL is stored using Redis's native `EXPIRE` mechanism
+///
+/// This separation allows the backend to support cache staleness semantics
+/// without encoding metadata into the serialized value.
+///
+/// ## Why Lazy Connection?
+///
+/// The connection to Redis is established on first use, not at construction time.
+/// This allows creating backend instances without blocking, and avoids connection
+/// overhead for backends that may not be used (e.g., L2 in a composition where
+/// L1 always hits).
+///
+/// [`Format`]: hitbox_backend::format::Format
+/// [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
+/// [`Compressor`]: hitbox_backend::Compressor
+/// [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
 /// [`ConnectionManager`]: redis::aio::ConnectionManager
-/// [`Backend`]: hitbox_backend::Backend
 #[derive(Clone)]
 pub struct RedisBackend<S = BincodeFormat, C = PassthroughCompressor>
 where
@@ -37,22 +113,50 @@ where
 }
 
 impl RedisBackend<BincodeFormat, PassthroughCompressor> {
-    /// Create new backend instance with default settings.
+    /// Creates a new backend instance with default settings.
+    ///
+    /// Connects to `redis://127.0.0.1/` with [`BincodeFormat`] serialization
+    /// and no compression.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BackendError`] if the Redis connection URL is invalid.
+    /// Note that actual connection errors occur lazily on first operation.
     ///
     /// # Examples
-    /// ```
+    ///
+    /// ```no_run
     /// use hitbox_redis::RedisBackend;
     ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let backend = RedisBackend::new();
-    /// }
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let backend = RedisBackend::new()?;
+    /// # Ok(())
+    /// # }
     /// ```
+    ///
+    /// [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
+    /// [`BackendError`]: hitbox_backend::BackendError
     pub fn new() -> Result<Self, BackendError> {
         Ok(Self::builder().build()?)
     }
 
-    /// Creates new RedisBackend builder with default settings.
+    /// Creates a new builder for `RedisBackend` with default settings.
+    ///
+    /// Use the builder to configure the connection URL, serialization format,
+    /// key format, compression, and label.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hitbox_redis::RedisBackend;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let backend = RedisBackend::builder()
+    ///     .server("redis://redis.example.com:6379/0")
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     pub fn builder() -> RedisBackendBuilder<BincodeFormat, PassthroughCompressor> {
         RedisBackendBuilder::default()
@@ -64,7 +168,30 @@ where
     S: Format,
     C: Compressor,
 {
-    /// Create lazy connection to redis via [`ConnectionManager`]
+    /// Returns a reference to the Redis connection manager.
+    ///
+    /// The connection is established lazily on first call. Subsequent calls
+    /// return the cached connection manager without reconnecting.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BackendError`] if the connection to Redis fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hitbox_redis::RedisBackend;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let backend = RedisBackend::new()?;
+    ///
+    /// // Connection is established on first access
+    /// let conn = backend.connection().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`BackendError`]: hitbox_backend::BackendError
     pub async fn connection(&self) -> Result<&ConnectionManager, BackendError> {
         trace!("Get connection manager");
         let manager = self
@@ -79,7 +206,42 @@ where
     }
 }
 
-/// Part of builder pattern implementation for RedisBackend.
+/// Builder for creating and configuring a [`RedisBackend`].
+///
+/// Use [`RedisBackend::builder`] to create a new builder instance.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```no_run
+/// use hitbox_redis::RedisBackend;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = RedisBackend::builder()
+///     .server("redis://localhost:6379/")
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// With custom configuration:
+///
+/// ```no_run
+/// use hitbox_redis::RedisBackend;
+/// use hitbox_backend::format::JsonFormat;
+/// use hitbox_backend::CacheKeyFormat;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let backend = RedisBackend::builder()
+///     .server("redis://redis.example.com:6379/0")
+///     .label("sessions")
+///     .key_format(CacheKeyFormat::UrlEncoded)
+///     .value_format(JsonFormat)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct RedisBackendBuilder<S = BincodeFormat, C = PassthroughCompressor>
 where
     S: Format,
@@ -109,13 +271,53 @@ where
     S: Format,
     C: Compressor,
 {
-    /// Set connection info (host, port, database, etc.) for RedisBackend.
+    /// Sets the Redis server connection URL.
+    ///
+    /// The URL format is `redis://[<username>][:<password>@]<host>[:<port>][/<database>]`.
+    ///
+    /// # Default
+    ///
+    /// `redis://127.0.0.1/`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use hitbox_redis::RedisBackend;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Simple connection
+    /// let backend = RedisBackend::builder()
+    ///     .server("redis://localhost:6379/")
+    ///     .build()?;
+    ///
+    /// // With authentication and database selection
+    /// let backend = RedisBackend::builder()
+    ///     .server("redis://:password@redis.example.com:6379/2")
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn server(mut self, connection_info: impl Into<String>) -> Self {
         self.connection_info = connection_info.into();
         self
     }
 
-    /// Set value serialization format (JSON, Bincode, etc.)
+    /// Sets the cache value serialization format.
+    ///
+    /// The value format determines how cached data is serialized before storage.
+    ///
+    /// # Default
+    ///
+    /// [`BincodeFormat`] (compact binary, recommended for production)
+    ///
+    /// # Options
+    ///
+    /// | Format | Speed | Size | Human-readable |
+    /// |--------|-------|------|----------------|
+    /// | [`BincodeFormat`] | Fast | Compact | No |
+    /// | [`JsonFormat`](hitbox_backend::format::JsonFormat) | Slow | Large | Yes |
+    /// | [`RonFormat`](hitbox_backend::format::RonFormat) | Medium | Medium | Yes |
+    ///
+    /// [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
     pub fn value_format<NewS>(self, serializer: NewS) -> RedisBackendBuilder<NewS, C>
     where
         NewS: Format,
@@ -129,22 +331,95 @@ where
         }
     }
 
-    /// Set key serialization format (String, JSON, Bincode, UrlEncoded)
+    /// Sets the cache key serialization format.
+    ///
+    /// The key format determines how [`CacheKey`] values are serialized for
+    /// storage as Redis keys. This affects key size and debuggability.
+    ///
+    /// # Default
+    ///
+    /// [`CacheKeyFormat::Bitcode`]
+    ///
+    /// # Options
+    ///
+    /// | Format | Size | Human-readable |
+    /// |--------|------|----------------|
+    /// | [`Bitcode`](CacheKeyFormat::Bitcode) | Compact | No |
+    /// | [`UrlEncoded`](CacheKeyFormat::UrlEncoded) | Larger | Yes |
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hitbox_redis::RedisBackend;
+    /// use hitbox_backend::CacheKeyFormat;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // URL-encoded keys for easier debugging with redis-cli
+    /// let backend = RedisBackend::builder()
+    ///     .key_format(CacheKeyFormat::UrlEncoded)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`CacheKey`]: hitbox::CacheKey
     pub fn key_format(mut self, key_format: CacheKeyFormat) -> Self {
         self.key_format = key_format;
         self
     }
 
-    /// Set a custom label for this backend.
+    /// Sets a custom label for this backend.
     ///
-    /// The label is used for source path composition in multi-layer caches.
-    /// For example, with label "sessions", the source path might be "composition.L1.sessions".
+    /// The label identifies this backend in multi-tier cache compositions and
+    /// appears in metrics and debug output.
+    ///
+    /// # Default
+    ///
+    /// `"redis"`
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use hitbox_redis::RedisBackend;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let backend = RedisBackend::builder()
+    ///     .label("sessions-redis")
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn label(mut self, label: impl Into<BackendLabel>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Set compressor for value compression
+    /// Sets the compression strategy for cache values.
+    ///
+    /// Compression reduces network bandwidth and Redis memory usage at the cost
+    /// of CPU time. For Redis backends, compression is often beneficial since
+    /// network I/O is typically the bottleneck.
+    ///
+    /// # Default
+    ///
+    /// [`PassthroughCompressor`] (no compression)
+    ///
+    /// # Options
+    ///
+    /// | Compressor | Ratio | Speed | Feature flag |
+    /// |------------|-------|-------|--------------|
+    /// | [`PassthroughCompressor`] | None | Fastest | — |
+    /// | [`GzipCompressor`](hitbox_backend::GzipCompressor) | Good | Medium | `gzip` |
+    /// | [`ZstdCompressor`](hitbox_backend::ZstdCompressor) | Best | Fast | `zstd` |
+    ///
+    /// # When to Use Compression
+    ///
+    /// - Cached values larger than ~1KB
+    /// - High network latency to Redis
+    /// - Redis memory is constrained
+    /// - Using Redis persistence (RDB/AOF)
+    ///
+    /// [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
     pub fn compressor<NewC>(self, compressor: NewC) -> RedisBackendBuilder<S, NewC>
     where
         NewC: Compressor,
@@ -158,7 +433,16 @@ where
         }
     }
 
-    /// Create new instance of Redis backend with passed settings.
+    /// Builds the [`RedisBackend`] with the configured settings.
+    ///
+    /// Consumes the builder and returns a fully configured backend ready for use.
+    /// Note that the actual Redis connection is established lazily on first operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Redis`] if the connection URL is invalid.
+    ///
+    /// [`Error::Redis`]: crate::error::Error::Redis
     pub fn build(self) -> Result<RedisBackend<S, C>, Error> {
         Ok(RedisBackend {
             client: Client::open(self.connection_info)?,

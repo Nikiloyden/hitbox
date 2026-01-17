@@ -1,3 +1,9 @@
+//! Tower service implementation for HTTP caching.
+//!
+//! This module provides [`CacheService`](crate::service::CacheService), the Tower
+//! `Service` that performs the actual caching logic. Users typically don't construct
+//! this directly — it's created by the [`Cache`](crate::Cache) layer.
+
 use hitbox::concurrency::ConcurrencyManager;
 use hitbox::config::CacheConfig;
 use hitbox_core::{DisabledOffload, Offload};
@@ -5,6 +11,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use hitbox::{backend::CacheBackend, fsm::CacheFuture};
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
+use http::header::HeaderName;
 use http::{Request, Response};
 use hyper::body::Body as HttpBody;
 use tower::Service;
@@ -12,21 +19,51 @@ use tower::Service;
 use crate::future::CacheServiceFuture;
 use crate::upstream::TowerUpstream;
 
+/// Tower [`Service`] that wraps an upstream service with caching.
+///
+/// `CacheService` intercepts HTTP requests, checks the cache, and either
+/// returns cached responses or forwards requests to the upstream service.
+/// It adds a cache status header (`HIT`/`MISS`/`STALE`) to every response.
+///
+/// # When You'll Encounter This
+///
+/// You typically don't create this directly. It's produced when you apply
+/// a [`Cache`] layer to a service via [`tower::ServiceBuilder`].
+///
+/// # Type Parameters
+///
+/// * `S` - The upstream Tower service being wrapped
+/// * `B` - Cache backend (e.g., [`MokaBackend`])
+/// * `C` - Configuration with predicates, extractors, and policy
+/// * `CM` - Concurrency manager for dogpile prevention
+/// * `O` - Offload strategy for background revalidation
+///
+/// [`Cache`]: crate::Cache
+/// [`Service`]: tower::Service
+/// [`MokaBackend`]: hitbox_moka::MokaBackend
 pub struct CacheService<S, B, C, CM, O = DisabledOffload> {
     upstream: S,
     backend: Arc<B>,
     configuration: C,
     offload: O,
     concurrency_manager: CM,
+    cache_status_header: HeaderName,
 }
 
 impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
+    /// Creates a new cache service wrapping the given upstream.
+    ///
+    /// Prefer using [`Cache::builder()`] and [`tower::ServiceBuilder`] instead
+    /// of constructing this directly.
+    ///
+    /// [`Cache::builder()`]: crate::Cache::builder
     pub fn new(
         upstream: S,
         backend: Arc<B>,
         configuration: C,
         offload: O,
         concurrency_manager: CM,
+        cache_status_header: HeaderName,
     ) -> Self {
         CacheService {
             upstream,
@@ -34,6 +71,7 @@ impl<S, B, C, CM, O> CacheService<S, B, C, CM, O> {
             configuration,
             offload,
             concurrency_manager,
+            cache_status_header,
         }
     }
 }
@@ -53,6 +91,7 @@ where
             configuration: self.configuration.clone(),
             offload: self.offload.clone(),
             concurrency_manager: self.concurrency_manager.clone(),
+            cache_status_header: self.cache_status_header.clone(),
         }
     }
 }
@@ -128,6 +167,6 @@ where
         );
 
         // Wrap in CacheServiceFuture to add cache headers
-        CacheServiceFuture::new(cache_future)
+        CacheServiceFuture::new(cache_future, self.cache_status_header.clone())
     }
 }

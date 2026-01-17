@@ -1,4 +1,10 @@
 //! Cache middleware for reqwest-middleware.
+//!
+//! This module provides [`CacheMiddleware`] which implements the
+//! [`reqwest_middleware::Middleware`] trait to add caching capabilities
+//! to reqwest HTTP clients.
+//!
+//! See the [crate-level documentation](crate) for usage examples.
 
 use std::sync::Arc;
 
@@ -11,46 +17,54 @@ use hitbox::fsm::CacheFuture;
 use hitbox_core::DisabledOffload;
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse, HttpEndpoint};
 use http::Extensions;
-use http::header::HeaderValue;
+use http::header::{HeaderName, HeaderValue};
 use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next, Result};
 
 use crate::upstream::{ReqwestUpstream, buffered_body_to_reqwest};
+
+/// Default header name for cache status (HIT/MISS/STALE).
+pub const DEFAULT_CACHE_STATUS_HEADER: HeaderName = HeaderName::from_static("x-cache-status");
 
 /// Cache middleware for reqwest-middleware.
 ///
 /// This middleware intercepts HTTP requests and responses, caching them
 /// according to the configured policy and predicates.
 ///
-/// # Type Parameters
-///
-/// * `B` - Cache backend (e.g., MokaBackend, RedisBackend)
-/// * `C` - Configuration implementing `CacheConfig`
-/// * `CM` - Concurrency manager (e.g., NoopConcurrencyManager, BroadcastConcurrencyManager)
+/// Use [`CacheMiddleware::builder()`] to construct an instance.
+/// See the [crate-level documentation](crate) for usage examples.
 pub struct CacheMiddleware<B, C, CM> {
     backend: Arc<B>,
     configuration: C,
     concurrency_manager: CM,
+    /// Header name for cache status (HIT/MISS/STALE).
+    cache_status_header: HeaderName,
 }
 
 impl<B, C, CM> CacheMiddleware<B, C, CM> {
-    /// Create a new cache middleware with a custom concurrency manager.
-    pub fn new(backend: Arc<B>, configuration: C, concurrency_manager: CM) -> Self {
+    /// Creates a new cache middleware with explicit components.
+    ///
+    /// For most use cases, prefer [`CacheMiddleware::builder()`] which provides
+    /// a more ergonomic API with sensible defaults.
+    pub fn new(
+        backend: Arc<B>,
+        configuration: C,
+        concurrency_manager: CM,
+        cache_status_header: HeaderName,
+    ) -> Self {
         Self {
             backend,
             configuration,
             concurrency_manager,
+            cache_status_header,
         }
     }
 }
 
 impl CacheMiddleware<(), HttpEndpoint, NoopConcurrencyManager> {
-    /// Create a new builder for cache middleware.
+    /// Creates a new builder for constructing cache middleware.
     ///
-    /// The builder starts with `HttpEndpoint` as the default configuration
-    /// and `NoopConcurrencyManager` for concurrency control.
-    /// Use `.config()` to set a custom configuration and
-    /// `.concurrency_manager()` to enable dogpile prevention.
+    /// See the [crate-level documentation](crate) for usage examples.
     pub fn builder() -> CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
         CacheMiddlewareBuilder::new()
     }
@@ -66,6 +80,7 @@ where
             backend: self.backend.clone(),
             configuration: self.configuration.clone(),
             concurrency_manager: self.concurrency_manager.clone(),
+            cache_status_header: self.cache_status_header.clone(),
         }
     }
 }
@@ -139,7 +154,7 @@ where
         let cacheable_response = response?;
         let mut http_response = cacheable_response.into_response();
 
-        // Add X-Cache-Status header based on cache context
+        // Add cache status header based on cache context
         let status_value = match cache_context.status {
             CacheStatus::Hit => HeaderValue::from_static("HIT"),
             CacheStatus::Miss => HeaderValue::from_static("MISS"),
@@ -147,7 +162,7 @@ where
         };
         http_response
             .headers_mut()
-            .insert("X-Cache-Status", status_value);
+            .insert(self.cache_status_header.clone(), status_value);
 
         let (parts, buffered_body) = http_response.into_parts();
 
@@ -160,15 +175,23 @@ where
     }
 }
 
-/// Builder for `CacheMiddleware`.
+/// Builder for constructing [`CacheMiddleware`] with a fluent API.
+///
+/// Obtained via [`CacheMiddleware::builder()`].
+/// See the [crate-level documentation](crate) for usage examples.
 pub struct CacheMiddlewareBuilder<B, C, CM> {
     backend: Option<Arc<B>>,
     configuration: C,
     concurrency_manager: CM,
+    cache_status_header: Option<HeaderName>,
 }
 
 impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
-    /// Set the cache backend.
+    /// Sets the cache backend (**required**).
+    ///
+    /// # Panics
+    ///
+    /// [`build()`](Self::build) will panic if backend is not set.
     pub fn backend<NB>(self, backend: NB) -> CacheMiddlewareBuilder<NB, C, CM>
     where
         NB: CacheBackend,
@@ -177,19 +200,25 @@ impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
             backend: Some(Arc::new(backend)),
             configuration: self.configuration,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
-    /// Set the cache configuration.
+    /// Sets the cache configuration.
+    ///
+    /// Defaults to [`HttpEndpoint::default()`](hitbox_http::HttpEndpoint::default) if not called.
     pub fn config<NC>(self, configuration: NC) -> CacheMiddlewareBuilder<B, NC, CM> {
         CacheMiddlewareBuilder {
             backend: self.backend,
             configuration,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
-    /// Set the concurrency manager.
+    /// Sets the concurrency manager for dogpile prevention.
+    ///
+    /// Defaults to [`NoopConcurrencyManager`](hitbox::concurrency::NoopConcurrencyManager) if not called.
     pub fn concurrency_manager<NCM>(
         self,
         concurrency_manager: NCM,
@@ -198,30 +227,50 @@ impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
             backend: self.backend,
             configuration: self.configuration,
             concurrency_manager,
+            cache_status_header: self.cache_status_header,
         }
     }
 
-    /// Build the cache middleware.
+    /// Sets the header name for cache status.
+    ///
+    /// The cache status header indicates whether a response was served from cache.
+    /// Possible values are `HIT`, `MISS`, or `STALE`.
+    ///
+    /// Defaults to `x-cache-status` if not set.
+    pub fn cache_status_header(self, header_name: HeaderName) -> Self {
+        CacheMiddlewareBuilder {
+            backend: self.backend,
+            configuration: self.configuration,
+            concurrency_manager: self.concurrency_manager,
+            cache_status_header: Some(header_name),
+        }
+    }
+
+    /// Builds the cache middleware.
     ///
     /// # Panics
     ///
-    /// Panics if no backend has been set.
+    /// Panics if [`backend()`](Self::backend) was not called.
     pub fn build(self) -> CacheMiddleware<B, C, CM> {
         CacheMiddleware {
             backend: self.backend.expect("backend is required"),
             configuration: self.configuration,
             concurrency_manager: self.concurrency_manager,
+            cache_status_header: self
+                .cache_status_header
+                .unwrap_or(DEFAULT_CACHE_STATUS_HEADER),
         }
     }
 }
 
 impl CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
-    /// Create a new builder with default configuration.
+    /// Creates a new builder. Equivalent to [`CacheMiddleware::builder()`].
     pub fn new() -> Self {
         Self {
             backend: None,
             configuration: HttpEndpoint::default(),
             concurrency_manager: NoopConcurrencyManager,
+            cache_status_header: None,
         }
     }
 }

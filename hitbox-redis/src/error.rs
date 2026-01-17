@@ -1,17 +1,58 @@
-//! Error declaration and transformation into [BackendError].
+//! Error types for Redis backend operations.
 //!
-//! [BackendError]: hitbox_backend::BackendError
+//! This module provides error types specific to the Redis backend. All errors
+//! can be converted to [`BackendError`] for uniform error handling across
+//! different cache backends.
+//!
+//! [`BackendError`]: hitbox_backend::BackendError
+
 use hitbox_backend::BackendError;
 use redis::RedisError;
 
-/// Redis backend error declaration.
+/// Error type for Redis backend operations.
 ///
-/// Simply, it's just a wrapper for [redis::RedisError].
+/// Wraps errors from the underlying [`redis`] crate. This enum may be extended
+/// in the future to distinguish between different error categories (connection,
+/// protocol, timeout, etc.).
 ///
-/// [redis::RedisError]: redis::RedisError
+/// # When You'll Encounter This
+///
+/// You typically don't handle this error directly. It appears when:
+///
+/// - Using [`RedisBackendBuilder::build`] with an invalid connection URL
+/// - Calling [`RedisBackend::connection`] when Redis is unreachable
+/// - Performing cache operations when the Redis server returns an error
+///
+/// In most cases, this error is automatically converted to [`BackendError`]
+/// and propagated through the cache layer.
+///
+/// # Examples
+///
+/// ```no_run
+/// use hitbox_redis::RedisBackend;
+///
+/// # fn main() {
+/// // Invalid URL returns Error::Redis
+/// let result = RedisBackend::builder()
+///     .server("not-a-valid-url")
+///     .build();
+///
+/// match result {
+///     Ok(_) => println!("Connected"),
+///     Err(e) => println!("Failed: {}", e),
+/// }
+/// # }
+/// ```
+///
+/// [`RedisBackendBuilder::build`]: crate::RedisBackendBuilder::build
+/// [`RedisBackend::connection`]: crate::RedisBackend::connection
+/// [`BackendError`]: hitbox_backend::BackendError
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Wrapper for all kinds redis-rs errors.
+    /// An error from the underlying Redis client.
+    ///
+    /// This includes connection failures, protocol errors, authentication
+    /// failures, and command execution errors.
     #[error("Redis backend error: {0}")]
     Redis(#[from] RedisError),
 }
