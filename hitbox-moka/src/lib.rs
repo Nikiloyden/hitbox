@@ -49,9 +49,14 @@
 //!
 //! | Format | Speed | Size | Human-readable | Use case |
 //! |--------|-------|------|----------------|----------|
-//! | [`JsonFormat`] | Slow | Large | Yes | Debugging, interoperability |
+//! | [`JsonFormat`] | Slow | Large | Partial* | Debugging, interoperability |
 //! | [`BincodeFormat`] | Fast | Compact | No | General purpose (recommended) |
 //! | [`RonFormat`] | Medium | Medium | Yes | Config files, debugging |
+//! | [`RkyvFormat`] | Fastest | Compact | No | Zero-copy, max performance |
+//!
+//! *\* JSON serializes binary data as byte arrays `[104, 101, ...]`, not readable strings.*
+//!
+//! **Note:** [`RkyvFormat`] requires enabling the `rkyv_format` feature on `hitbox-backend`.
 //!
 //! ## Compression Strategies
 //!
@@ -75,6 +80,7 @@
 //! [`JsonFormat`]: hitbox_backend::format::JsonFormat
 //! [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
 //! [`RonFormat`]: hitbox_backend::format::RonFormat
+//! [`RkyvFormat`]: hitbox_backend::format::RkyvFormat
 //! [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
 //! [`GzipCompressor`]: hitbox_backend::GzipCompressor
 //! [`ZstdCompressor`]: hitbox_backend::ZstdCompressor
