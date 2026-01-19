@@ -414,11 +414,11 @@ async fn main() {
 
         let backend = Arc::new(
             RedisBackend::builder()
-                .server(redis_url.clone())
+                .connection(hitbox_redis::ConnectionMode::single(redis_url.clone()))
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build()
-                .unwrap(),
+                .expect("Failed to create Redis backend"),
         );
 
         // Write test

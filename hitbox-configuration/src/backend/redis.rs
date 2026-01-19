@@ -24,7 +24,9 @@ impl BackendConfig<Redis> {
         let compressor = self.value.compression.to_compressor()?;
 
         let mut builder = RedisBackend::builder()
-            .server(self.backend.connection_string)
+            .connection(hitbox_redis::ConnectionMode::single(
+                self.backend.connection_string,
+            ))
             .key_format(key_format)
             .value_format(serializer)
             .compressor(compressor);

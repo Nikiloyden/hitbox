@@ -59,7 +59,7 @@ async fn main() {
 
     // L3: Redis (distributed)
     let redis = hitbox_redis::RedisBackend::builder()
-        .server("redis://127.0.0.1/")
+        .connection(hitbox_redis::ConnectionMode::single("redis://127.0.0.1/"))
         .label("redis")
         .build()
         .unwrap();

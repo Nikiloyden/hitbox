@@ -1,52 +1,62 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-//! Distributed cache backend for the Hitbox caching framework using Redis.
+//! Redis cache backend for the [Hitbox] caching framework.
 //!
-//! This crate provides [`RedisBackend`], a distributed cache backend powered by
-//! [redis-rs](https://github.com/redis-rs/redis-rs). It uses a multiplexed connection
-//! for efficient async operations across concurrent requests.
+//! This crate provides [`RedisBackend`], a cache backend powered by
+//! [redis-rs](https://github.com/redis-rs/redis-rs). It supports both single-node
+//! Redis instances and Redis Cluster deployments (with the `cluster` feature).
 //!
 //! # Overview
 //!
-//! - **Distributed caching**: Share cache across multiple processes and hosts
+//! - **Single-node or cluster**: Connect to a single Redis instance or a Redis Cluster
 //! - **Multiplexed connection**: Efficient connection reuse via [`ConnectionManager`]
 //! - **Automatic TTL**: Entries expire using native Redis TTL mechanism
 //! - **Lazy connection**: Connection established on first operation, not at construction
 //!
 //! # Quickstart
 //!
-//! ```no_run
-//! use hitbox_redis::RedisBackend;
+//! ## Single Node
+//!
+//! ```
+//! use hitbox_redis::{RedisBackend, ConnectionMode};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a backend with default settings (localhost:6379)
-//! let backend = RedisBackend::new()?;
-//!
-//! // Or configure with a builder
 //! let backend = RedisBackend::builder()
-//!     .server("redis://redis.example.com:6379/0")
+//!     .connection(ConnectionMode::single("redis://localhost:6379/"))
 //!     .build()?;
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! # Redis Storage Schema
+//! ## Cluster
 //!
-//! Each cache entry is stored as a Redis Hash with the following structure:
+//! Requires the `cluster` feature.
 //!
-//! ```text
-//! Key: <serialized CacheKey>
-//! Fields:
-//!   "d" → cached data (serialized, optionally compressed)
-//!   "s" → stale timestamp in milliseconds (optional)
-//! TTL:  Set via EXPIRE command based on CacheValue::expire
+//! ```
+//! # #[cfg(feature = "cluster")]
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use hitbox_redis::{RedisBackend, ConnectionMode};
+//!
+//! let backend = RedisBackend::builder()
+//!     .connection(ConnectionMode::cluster([
+//!         "redis://node1:6379",
+//!         "redis://node2:6379",
+//!         "redis://node3:6379",
+//!     ]))
+//!     .build()?;
+//! # Ok(())
+//! # }
+//! # #[cfg(not(feature = "cluster"))]
+//! # fn main() {}
 //! ```
 //!
 //! # Configuration
 //!
 //! | Option | Default | Description |
 //! |--------|---------|-------------|
-//! | `server` | `redis://127.0.0.1/` | Redis connection URL |
+//! | `connection` | (required) | Connection mode (single or cluster) |
+//! | `username` | None | Redis 6+ ACL username |
+//! | `password` | None | Redis password |
 //! | `key_format` | [`Bitcode`] | Cache key serialization format |
 //! | `value_format` | [`BincodeFormat`] | Value serialization format |
 //! | `compressor` | [`PassthroughCompressor`] | Compression strategy |
@@ -113,30 +123,26 @@
 //!
 //! `RedisBackend` works well as an L2 cache behind a fast in-memory L1:
 //!
-//! ```ignore
+//! ```
+//! use hitbox::offload::OffloadManager;
 //! use hitbox_backend::composition::Compose;
 //! use hitbox_moka::MokaBackend;
-//! use hitbox_redis::RedisBackend;
+//! use hitbox_redis::{RedisBackend, ConnectionMode};
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Fast local cache (L1) backed by Redis (L2)
 //! let l1 = MokaBackend::builder(10_000).build();
 //! let l2 = RedisBackend::builder()
-//!     .server("redis://redis.example.com:6379/")
+//!     .connection(ConnectionMode::single("redis://localhost:6379/"))
 //!     .build()?;
 //!
-//! let backend = l1.compose(l2, offload_manager);
+//! let offload = OffloadManager::with_defaults();
+//! let composed = l1.compose(l2, offload);
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! # Performance Characteristics
-//!
-//! | Operation | Latency | Redis Commands |
-//! |-----------|---------|----------------|
-//! | `read` | ~0.5-2ms | `HMGET` + `PTTL` (pipelined) |
-//! | `write` | ~0.5-2ms | `HSET` + `EXPIRE` (pipelined) |
-//! | `remove` | ~0.5-2ms | `DEL` |
-//!
-//! All operations use Redis pipelining to minimize round trips.
-//!
+//! [Hitbox]: hitbox
 //! [`Bitcode`]: hitbox_backend::CacheKeyFormat::Bitcode
 //! [`UrlEncoded`]: hitbox_backend::CacheKeyFormat::UrlEncoded
 //! [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
@@ -155,4 +161,8 @@ pub mod backend;
 pub mod error;
 
 #[doc(inline)]
-pub use crate::backend::{RedisBackend, RedisBackendBuilder};
+pub use crate::backend::{ConnectionMode, RedisBackend, RedisBackendBuilder, SingleConfig};
+
+#[cfg(feature = "cluster")]
+#[doc(inline)]
+pub use crate::backend::ClusterConfig;

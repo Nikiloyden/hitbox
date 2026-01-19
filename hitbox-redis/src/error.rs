@@ -20,7 +20,8 @@ use redis::RedisError;
 /// You typically don't handle this error directly. It appears when:
 ///
 /// - Using [`RedisBackendBuilder::build`] with an invalid connection URL
-/// - Calling [`RedisBackend::connection`] when Redis is unreachable
+/// - Performing the first cache operation when Redis is unreachable
+///   (connection is established lazily)
 /// - Performing cache operations when the Redis server returns an error
 ///
 /// In most cases, this error is automatically converted to [`BackendError`]
@@ -29,12 +30,12 @@ use redis::RedisError;
 /// # Examples
 ///
 /// ```no_run
-/// use hitbox_redis::RedisBackend;
+/// use hitbox_redis::{RedisBackend, ConnectionMode};
 ///
 /// # fn main() {
 /// // Invalid URL returns Error::Redis
 /// let result = RedisBackend::builder()
-///     .server("not-a-valid-url")
+///     .connection(ConnectionMode::single("not-a-valid-url"))
 ///     .build();
 ///
 /// match result {
@@ -45,7 +46,6 @@ use redis::RedisError;
 /// ```
 ///
 /// [`RedisBackendBuilder::build`]: crate::RedisBackendBuilder::build
-/// [`RedisBackend::connection`]: crate::RedisBackend::connection
 /// [`BackendError`]: hitbox_backend::BackendError
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -55,6 +55,15 @@ pub enum Error {
     /// failures, and command execution errors.
     #[error("Redis backend error: {0}")]
     Redis(#[from] RedisError),
+
+    /// Connection mode was not specified when building the backend.
+    ///
+    /// Call [`RedisBackendBuilder::connection`] before [`RedisBackendBuilder::build`].
+    ///
+    /// [`RedisBackendBuilder::connection`]: crate::RedisBackendBuilder::connection
+    /// [`RedisBackendBuilder::build`]: crate::RedisBackendBuilder::build
+    #[error("Connection mode not specified. Call .connection() before .build()")]
+    MissingConnectionMode,
 }
 
 impl From<Error> for BackendError {
