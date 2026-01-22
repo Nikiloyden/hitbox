@@ -136,14 +136,6 @@ impl Hash for CacheKey {
     }
 }
 
-impl From<CacheKeyInner> for CacheKey {
-    fn from(inner: CacheKeyInner) -> Self {
-        CacheKey {
-            inner: Arc::new(inner),
-        }
-    }
-}
-
 impl From<CacheKey> for CacheKeyInner {
     fn from(key: CacheKey) -> Self {
         // Try to unwrap Arc, or clone if shared
