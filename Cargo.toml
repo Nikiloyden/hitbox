@@ -18,6 +18,11 @@ members = [
 
 [workspace.package]
 rust-version = "1.91.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/hit-box/hitbox/"
+authors = ["Hitbox team <mail@hitbox.rs>"]
+categories = ["caching", "asynchronous"]
 
 [workspace.dependencies]
 # Core async and trait dependencies

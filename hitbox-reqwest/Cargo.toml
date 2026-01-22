@@ -1,18 +1,18 @@
 [package]
-edition = "2024"
-rust-version.workspace = true
 name = "hitbox-reqwest"
 version = "0.1.0"
-authors = ["Hitbox team <mail@hitbox.rs>"]
-license = "MIT"
-description = "Hitbox cache integration for reqwest HTTP client via reqwest-middleware"
-repository = "https://github.com/hit-box/hitbox/"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
 categories = [
     "caching",
     "asynchronous",
     "network-programming",
     "web-programming",
 ]
+description = "Hitbox cache integration for reqwest HTTP client via reqwest-middleware"
 keywords = ["cache", "reqwest", "async", "http", "hitbox", "middleware"]
 
 [package.metadata.docs.rs]
