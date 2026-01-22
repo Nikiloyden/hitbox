@@ -384,7 +384,9 @@ where
     ///
     /// Consumes the builder and returns a fully configured backend ready for use.
     pub fn build(self) -> MokaBackend<S, C> {
-        let policy = self.eviction_policy.unwrap_or_else(EvictionPolicy::tiny_lfu);
+        let policy = self
+            .eviction_policy
+            .unwrap_or_else(EvictionPolicy::tiny_lfu);
         let cache: Cache<CacheKey, CacheValue<Raw>> = CacheBuilder::new(self.capacity.0)
             .eviction_policy(policy)
             .expire_after(Expiration)

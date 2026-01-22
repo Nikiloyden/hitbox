@@ -53,6 +53,10 @@ regex = "1"
 smol_str = { version = "0.3", features = ["serde"] }
 dashmap = "6"
 
+# Metrics
+metrics = "0.24"
+lazy_static = "1"
+
 # Benchmarking (dev dependencies)
 criterion = "0.8"
 

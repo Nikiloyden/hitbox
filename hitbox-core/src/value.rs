@@ -45,8 +45,8 @@ use chrono::{DateTime, Utc};
 use std::mem::size_of;
 use std::time::Duration;
 
-use crate::response::CacheState;
 use crate::Raw;
+use crate::response::CacheState;
 
 /// A cached value with expiration metadata.
 ///

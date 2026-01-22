@@ -56,7 +56,8 @@ fn bench_direct_moka(c: &mut Criterion) {
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -114,12 +115,14 @@ fn bench_composition_concrete(c: &mut Criterion) {
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
-        let l1 = MokaBackend::builder().max_entries(10000)
+        let l1 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
 
-        let l2 = MokaBackend::builder().max_entries(10000)
+        let l2 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -181,12 +184,14 @@ fn bench_composition_outer_dyn(c: &mut Criterion) {
     for (size_name, size_bytes) in &payload_sizes {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
-        let l1 = MokaBackend::builder().max_entries(10000)
+        let l1 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
 
-        let l2 = MokaBackend::builder().max_entries(10000)
+        let l2 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -254,14 +259,16 @@ fn bench_composition_inner_dyn(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
         let l1: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
         );
 
         let l2: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -330,14 +337,16 @@ fn bench_composition_both_dyn(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
         let l1: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
         );
 
         let l2: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -408,12 +417,14 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
         // Create L1 composition (Moka + Moka)
-        let l1_inner1 = MokaBackend::builder().max_entries(10000)
+        let l1_inner1 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
 
-        let l1_inner2 = MokaBackend::builder().max_entries(10000)
+        let l1_inner2 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -421,7 +432,8 @@ fn bench_nested_2_concrete(c: &mut Criterion) {
         let l1 = CompositionBackend::new(l1_inner1, l1_inner2, BenchOffload);
 
         // Create L2 (simple Moka)
-        let l2 = MokaBackend::builder().max_entries(10000)
+        let l2 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -485,14 +497,16 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         // Create L1 composition (Moka + Moka) as dyn
         let l1_inner1: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
         );
 
         let l1_inner2: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -505,7 +519,8 @@ fn bench_nested_2_dyn(c: &mut Criterion) {
 
         // Create L2 (simple Moka) as dyn
         let l2: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -577,12 +592,14 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(*size_bytes as u64));
 
         // Create deepest level (Moka + Moka)
-        let l1_deep1 = MokaBackend::builder().max_entries(10000)
+        let l1_deep1 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
 
-        let l1_deep2 = MokaBackend::builder().max_entries(10000)
+        let l1_deep2 = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -590,7 +607,8 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
         let l1_middle = CompositionBackend::new(l1_deep1, l1_deep2, BenchOffload);
 
         // Create middle level
-        let l2_middle = MokaBackend::builder().max_entries(10000)
+        let l2_middle = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -598,7 +616,8 @@ fn bench_nested_3_concrete(c: &mut Criterion) {
         let l1_top = CompositionBackend::new(l1_middle, l2_middle, BenchOffload);
 
         // Create top level
-        let l2_top = MokaBackend::builder().max_entries(10000)
+        let l2_top = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -660,14 +679,16 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         // Create deepest level (Moka + Moka) as dyn
         let l1_deep1: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
         );
 
         let l1_deep2: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -680,7 +701,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         // Create middle level
         let l2_middle: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),
@@ -693,7 +715,8 @@ fn bench_nested_3_dyn(c: &mut Criterion) {
 
         // Create top level
         let l2_top: Arc<dyn Backend + Send> = Arc::new(
-            MokaBackend::builder().max_entries(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),

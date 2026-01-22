@@ -131,6 +131,7 @@
 
 mod backend;
 mod builder;
+pub mod metrics;
 
 pub use backend::MokaBackend;
 pub use builder::{ByteCapacity, EntryCapacity, MokaBackendBuilder, NoCapacity};

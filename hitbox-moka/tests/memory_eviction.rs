@@ -33,7 +33,9 @@ async fn test_max_bytes_eviction_precise() {
     // Set capacity for exactly 3 entries
     let capacity = single_entry_size * 3;
     // Use MokaBackendBuilder::default() to test Default impl
-    let backend = MokaBackendBuilder::default().max_bytes(capacity as u64).build();
+    let backend = MokaBackendBuilder::default()
+        .max_bytes(capacity as u64)
+        .build();
 
     // Insert 3 entries - should all fit
     for i in 1..=3 {
@@ -68,15 +70,7 @@ async fn test_max_bytes_eviction_precise() {
     );
 
     // Count remaining entries (should be 3)
-    let mut count = 0;
-    for i in 1..=4 {
-        let key = make_key(i);
-        if backend.read(&key).await.unwrap().is_some() {
-            count += 1;
-        }
-    }
-
-    assert_eq!(count, 3, "Should have exactly 3 entries after eviction");
+    assert_eq!(backend.entry_count(), 3, "Should have exactly 3 entries after eviction");
 }
 
 #[tokio::test]
@@ -97,14 +91,8 @@ async fn test_max_bytes_large_vs_small_entries() {
     let backend = MokaBackend::builder().max_bytes(capacity as u64).build();
 
     // Insert 2 small entries - both should fit (2 * small < capacity)
-    backend
-        .write(&make_key(1), make_value(50))
-        .await
-        .unwrap();
-    backend
-        .write(&make_key(2), make_value(50))
-        .await
-        .unwrap();
+    backend.write(&make_key(1), make_value(50)).await.unwrap();
+    backend.write(&make_key(2), make_value(50)).await.unwrap();
 
     backend.cache().run_pending_tasks().await;
 
@@ -112,10 +100,7 @@ async fn test_max_bytes_large_vs_small_entries() {
     assert!(backend.read(&make_key(2)).await.unwrap().is_some());
 
     // Insert 1 large entry - should evict at least one small entry
-    backend
-        .write(&make_key(3), make_value(200))
-        .await
-        .unwrap();
+    backend.write(&make_key(3), make_value(200)).await.unwrap();
 
     backend.cache().run_pending_tasks().await;
 
@@ -197,7 +182,10 @@ async fn test_max_bytes_key_size_matters() {
 
     // Now insert another small entry - should trigger eviction
     let another_small_key = CacheKey::new("t", 0, vec![KeyPart::new("b", Some("2"))]);
-    backend.write(&another_small_key, value.clone()).await.unwrap();
+    backend
+        .write(&another_small_key, value.clone())
+        .await
+        .unwrap();
     backend.cache().run_pending_tasks().await;
 
     // New small entry should exist
@@ -233,8 +221,16 @@ async fn test_memory_size_values() {
     // - CacheKeyInner struct: ~60-80 bytes
     // - Vec<KeyPart> elements: ~56 bytes each
     // - Heap strings: 0 (all inline for small keys)
-    assert!(key_size >= 100, "Key should be at least 100 bytes, got {}", key_size);
-    assert!(key_size <= 300, "Key should be at most 300 bytes, got {}", key_size);
+    assert!(
+        key_size >= 100,
+        "Key should be at least 100 bytes, got {}",
+        key_size
+    );
+    assert!(
+        key_size <= 300,
+        "Key should be at most 300 bytes, got {}",
+        key_size
+    );
 
     // Value structure:
     // - CacheValue struct: ~64 bytes (Bytes + 2x Option<DateTime>)
@@ -362,13 +358,7 @@ async fn test_tiny_lfu_admission_policy_with_entry_capacity() {
     );
 
     // Count total entries - should be at most 3
-    let mut count = 0;
-    for i in 1..=4 {
-        if backend.read(&make_key(i)).await.unwrap().is_some() {
-            count += 1;
-        }
-    }
-    assert!(count <= 3, "Should have at most 3 entries");
+    assert!(backend.entry_count() <= 3, "Should have at most 3 entries");
 }
 
 #[tokio::test]
@@ -407,13 +397,7 @@ async fn test_explicit_lru_policy_with_entry_capacity() {
 
     // With LRU, entry 1 should be evicted (oldest/least recently used)
     // Note: exact eviction order depends on moka internals
-    let mut count = 0;
-    for i in 1..=4 {
-        if backend.read(&make_key(i)).await.unwrap().is_some() {
-            count += 1;
-        }
-    }
-    assert_eq!(count, 3, "Should have exactly 3 entries after eviction");
+    assert_eq!(backend.entry_count(), 3, "Should have exactly 3 entries after eviction");
 }
 
 #[tokio::test]
@@ -457,13 +441,6 @@ async fn test_explicit_tiny_lfu_policy_with_byte_capacity() {
 
     // Count entries - TinyLFU may or may not admit the new entry
     // depending on frequency estimates
-    let mut count = 0;
-    for i in 1..=4 {
-        if backend.read(&make_key(i)).await.unwrap().is_some() {
-            count += 1;
-        }
-    }
-
     // With TinyLFU, we should have at most 3 entries
-    assert!(count <= 3, "Should have at most 3 entries with TinyLFU");
+    assert!(backend.entry_count() <= 3, "Should have at most 3 entries with TinyLFU");
 }

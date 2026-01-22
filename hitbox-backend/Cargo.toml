@@ -40,8 +40,8 @@ zstd = { version = "0.13", optional = true }
 ron = "0.12.0"
 
 # Metrics support (optional)
-metrics = { version = "0.24", optional = true }
-lazy_static = { version = "1", optional = true }
+metrics = { workspace = true, optional = true }
+lazy_static = { workspace = true, optional = true }
 
 # Additional serialization formats (optional)
 rkyv = { workspace = true, optional = true }

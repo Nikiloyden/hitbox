@@ -80,7 +80,8 @@ fn format_write_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
         // JSON
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(JsonFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -95,7 +96,8 @@ fn format_write_benchmark(c: &mut Criterion) {
         });
 
         // Bincode
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -114,7 +116,8 @@ fn format_write_benchmark(c: &mut Criterion) {
         );
 
         // RON
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(RonFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -131,7 +134,8 @@ fn format_write_benchmark(c: &mut Criterion) {
         // Rkyv (if feature enabled) with 128KB buffer hint for better performance
         #[cfg(feature = "rkyv_format")]
         {
-            let backend = MokaBackend::builder().max_entries(10000)
+            let backend = MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(RkyvFormat::with_buffer_hint(128 * 1024))
                 .compressor(PassthroughCompressor)
                 .build();
@@ -167,7 +171,8 @@ fn format_read_benchmark(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
         // JSON - populate cache first
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(JsonFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -194,7 +199,8 @@ fn format_read_benchmark(c: &mut Criterion) {
         });
 
         // Bincode - populate cache first
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -225,7 +231,8 @@ fn format_read_benchmark(c: &mut Criterion) {
         );
 
         // RON - populate cache first
-        let backend = MokaBackend::builder().max_entries(10000)
+        let backend = MokaBackend::builder()
+            .max_entries(10000)
             .value_format(RonFormat)
             .compressor(PassthroughCompressor)
             .build();
@@ -254,7 +261,8 @@ fn format_read_benchmark(c: &mut Criterion) {
         // Rkyv - populate cache first (if feature enabled) with 128KB buffer hint for better performance
         #[cfg(feature = "rkyv_format")]
         {
-            let backend = MokaBackend::builder().max_entries(10000)
+            let backend = MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(RkyvFormat::with_buffer_hint(128 * 1024))
                 .compressor(PassthroughCompressor)
                 .build();

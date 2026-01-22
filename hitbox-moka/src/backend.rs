@@ -87,6 +87,54 @@ where
     pub fn cache(&self) -> &Cache<CacheKey, CacheValue<Raw>> {
         &self.cache
     }
+
+    /// Returns the approximate number of entries in this cache.
+    ///
+    /// The value is approximate because concurrent operations may change
+    /// the count between when it's calculated and when it's returned.
+    /// Call [`run_pending_tasks()`](Cache::run_pending_tasks) first for
+    /// more accurate results.
+    pub fn entry_count(&self) -> u64 {
+        self.cache.entry_count()
+    }
+
+    /// Returns the approximate weighted size of this cache in bytes.
+    ///
+    /// This is only meaningful when the cache was created with [`max_bytes()`].
+    /// For entry-count based caches, this returns the same as [`entry_count()`].
+    ///
+    /// The value is approximate because concurrent operations may change
+    /// the size between when it's calculated and when it's returned.
+    /// Call [`run_pending_tasks()`](Cache::run_pending_tasks) first for
+    /// more accurate results.
+    ///
+    /// [`max_bytes()`]: crate::builder::MokaBackendBuilder::max_bytes
+    /// [`entry_count()`]: Self::entry_count
+    pub fn weighted_size(&self) -> u64 {
+        self.cache.weighted_size()
+    }
+
+    /// Records current cache capacity metrics.
+    ///
+    /// Updates the `hitbox_moka_entries` and `hitbox_moka_size_bytes` gauges
+    /// with the current cache state. The backend's label is used as the
+    /// `backend` metric label.
+    ///
+    /// This method is a no-op when the `metrics` feature is disabled.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Call periodically or in a metrics endpoint handler
+    /// backend.record_metrics();
+    /// ```
+    pub fn record_metrics(&self) {
+        crate::metrics::record_capacity(
+            self.label.as_str(),
+            self.entry_count(),
+            self.weighted_size(),
+        );
+    }
 }
 
 impl MokaBackend<JsonFormat, PassthroughCompressor> {
@@ -118,11 +166,13 @@ where
 
     async fn write(&self, key: &CacheKey, value: CacheValue<Raw>) -> BackendResult<()> {
         self.cache.insert(key.clone(), value).await;
+        self.record_metrics();
         Ok(())
     }
 
     async fn remove(&self, key: &CacheKey) -> BackendResult<DeleteStatus> {
         let value = self.cache.remove(key).await;
+        self.record_metrics();
         match value {
             Some(_) => Ok(DeleteStatus::Deleted(1)),
             None => Ok(DeleteStatus::Missing),
