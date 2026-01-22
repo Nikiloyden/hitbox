@@ -21,6 +21,7 @@ chrono = { workspace = true, features = ["clock"] }
 smol_str = { workspace = true }
 
 [dev-dependencies]
+bytes = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = [
     "time",

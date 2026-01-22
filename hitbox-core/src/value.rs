@@ -42,9 +42,11 @@
 //! ```
 
 use chrono::{DateTime, Utc};
+use std::mem::size_of;
 use std::time::Duration;
 
 use crate::response::CacheState;
+use crate::Raw;
 
 /// A cached value with expiration metadata.
 ///
@@ -191,5 +193,22 @@ impl CacheMeta {
     /// Creates new cache metadata with the given timestamps.
     pub fn new(expire: Option<DateTime<Utc>>, stale: Option<DateTime<Utc>>) -> CacheMeta {
         CacheMeta { expire, stale }
+    }
+}
+
+impl CacheValue<Raw> {
+    /// Returns the estimated memory usage of this cache value in bytes.
+    ///
+    /// This includes:
+    /// - Fixed struct overhead (CacheValue fields)
+    /// - The serialized data bytes
+    pub fn memory_size(&self) -> usize {
+        // Fixed overhead: CacheValue struct (data pointer + metadata)
+        let fixed_overhead = size_of::<Self>();
+
+        // Variable content: the actual byte data
+        let content = self.data.len();
+
+        fixed_overhead + content
     }
 }

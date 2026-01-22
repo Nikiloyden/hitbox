@@ -67,31 +67,25 @@ where
     S: Format,
     C: Compressor,
 {
-    /// The underlying Moka async cache instance.
-    pub cache: Cache<CacheKey, CacheValue<Raw>>,
-    /// Format used to serialize cache keys.
-    pub key_format: CacheKeyFormat,
-    /// Format used to serialize cache values.
-    pub serializer: S,
-    /// Compressor used for cache values.
-    pub compressor: C,
-    /// Label identifying this backend in multi-tier compositions.
-    pub label: BackendLabel,
+    pub(crate) cache: Cache<CacheKey, CacheValue<Raw>>,
+    pub(crate) key_format: CacheKeyFormat,
+    pub(crate) serializer: S,
+    pub(crate) compressor: C,
+    pub(crate) label: BackendLabel,
 }
 
-impl<S, C> std::fmt::Debug for MokaBackend<S, C>
+impl<S, C> MokaBackend<S, C>
 where
     S: Format,
     C: Compressor,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MokaBackend")
-            .field("label", &self.label)
-            .field("cache", &self.cache)
-            .field("key_format", &self.key_format)
-            .field("serializer", &std::any::type_name::<S>())
-            .field("compressor", &std::any::type_name::<C>())
-            .finish()
+    /// Returns a reference to the underlying Moka cache.
+    ///
+    /// This provides direct access to Moka-specific features like
+    /// [`run_pending_tasks()`](Cache::run_pending_tasks) for synchronizing
+    /// eviction in tests.
+    pub fn cache(&self) -> &Cache<CacheKey, CacheValue<Raw>> {
+        &self.cache
     }
 }
 
@@ -103,9 +97,11 @@ impl MokaBackend<JsonFormat, PassthroughCompressor> {
     ///
     /// [`max_entries()`]: crate::builder::MokaBackendBuilder::max_entries
     /// [`max_bytes()`]: crate::builder::MokaBackendBuilder::max_bytes
-    pub fn builder(
-    ) -> crate::builder::MokaBackendBuilder<crate::builder::NoCapacity, JsonFormat, PassthroughCompressor>
-    {
+    pub fn builder() -> crate::builder::MokaBackendBuilder<
+        crate::builder::NoCapacity,
+        JsonFormat,
+        PassthroughCompressor,
+    > {
         crate::builder::MokaBackendBuilder::new()
     }
 }

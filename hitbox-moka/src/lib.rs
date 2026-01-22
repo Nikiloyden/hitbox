@@ -36,11 +36,24 @@
 //!
 //! | Option | Default | Description |
 //! |--------|---------|-------------|
-//! | `max_capacity` | Required | Maximum number of entries |
+//! | `max_entries` / `max_bytes` | Required | Cache capacity (entry count or byte limit) |
+//! | `eviction_policy` | TinyLFU / LRU* | Entry eviction strategy |
 //! | `key_format` | [`Bitcode`] | Cache key serialization format |
 //! | `value_format` | [`JsonFormat`] | Value serialization format |
 //! | `compressor` | [`PassthroughCompressor`] | Compression strategy |
 //! | `label` | `"moka"` | Backend label for multi-tier composition |
+//!
+//! *\* Default is TinyLFU for `max_entries`, LRU for `max_bytes`.*
+//!
+//! ## Eviction Policies
+//!
+//! | Policy | Description | Best for |
+//! |--------|-------------|----------|
+//! | [`EvictionPolicy::tiny_lfu()`] | LRU eviction + LFU admission | General caching, web workloads |
+//! | [`EvictionPolicy::lru()`] | Pure least-recently-used | Recency-biased, streaming data |
+//!
+//! [`EvictionPolicy::tiny_lfu()`]: moka::policy::EvictionPolicy::tiny_lfu
+//! [`EvictionPolicy::lru()`]: moka::policy::EvictionPolicy::lru
 //!
 //! ## Serialization Formats
 //!
@@ -121,3 +134,4 @@ mod builder;
 
 pub use backend::MokaBackend;
 pub use builder::{ByteCapacity, EntryCapacity, MokaBackendBuilder, NoCapacity};
+pub use moka::policy::EvictionPolicy;

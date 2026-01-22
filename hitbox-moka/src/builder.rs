@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use moka::Expiry;
 use moka::future::{Cache, CacheBuilder};
+use moka::policy::EvictionPolicy;
 
 use crate::backend::MokaBackend;
 use hitbox::{BackendLabel, CacheKey, CacheValue, Raw};
@@ -142,6 +143,7 @@ where
     serializer: S,
     compressor: C,
     label: BackendLabel,
+    eviction_policy: Option<EvictionPolicy>,
 }
 
 impl MokaBackendBuilder<NoCapacity, JsonFormat, PassthroughCompressor> {
@@ -156,6 +158,7 @@ impl MokaBackendBuilder<NoCapacity, JsonFormat, PassthroughCompressor> {
             serializer: JsonFormat,
             compressor: PassthroughCompressor,
             label: BackendLabel::new_static("moka"),
+            eviction_policy: None,
         }
     }
 }
@@ -192,6 +195,7 @@ where
             serializer: self.serializer,
             compressor: self.compressor,
             label: self.label,
+            eviction_policy: self.eviction_policy,
         }
     }
 
@@ -221,6 +225,7 @@ where
             serializer: self.serializer,
             compressor: self.compressor,
             label: self.label,
+            eviction_policy: self.eviction_policy,
         }
     }
 }
@@ -265,6 +270,44 @@ where
         self
     }
 
+    /// Sets the eviction policy for the cache.
+    ///
+    /// The eviction policy determines how entries are selected for removal when
+    /// the cache reaches capacity.
+    ///
+    /// # Default
+    ///
+    /// - **Entry-based capacity** ([`max_entries`]): [`EvictionPolicy::tiny_lfu()`] -
+    ///   combines LRU eviction with LFU admission for optimal hit rates
+    /// - **Byte-based capacity** ([`max_bytes`]): [`EvictionPolicy::lru()`] -
+    ///   pure LRU for predictable eviction behavior with weighted entries
+    ///
+    /// # Options
+    ///
+    /// | Policy | Description | Best for |
+    /// |--------|-------------|----------|
+    /// | [`tiny_lfu()`](EvictionPolicy::tiny_lfu) | LRU eviction + LFU admission | General caching, web workloads |
+    /// | [`lru()`](EvictionPolicy::lru) | Pure least-recently-used | Recency-biased, streaming data |
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use hitbox_moka::{MokaBackend, EvictionPolicy};
+    ///
+    /// // Use TinyLFU with byte-based capacity (overriding default LRU)
+    /// let backend = MokaBackend::builder()
+    ///     .max_bytes(100 * 1024 * 1024)
+    ///     .eviction_policy(EvictionPolicy::tiny_lfu())
+    ///     .build();
+    /// ```
+    ///
+    /// [`max_entries`]: Self::max_entries
+    /// [`max_bytes`]: Self::max_bytes
+    pub fn eviction_policy(mut self, policy: EvictionPolicy) -> Self {
+        self.eviction_policy = Some(policy);
+        self
+    }
+
     /// Sets the cache value serialization format.
     ///
     /// The value format determines how cached data is serialized before storage.
@@ -290,6 +333,7 @@ where
             serializer,
             compressor: self.compressor,
             label: self.label,
+            eviction_policy: self.eviction_policy,
         }
     }
 
@@ -326,6 +370,7 @@ where
             serializer: self.serializer,
             compressor,
             label: self.label,
+            eviction_policy: self.eviction_policy,
         }
     }
 }
@@ -339,7 +384,9 @@ where
     ///
     /// Consumes the builder and returns a fully configured backend ready for use.
     pub fn build(self) -> MokaBackend<S, C> {
+        let policy = self.eviction_policy.unwrap_or_else(EvictionPolicy::tiny_lfu);
         let cache: Cache<CacheKey, CacheValue<Raw>> = CacheBuilder::new(self.capacity.0)
+            .eviction_policy(policy)
             .expire_after(Expiration)
             .build();
 
@@ -362,9 +409,16 @@ where
     ///
     /// Consumes the builder and returns a fully configured backend ready for use.
     /// The cache will use a weigher function to track approximate memory usage.
+    ///
+    /// Note: Default eviction policy is LRU (not TinyLFU) to ensure predictable
+    /// eviction behavior with weighted capacity. TinyLFU's admission policy can
+    /// reject new entries even when eviction could make room. Override with
+    /// [`eviction_policy()`](MokaBackendBuilder::eviction_policy) if needed.
     pub fn build(self) -> MokaBackend<S, C> {
+        let policy = self.eviction_policy.unwrap_or_else(EvictionPolicy::lru);
         let cache: Cache<CacheKey, CacheValue<Raw>> = CacheBuilder::new(self.capacity.0)
             .weigher(Self::byte_weigher)
+            .eviction_policy(policy)
             .expire_after(Expiration)
             .build();
 
@@ -378,15 +432,10 @@ where
     }
 
     /// Weigher function that calculates the approximate byte cost of a cache entry.
-    fn byte_weigher(_key: &CacheKey, value: &CacheValue<Raw>) -> u32 {
-        // Primary cost: serialized value bytes
-        let value_bytes = value.data().len();
-
-        // Fixed overhead estimate for key + metadata:
-        // - CacheKey: Arc + CacheKeyInner (~64 bytes typical)
-        // - CacheValue metadata: 2x Option<DateTime> (~48 bytes)
-        const OVERHEAD: usize = 112;
-
-        (OVERHEAD + value_bytes).min(u32::MAX as usize) as u32
+    ///
+    /// Uses the precalculated `memory_size()` methods on `CacheKey` and `CacheValue`
+    /// which account for struct overhead and variable-length content.
+    fn byte_weigher(key: &CacheKey, value: &CacheValue<Raw>) -> u32 {
+        (key.memory_size() + value.memory_size()).min(u32::MAX as usize) as u32
     }
 }
