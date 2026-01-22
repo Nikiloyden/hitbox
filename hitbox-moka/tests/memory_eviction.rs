@@ -70,7 +70,11 @@ async fn test_max_bytes_eviction_precise() {
     );
 
     // Count remaining entries (should be 3)
-    assert_eq!(backend.entry_count(), 3, "Should have exactly 3 entries after eviction");
+    assert_eq!(
+        backend.entry_count(),
+        3,
+        "Should have exactly 3 entries after eviction"
+    );
 }
 
 #[tokio::test]
@@ -397,7 +401,11 @@ async fn test_explicit_lru_policy_with_entry_capacity() {
 
     // With LRU, entry 1 should be evicted (oldest/least recently used)
     // Note: exact eviction order depends on moka internals
-    assert_eq!(backend.entry_count(), 3, "Should have exactly 3 entries after eviction");
+    assert_eq!(
+        backend.entry_count(),
+        3,
+        "Should have exactly 3 entries after eviction"
+    );
 }
 
 #[tokio::test]
@@ -442,5 +450,8 @@ async fn test_explicit_tiny_lfu_policy_with_byte_capacity() {
     // Count entries - TinyLFU may or may not admit the new entry
     // depending on frequency estimates
     // With TinyLFU, we should have at most 3 entries
-    assert!(backend.entry_count() <= 3, "Should have at most 3 entries with TinyLFU");
+    assert!(
+        backend.entry_count() <= 3,
+        "Should have at most 3 entries with TinyLFU"
+    );
 }
