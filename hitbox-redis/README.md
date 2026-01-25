@@ -7,21 +7,26 @@ hitbox-redis is Cache [Backend] implementation for Redis.
 This crate uses [redis-rs] as base library for asynchronous interaction with redis nodes.
 It uses one [MultiplexedConnection] for better connection utilisation.
 
-## Example backend usage with hitbox_actix
+## Example usage
 
 ```rust
-use actix::prelude::*;
-use hitbox_actix::prelude::*;
+use hitbox_redis::{RedisBackend, ConnectionMode};
 
-#[actix::main]
-async fn main() -> Result<(), CacheError> {
-    let backend = RedisBackend::new()
-    	.await?
-	.start();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Single-node Redis
+    let backend = RedisBackend::builder()
+        .connection(ConnectionMode::single("redis://127.0.0.1:6379/"))
+        .build()?;
 
-    let cache = Cache::builder()
-        .finish(backend)
-        .start();
+    // Or with cluster support (requires `cluster` feature)
+    // let backend = RedisBackend::builder()
+    //     .connection(ConnectionMode::cluster([
+    //         "redis://node1:6379",
+    //         "redis://node2:6379",
+    //         "redis://node3:6379",
+    //     ]))
+    //     .build()?;
+
     Ok(())
 }
 ```

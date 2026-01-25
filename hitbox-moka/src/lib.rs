@@ -105,10 +105,13 @@
 //!
 //! ```ignore
 //! use hitbox_backend::composition::Compose;
+//! use hitbox_redis::ConnectionMode;
 //!
 //! // Fast local cache (L1) backed by Redis (L2)
 //! let l1 = MokaBackend::builder(10_000).build();
-//! let l2 = RedisBackend::builder().server("redis://localhost/").build()?;
+//! let l2 = RedisBackend::builder()
+//!     .connection(ConnectionMode::single("redis://localhost/"))
+//!     .build()?;
 //!
 //! let backend = l1.compose(l2, offload_manager);
 //! ```
