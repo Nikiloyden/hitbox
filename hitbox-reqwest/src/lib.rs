@@ -132,13 +132,13 @@
 mod middleware;
 mod upstream;
 
-pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder, DEFAULT_CACHE_STATUS_HEADER};
+pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder};
 pub use upstream::ReqwestUpstream;
 
 // Re-export hitbox-http types for convenience
 pub use hitbox_http::{
-    BufferedBody, CacheableHttpRequest, CacheableHttpResponse, HttpEndpoint,
-    SerializableHttpResponse, extractors, predicates,
+    BufferedBody, CacheableHttpRequest, CacheableHttpResponse, DEFAULT_CACHE_STATUS_HEADER,
+    HttpEndpoint, SerializableHttpResponse, extractors, predicates,
 };
 
 /// Re-export reqwest body type for convenience in type annotations

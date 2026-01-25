@@ -158,6 +158,7 @@
 #![warn(missing_docs)]
 
 pub mod body;
+mod cache_status;
 mod cacheable;
 mod config;
 pub mod extractors;
@@ -167,6 +168,7 @@ mod request;
 mod response;
 
 pub use body::{BufferedBody, CollectExactResult, PartialBufferedBody, Remaining};
+pub use cache_status::DEFAULT_CACHE_STATUS_HEADER;
 pub use cacheable::CacheableSubject;
 pub use config::HttpEndpoint;
 pub use request::CacheableHttpRequest;

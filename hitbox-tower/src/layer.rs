@@ -21,17 +21,12 @@ use std::sync::Arc;
 use hitbox::backend::CacheBackend;
 use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox_core::DisabledOffload;
-use hitbox_http::HttpEndpoint;
+use hitbox_http::{DEFAULT_CACHE_STATUS_HEADER, HttpEndpoint};
 use hitbox_moka::MokaBackend;
 use http::header::HeaderName;
 use tower::Layer;
 
 use crate::service::CacheService;
-
-/// Default header name for cache status (HIT/MISS/STALE).
-///
-/// The value is `x-cache-status`. Use [`CacheBuilder::cache_status_header`] to customize.
-pub const DEFAULT_CACHE_STATUS_HEADER: HeaderName = HeaderName::from_static("x-cache-status");
 
 /// Tower [`Layer`] that adds HTTP caching to a service.
 ///

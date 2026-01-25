@@ -9,22 +9,22 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use hitbox::CacheStatusExt;
 use hitbox::backend::CacheBackend;
 use hitbox::concurrency::{ConcurrencyManager, NoopConcurrencyManager};
 use hitbox::config::CacheConfig;
-use hitbox::context::CacheStatus;
 use hitbox::fsm::CacheFuture;
 use hitbox_core::DisabledOffload;
-use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse, HttpEndpoint};
+use hitbox_http::{
+    BufferedBody, CacheableHttpRequest, CacheableHttpResponse, DEFAULT_CACHE_STATUS_HEADER,
+    HttpEndpoint,
+};
 use http::Extensions;
-use http::header::{HeaderName, HeaderValue};
+use http::header::HeaderName;
 use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next, Result};
 
 use crate::upstream::{ReqwestUpstream, buffered_body_to_reqwest};
-
-/// Default header name for cache status (HIT/MISS/STALE).
-pub const DEFAULT_CACHE_STATUS_HEADER: HeaderName = HeaderName::from_static("x-cache-status");
 
 /// Cache middleware for reqwest-middleware.
 ///
@@ -151,19 +151,12 @@ where
         let (response, cache_context) = cache_future.await;
 
         // Convert CacheableHttpResponse back to reqwest::Response
-        let cacheable_response = response?;
-        let mut http_response = cacheable_response.into_response();
+        let mut cacheable_response = response?;
 
         // Add cache status header based on cache context
-        let status_value = match cache_context.status {
-            CacheStatus::Hit => HeaderValue::from_static("HIT"),
-            CacheStatus::Miss => HeaderValue::from_static("MISS"),
-            CacheStatus::Stale => HeaderValue::from_static("STALE"),
-        };
-        http_response
-            .headers_mut()
-            .insert(self.cache_status_header.clone(), status_value);
+        cacheable_response.cache_status(cache_context.status, &self.cache_status_header);
 
+        let http_response = cacheable_response.into_response();
         let (parts, buffered_body) = http_response.into_parts();
 
         // Convert BufferedBody back to reqwest::Body
