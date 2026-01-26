@@ -56,7 +56,7 @@ pub mod config;
 pub mod context;
 pub mod offload;
 
-pub use context::{BoxContext, CacheContext, CacheStatus, Context, ResponseSource};
+pub use context::{BoxContext, CacheContext, CacheStatus, CacheStatusExt, Context, ResponseSource};
 pub mod policy;
 
 pub mod predicate {

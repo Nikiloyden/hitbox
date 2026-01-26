@@ -50,6 +50,7 @@ use hitbox_http::{
         response::StatusCode as ResponseStatusCode,
     },
 };
+use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
 use serde::{Deserialize, Serialize};
 
@@ -201,9 +202,9 @@ async fn main() {
         .pretty()
         .with_env_filter("debug,hitbox=trace")
         .finish();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
-    let memory_backend = hitbox_moka::MokaBackend::builder(1024 * 1024).build();
+    let memory_backend = MokaBackend::builder(1024 * 1024).build();
 
     // Cache config for task list endpoint
     // Cache key includes: pagination params
@@ -268,7 +269,9 @@ async fn main() {
         .route("/tasks/{task_id}", get(get_task).layer(details_cache))
         .route("/health", get(health));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .expect("Failed to bind to port 3000");
     tracing::info!("Listening on http://{}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await.expect("Server error");
 }

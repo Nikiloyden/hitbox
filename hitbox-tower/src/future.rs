@@ -14,10 +14,10 @@ use std::task::{Context, Poll};
 
 use futures::Future;
 use futures::ready;
-use hitbox::{CacheContext, CacheStatus};
+use hitbox::{CacheContext, CacheStatusExt};
 use hitbox_http::{BufferedBody, CacheableHttpResponse};
+use http::Response;
 use http::header::HeaderName;
-use http::{HeaderValue, Response};
 use pin_project::pin_project;
 
 /// Future returned by [`CacheService::call`](crate::service::CacheService).
@@ -78,20 +78,11 @@ where
         let (result, cache_context) = ready!(this.inner.poll(cx));
 
         // Transform the response and add cache headers
-        let response = result.map(|cacheable_response| {
-            let mut response = cacheable_response.into_response();
-
+        let response = result.map(|mut cacheable_response| {
             // Add cache status header based on cache context
-            let status_value = match cache_context.status {
-                CacheStatus::Hit => HeaderValue::from_static("HIT"),
-                CacheStatus::Miss => HeaderValue::from_static("MISS"),
-                CacheStatus::Stale => HeaderValue::from_static("STALE"),
-            };
-            response
-                .headers_mut()
-                .insert(this.cache_status_header.clone(), status_value);
+            cacheable_response.cache_status(cache_context.status, this.cache_status_header);
 
-            response
+            cacheable_response.into_response()
         });
 
         Poll::Ready(response)

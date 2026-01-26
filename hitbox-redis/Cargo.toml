@@ -30,8 +30,13 @@ smol_str = { workspace = true }
 # TODO: move to dev dependencies
 chrono = { workspace = true }
 
+[features]
+default = []
+cluster = ["redis/cluster-async"]
+
 [dev-dependencies]
 # chrono = { workspace = true }
+hitbox-moka = { path = "../hitbox-moka", version = "0.1.0" }
 tokio = { workspace = true, features = [
     "time",
     "macros",
