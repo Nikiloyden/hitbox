@@ -130,8 +130,7 @@ pub struct ByteCapacity(pub(crate) u64);
 ///     .build();
 /// ```
 ///
-/// **Note:** [`GzipCompressor`](hitbox_backend::GzipCompressor) and
-/// [`ZstdCompressor`](hitbox_backend::ZstdCompressor) require enabling the `gzip`
+/// **Note:** `GzipCompressor` and `ZstdCompressor` require enabling the `gzip`
 /// or `zstd` feature on `hitbox-backend`.
 pub struct MokaBackendBuilder<Cap, S = JsonFormat, C = PassthroughCompressor>
 where
@@ -352,14 +351,18 @@ where
     /// | Compressor | Ratio | Speed | Feature flag |
     /// |------------|-------|-------|--------------|
     /// | [`PassthroughCompressor`] | None | Fastest | — |
-    /// | [`GzipCompressor`](hitbox_backend::GzipCompressor) | Good | Medium | `gzip` |
-    /// | [`ZstdCompressor`](hitbox_backend::ZstdCompressor) | Best | Fast | `zstd` |
+    /// | [`GzipCompressor`] | Good | Medium | `gzip` |
+    /// | [`ZstdCompressor`] | Best | Fast | `zstd` |
     ///
     /// # When to Use Compression
     ///
     /// - Large cached values (>10KB)
     /// - Memory-constrained environments
     /// - When composing with network backends (compression done once, reused)
+    ///
+    /// [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
+    /// [`GzipCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.GzipCompressor.html
+    /// [`ZstdCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.ZstdCompressor.html
     pub fn compressor<NewC>(self, compressor: NewC) -> MokaBackendBuilder<Cap, S, NewC>
     where
         NewC: Compressor,

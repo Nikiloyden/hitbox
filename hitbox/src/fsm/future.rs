@@ -1,3 +1,8 @@
+//! Cache future implementation.
+//!
+//! [`CacheFuture`] drives the FSM through its states, yielding the final response
+//! with cache context indicating hit/miss/stale status and response source.
+
 use std::{
     fmt::Debug,
     future::Future,
@@ -22,6 +27,10 @@ use crate::{
 
 const POLL_AFTER_READY_ERROR: &str = "CacheFuture can't be polled after finishing";
 
+/// Future that executes the cache FSM and returns a response with cache context.
+///
+/// Drives the state machine through: request predicate check → cache lookup →
+/// upstream call (on miss) → response predicate check → cache update → response.
 #[pin_project(project = CacheFutureProj)]
 pub struct CacheFuture<'offload, B, Req, Res, U, ReqP, ResP, E, C, O = DisabledOffload>
 where
@@ -68,6 +77,7 @@ where
     C: ConcurrencyManager<Res>,
     O: Offload<'offload>,
 {
+    /// Creates a new cache future with full configuration.
     pub fn new(
         backend: Arc<B>,
         request: Req,

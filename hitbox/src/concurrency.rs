@@ -1,3 +1,8 @@
+//! Dogpile prevention via concurrency management.
+//!
+//! Provides `BroadcastConcurrencyManager` to prevent redundant upstream calls
+//! when cache entries expire by coordinating concurrent requests.
+
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
@@ -146,6 +151,7 @@ impl<Res> BroadcastConcurrencyManager<Res>
 where
     Res: CacheableResponse,
 {
+    /// Creates a new broadcast-based concurrency manager.
     pub fn new() -> Self {
         Self {
             in_flight: Arc::new(DashMap::new()),

@@ -93,10 +93,10 @@
 //! [`JsonFormat`]: hitbox_backend::format::JsonFormat
 //! [`BincodeFormat`]: hitbox_backend::format::BincodeFormat
 //! [`RonFormat`]: hitbox_backend::format::RonFormat
-//! [`RkyvFormat`]: hitbox_backend::format::RkyvFormat
+//! [`RkyvFormat`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/format/struct.RkyvFormat.html
 //! [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
-//! [`GzipCompressor`]: hitbox_backend::GzipCompressor
-//! [`ZstdCompressor`]: hitbox_backend::ZstdCompressor
+//! [`GzipCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.GzipCompressor.html
+//! [`ZstdCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.ZstdCompressor.html
 //! [`hitbox_backend::format`]: hitbox_backend::format
 //!
 //! # When to Use This Backend

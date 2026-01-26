@@ -1,3 +1,8 @@
+//! Finite State Machine for cache orchestration.
+//!
+//! Coordinates the entire cache lifecycle: checking predicates, looking up cache,
+//! calling upstream on miss, applying stale policies, and updating cache with responses.
+
 mod future;
 mod states;
 pub mod transitions;

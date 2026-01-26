@@ -33,7 +33,7 @@ While Hitbox is designed for large, high-load projects, it works equally well fo
 ### HTTP Caching Features
 - [HTTP Predicates](#http-predicates) Control caching with rules based on any part of request or response, including body
 - [HTTP Extractors](#http-extractors) Automatically generate cache keys from request components
-- [Framework Integration](#framework-integration) Works with Axum, Reqwest, and any tower-based framework or reqwest-middleware client
+- [Framework Integration](#framework-integration) Works with Axum, Hyper client, Reqwest, and any tower-based framework or client
 - [YAML Configuration](#yaml-configuration) Define entire caching setup in a configuration file
 
 ---
@@ -279,9 +279,10 @@ Since Hitbox is built on tower, it integrates as a standard layer without framew
 
 | Client | Support |
 |--------|---------|
+| Hyper | Full support via tower layer |
 | Reqwest | Full support via reqwest-middleware |
 
-Cache responses from external APIs using `hitbox-reqwest`. Works with `reqwest-middleware` for seamless integration.
+Since Hitbox is built on Tower, the same `hitbox-tower` Cache layer works for both server-side handlers and client-side hyper requests. For Reqwest, use `hitbox-reqwest` with `reqwest-middleware`.
 
 ## YAML Configuration
 

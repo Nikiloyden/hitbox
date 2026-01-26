@@ -2,6 +2,10 @@
 //!
 //! Transition enums represent the possible outcomes from each state's `.transition()` method.
 //! Each transition enum has an `.into_state()` method to convert to the outer `State` enum.
+//!
+//! These are internal implementation details — see [`crate::fsm`] for the public API.
+
+#![allow(missing_docs)]
 
 use futures::future::BoxFuture;
 use hitbox_core::{BoxContext, ResponseCachePolicy, Upstream};

@@ -1,3 +1,8 @@
+//! Policy configuration for cache behavior.
+//!
+//! Controls how long data stays fresh, when stale data can be served,
+//! and how concurrent requests are coordinated during cache misses.
+
 use std::time::Duration;
 
 use bounded_integer::BoundedU8;
@@ -27,6 +32,7 @@ pub struct CacheBehaviorPolicy {
     pub stale: StalePolicy,
 }
 
+/// Enabled cache configuration with TTL, stale window, and behavior settings.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct EnabledCacheConfig {
     /// Time-to-live before cache entry becomes stale (e.g., "5s", "500ms", "1m").
@@ -53,9 +59,14 @@ impl Default for EnabledCacheConfig {
     }
 }
 
+/// Cache policy: enabled with settings or completely disabled.
+///
+/// When `Disabled`, requests bypass the cache entirely and go directly to upstream.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum PolicyConfig {
+    /// Caching enabled with the specified configuration.
     Enabled(EnabledCacheConfig),
+    /// Caching disabled — all requests go directly to upstream.
     Disabled,
 }
 
