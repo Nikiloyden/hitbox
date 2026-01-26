@@ -84,3 +84,7 @@ required-features = ["observability"]
 [[example]]
 name = "composition"
 path = "examples/composition.rs"
+
+[[example]]
+name = "hyper_client"
+path = "examples/hyper_client.rs"
