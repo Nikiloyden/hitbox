@@ -55,7 +55,10 @@ async fn main() {
 
     // L2: FeOxDB (file-based)
     let temp_dir = TempDir::new().unwrap();
-    let feoxdb = hitbox_feoxdb::FeOxDbBackend::open(temp_dir.path()).unwrap();
+    let feoxdb = hitbox_feoxdb::FeOxDbBackend::builder()
+        .path(temp_dir.path())
+        .build()
+        .unwrap();
 
     // L3: Redis (distributed)
     let redis = hitbox_redis::RedisBackend::builder()
