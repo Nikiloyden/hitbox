@@ -48,7 +48,7 @@
 //! # use bytes::Bytes;
 //! # use http_body_util::Full;
 //! // Create in-memory cache with 1000 entry capacity
-//! let backend = MokaBackend::builder(1000).build();
+//! let backend = MokaBackend::builder().max_entries(1000).build();
 //!
 //! // Build the cache layer with defaults
 //! let cache_layer = Cache::builder()
@@ -81,7 +81,7 @@
 //! # use bytes::Bytes;
 //! # use http_body_util::Empty;
 //! // 1. Create backend
-//! let backend = MokaBackend::builder(10_000).build();
+//! let backend = MokaBackend::builder().max_entries(10_000).build();
 //!
 //! // 2. Configure caching behavior
 //! let config = Endpoint::builder()
@@ -129,7 +129,7 @@
 //! use http::header::HeaderName;
 //!
 //! let cache_layer = Cache::builder()
-//!     .backend(MokaBackend::builder(1000).build())
+//!     .backend(MokaBackend::builder().max_entries(1000).build())
 //!     .cache_status_header(HeaderName::from_static("x-custom-cache"))
 //!     .build();
 //! ```

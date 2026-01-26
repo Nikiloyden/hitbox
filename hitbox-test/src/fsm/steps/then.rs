@@ -95,7 +95,7 @@ async fn cache_contains(world: &mut FsmWorld, expected: u32) -> Result<(), Error
     use hitbox_core::{CacheContext, CacheKey};
 
     // Sync moka's pending tasks to ensure all writes are visible
-    world.backend.cache.run_pending_tasks().await;
+    world.backend.cache().run_pending_tasks().await;
 
     let cache_key = CacheKey::from_str("fixed_key", "value");
     let mut ctx = CacheContext::default().boxed();

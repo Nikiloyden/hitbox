@@ -37,7 +37,8 @@ async fn test_compose_trait_basic_usage() {
 
     let cache = l1.clone().compose(l2.clone(), TestOffload);
 
-    let key = CacheKey::from_str("test", "key1");
+    // Use from_slice to test that API path
+    let key = CacheKey::from_slice(&[("test", Some("key1"))]);
     let value = CacheValue::new(
         TestValue {
             data: "compose_api".to_string(),

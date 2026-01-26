@@ -300,10 +300,10 @@ impl FsmWorld {
             upstream_delay_ms: 100,
             request_delay_ms: 10,
             results: TestResults::default(),
-            backend: MokaBackend::builder(100).build(),
+            backend: MokaBackend::builder().max_entries(100).build(),
             composition: CompositionConfig::default(),
-            l1_backend: MokaBackend::builder(100).build(),
-            l2_backend: MokaBackend::builder(100).build(),
+            l1_backend: MokaBackend::builder().max_entries(100).build(),
+            l2_backend: MokaBackend::builder().max_entries(100).build(),
             span_collector: create_span_collector(),
         }
     }

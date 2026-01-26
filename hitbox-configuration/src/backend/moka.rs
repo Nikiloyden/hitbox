@@ -23,10 +23,11 @@ impl BackendConfig<Moka> {
         let serializer = self.value.format.to_serializer();
         let compressor = self.value.compression.to_compressor()?;
 
-        let mut builder = MokaBackend::builder(self.backend.max_capacity)
+        let mut builder = MokaBackend::builder()
             .key_format(key_format)
             .value_format(serializer)
-            .compressor(compressor);
+            .compressor(compressor)
+            .max_entries(self.backend.max_capacity);
 
         if let Some(label) = self.backend.label {
             builder = builder.label(label);

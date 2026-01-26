@@ -131,7 +131,7 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Fast local cache (L1) backed by Redis (L2)
-//! let l1 = MokaBackend::builder(10_000).build();
+//! let l1 = MokaBackend::builder().max_entries(10_000).build();
 //! let l2 = RedisBackend::builder()
 //!     .connection(ConnectionMode::single("redis://localhost:6379/"))
 //!     .build()?;

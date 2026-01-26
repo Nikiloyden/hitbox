@@ -18,6 +18,11 @@ members = [
 
 [workspace.package]
 rust-version = "1.91.1"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/hit-box/hitbox/"
+authors = ["Hitbox team <mail@hitbox.rs>"]
+categories = ["caching", "asynchronous"]
 
 [workspace.dependencies]
 # Core async and trait dependencies
@@ -52,6 +57,10 @@ pin-project = "1"
 regex = "1"
 smol_str = { version = "0.3", features = ["serde"] }
 dashmap = "6"
+
+# Metrics
+metrics = "0.24"
+lazy_static = "1"
 
 # Benchmarking (dev dependencies)
 criterion = "0.8"

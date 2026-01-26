@@ -63,7 +63,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 1. Create a cache backend (in-memory with 1000 entry capacity)
-//! let backend = MokaBackend::builder(1000).build();
+//! let backend = MokaBackend::builder().max_entries(1000).build();
 //!
 //! // 2. Configure caching behavior
 //! let config = Endpoint::builder()

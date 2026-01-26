@@ -124,10 +124,11 @@ async fn test_moka_all_combinations() {
             Err(_) => continue, // Skip this combination if compression feature not available
         };
 
-        let backend = MokaBackend::builder(config.backend.max_capacity)
+        let backend = MokaBackend::builder()
             .key_format(config.key.format.to_cache_key_format())
             .value_format(config.value.format.to_serializer())
             .compressor(compressor)
+            .max_entries(config.backend.max_capacity)
             .build();
 
         run_comprehensive_backend_tests(&backend, key_format, value_format, compression).await;

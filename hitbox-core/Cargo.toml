@@ -1,17 +1,14 @@
 [package]
 name = "hitbox-core"
 version = "0.1.0"
-authors = [
-    "Belousov Max <mail@singulared.space>",
-    "Andrey Ermilov <andrerm@ya.ru>",
-]
-license = "MIT"
-edition = "2024"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
 rust-version.workspace = true
+repository.workspace = true
+categories.workspace = true
 description = "Asynchronous caching framework core traits."
 readme = "README.md"
-repository = "https://github.com/hit-box/hitbox/"
-categories = ["caching", "asynchronous"]
 keywords = ["cache", "async", "cache-backend", "hitbox", "tokio"]
 
 

@@ -1,9 +1,13 @@
 [package]
 name = "hitbox-configuration"
 version = "0.1.0"
-edition = "2024"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license = "MIT"
+repository.workspace = true
+categories.workspace = true
+description = "Configuration support for Hitbox caching framework"
 
 [dependencies]
 hitbox = { path = "../hitbox/" }

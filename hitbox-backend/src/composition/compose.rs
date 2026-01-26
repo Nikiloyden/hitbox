@@ -71,7 +71,7 @@ pub trait Compose: Backend + Sized {
     /// use hitbox_moka::MokaBackend;
     /// use hitbox_redis::{RedisBackend, ConnectionMode};
     ///
-    /// let moka = MokaBackend::builder(1000).build();
+    /// let moka = MokaBackend::builder().max_entries(1000).build();
     /// let redis = RedisBackend::builder()
     ///     .connection(ConnectionMode::single("redis://localhost/"))
     ///     .build()?;

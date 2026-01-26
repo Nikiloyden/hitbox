@@ -176,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("App endpoint: http://localhost:3002/");
 
     // Create Moka in-memory cache backend
-    let backend = MokaBackend::builder(1024 * 1024).build();
+    let backend = MokaBackend::builder().max_entries(1024 * 1024).build();
 
     // Root cache - long TTL (60s), simple cache key by method only
     // Request predicate: GET method + path "/"
@@ -221,6 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Policy: Disabled
     let health_config = Endpoint::builder()
         .request_predicate(
+            //request_predicate().method(GET).path("/health").query(Query::new().eq("cache", "true"))
             RequestMethod::new(http::Method::GET)
                 .unwrap()
                 .path("/health".to_string()),
