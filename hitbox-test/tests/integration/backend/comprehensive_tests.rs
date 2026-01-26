@@ -209,7 +209,9 @@ async fn test_redis_all_combinations() {
         };
 
         let backend = RedisBackend::builder()
-            .server(config.backend.connection_string.clone())
+            .connection(hitbox_redis::ConnectionMode::single(
+                config.backend.connection_string.clone(),
+            ))
             .key_format(config.key.format.to_cache_key_format())
             .value_format(config.value.format.to_serializer())
             .compressor(compressor)

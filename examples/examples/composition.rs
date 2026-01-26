@@ -33,7 +33,10 @@ use hitbox::offload::OffloadManager;
 use hitbox::policy::PolicyConfig;
 use hitbox_backend::composition::{Compose, policy::RefillPolicy};
 use hitbox_configuration::Endpoint;
+use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::extractors::{Method as MethodExtractor, path::PathExtractor};
+use hitbox_moka::MokaBackend;
+use hitbox_redis::{ConnectionMode, RedisBackend};
 use hitbox_tower::Cache;
 use tempfile::TempDir;
 
@@ -49,21 +52,24 @@ async fn main() {
         .init();
 
     // L1: Moka (in-memory)
-    let moka = hitbox_moka::MokaBackend::builder()
-        .label("moka")
+    let moka = MokaBackend::builder()
         .max_entries(1024 * 1024)
+        .label("moka")
         .build();
 
     // L2: FeOxDB (file-based)
-    let temp_dir = TempDir::new().unwrap();
-    let feoxdb = hitbox_feoxdb::FeOxDbBackend::open(temp_dir.path()).unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let feoxdb = FeOxDbBackend::builder()
+        .path(temp_dir.path().to_string_lossy().to_string())
+        .build()
+        .expect("Failed to open FeOxDB");
 
     // L3: Redis (distributed)
-    let redis = hitbox_redis::RedisBackend::builder()
-        .server("redis://127.0.0.1/")
+    let redis = RedisBackend::builder()
+        .connection(ConnectionMode::single("redis://127.0.0.1/"))
         .label("redis")
         .build()
-        .unwrap();
+        .expect("Redis connection failed. Ensure Redis is running on localhost:6379");
 
     // Compose: Moka → FeOxDB → Redis
     let offload = OffloadManager::with_defaults();
@@ -87,7 +93,9 @@ async fn main() {
 
     let app = Router::new().route("/", get(hello).layer(cache));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .expect("Failed to bind to port 3000");
     tracing::info!("Listening on http://localhost:3000");
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await.expect("Server error");
 }

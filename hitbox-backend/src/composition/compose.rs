@@ -69,10 +69,12 @@ pub trait Compose: Backend + Sized {
     /// ```ignore
     /// use hitbox_backend::composition::Compose;
     /// use hitbox_moka::MokaBackend;
-    /// use hitbox_redis::RedisBackend;
+    /// use hitbox_redis::{RedisBackend, ConnectionMode};
     ///
     /// let moka = MokaBackend::builder().max_entries(1000).build();
-    /// let redis = RedisBackend::new(client);
+    /// let redis = RedisBackend::builder()
+    ///     .connection(ConnectionMode::single("redis://localhost/"))
+    ///     .build()?;
     ///
     /// // Moka as L1, Redis as L2
     /// let cache = moka.compose(redis, offload);

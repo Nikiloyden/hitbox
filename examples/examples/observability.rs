@@ -1,27 +1,36 @@
-//! Example demonstrating Hitbox with full observability stack:
-//! - OpenTelemetry tracing to Jaeger
-//! - Prometheus metrics endpoint
-//! - Tower Cache layer integration
-//! - Different cache configurations per route
+//! Observability Example
+//!
+//! Demonstrates Hitbox with a full observability stack.
+//!
+//! Stack components:
+//!   - OpenTelemetry tracing to Jaeger
+//!   - Prometheus metrics endpoint
+//!   - Tower Cache layer integration
+//!   - Different cache configurations per route
+//!
+//! Features shown:
+//!   - Distributed tracing with OTLP exporter
+//!   - Custom histogram buckets for latency metrics
+//!   - Per-route cache TTL configuration
+//!   - Health endpoint with caching disabled
 //!
 //! Prerequisites:
 //!   docker compose -f docker-compose.observability.yml up -d
 //!
 //! Run:
-//!   cargo run --example observability --features observability
+//!   cargo run -p hitbox-examples --example observability --features observability
 //!
 //! Endpoints:
-//!   - http://localhost:3002/             - Root (long TTL: 60s)
-//!   - http://localhost:3002/greet/{name} - Greeting with path-based cache key (short TTL: 10s)
-//!   - http://localhost:3002/health       - Health check (caching disabled)
+//!   - http://localhost:3002/             - Root (cached, TTL: 60s)
+//!   - http://localhost:3002/greet/{name} - Greeting (cached, TTL: 10s)
+//!   - http://localhost:3002/health       - Health check (not cached)
 //!   - http://localhost:3002/metrics      - Prometheus metrics
 //!
 //! Try it:
-//!   curl http://localhost:3002/              # Cache miss, then hit (60s TTL)
-//!   curl http://localhost:3002/greet/world   # Cache miss (different key per name)
-//!   curl http://localhost:3002/greet/world   # Cache hit!
-//!   curl http://localhost:3002/greet/claude  # Cache miss (different name = different key)
-//!   curl http://localhost:3002/health        # Always fresh (caching disabled)
+//!   curl http://localhost:3002/              # Cache miss, then hit
+//!   curl http://localhost:3002/greet/world   # Different key per name
+//!   curl http://localhost:3002/greet/claude  # Different name = different key
+//!   curl http://localhost:3002/health        # Always fresh
 //!
 //! View traces:
 //!   - Jaeger UI: http://localhost:16686

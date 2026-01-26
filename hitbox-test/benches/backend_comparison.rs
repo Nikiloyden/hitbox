@@ -347,11 +347,11 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
         let backend = RedisBackend::builder()
-            .server(redis_url.clone())
+            .connection(hitbox_redis::ConnectionMode::single(redis_url.clone()))
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build()
-            .unwrap();
+            .expect("Failed to create Redis backend");
 
         group.bench_with_input(
             BenchmarkId::new("bincode_passthrough", size_name),
@@ -377,11 +377,11 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size_bytes as u64));
 
         let backend = RedisBackend::builder()
-            .server(redis_url.clone())
+            .connection(hitbox_redis::ConnectionMode::single(redis_url.clone()))
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build()
-            .unwrap();
+            .expect("Failed to create Redis backend");
 
         // Pre-populate
         runtime.block_on(async {
@@ -420,11 +420,11 @@ fn redis_backend_benchmarks(c: &mut Criterion) {
         group.throughput(Throughput::Bytes(size_bytes as u64 * 2));
 
         let backend = RedisBackend::builder()
-            .server(redis_url.clone())
+            .connection(hitbox_redis::ConnectionMode::single(redis_url.clone()))
             .value_format(BincodeFormat)
             .compressor(PassthroughCompressor)
             .build()
-            .unwrap();
+            .expect("Failed to create Redis backend");
 
         group.bench_with_input(
             BenchmarkId::new("bincode_passthrough", size_name),

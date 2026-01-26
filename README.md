@@ -117,7 +117,7 @@ Backends store cached data. Each backend implements the `Backend` trait with `re
 | Backend | Type | Configuration |
 |---------|------|---------------|
 | Moka | In-memory | `max_capacity` |
-| Redis | Distributed | `server` (connection string) |
+| Redis | Distributed | `connection` (single or cluster mode) |
 | FeOxDB | Embedded | `path` or `in_memory()` |
 
 **Code example**
@@ -131,7 +131,7 @@ let moka = MokaBackend::builder(10_000)
 
 // Redis (distributed)
 let redis = RedisBackend::builder()
-    .server("redis://127.0.0.1/")
+    .connection(ConnectionMode::single("redis://127.0.0.1/"))
     .value_format(BincodeFormat)
     .build()?;
 

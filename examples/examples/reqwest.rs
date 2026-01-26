@@ -3,10 +3,11 @@
 //! Demonstrates client-side HTTP caching with the reqwest HTTP client.
 //!
 //! Features shown:
-//! - Integration with reqwest-middleware
-//! - Moka in-memory backend for client-side caching
-//! - Request predicate: only cache GET requests
-//! - Cache key extraction from request method and path
+//!   - Integration with reqwest-middleware
+//!   - Moka in-memory backend for client-side caching
+//!   - Request predicate: only cache GET requests
+//!   - Cache key extraction from method and path
+//!   - X-Cache-Status header for cache status (hit/miss/stale)
 //!
 //! Run:
 //!   cargo run -p hitbox-examples --example reqwest
@@ -16,7 +17,8 @@
 //!   - First request: cache miss (fetches from GitHub)
 //!   - Second request: cache hit (returns cached response)
 //!
-//! The X-Cache-Status header indicates cache status (hit/miss/stale).
+//! Try it:
+//!   Run the example and observe the logs showing cache status transitions.
 
 use std::time::Duration;
 

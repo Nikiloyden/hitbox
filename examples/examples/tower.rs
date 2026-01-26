@@ -1,10 +1,15 @@
-//! Example of using hitbox with a plain Tower service and Hyper server.
+//! Tower Service Example
 //!
-//! This example demonstrates how to use hitbox-tower Cache layer
-//! with a generic tower::Service and hyper HTTP server (without axum).
+//! Demonstrates hitbox-tower Cache layer with a generic Tower service and Hyper server.
+//!
+//! Features shown:
+//!   - Direct tower::Service trait implementation
+//!   - Hyper HTTP server integration (without Axum)
+//!   - TowerToHyperService adapter pattern
+//!   - Path-based request routing
 //!
 //! Run:
-//!   cargo run --example tower
+//!   cargo run -p hitbox-examples --example tower
 //!
 //! Endpoints:
 //!   - http://localhost:3001/         - Hello World (cached, TTL: 30s)
@@ -104,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .pretty()
         .with_env_filter("info,hitbox=debug")
         .finish();
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     // Create Moka in-memory cache backend
     let backend = MokaBackend::builder().max_entries(10_000).build();
