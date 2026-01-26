@@ -1,3 +1,23 @@
+//! Cache Key Format Example
+//!
+//! Demonstrates different cache key serialization formats.
+//!
+//! Formats shown:
+//!   - Bincode: Compact binary format (default, fastest for Redis/Tarantool)
+//!   - URL-encoded: HTTP-safe format (for CDN keys, query parameters)
+//!
+//! Features shown:
+//!   - Creating cache keys from key-value pairs
+//!   - Serializing keys to different formats
+//!   - Roundtrip serialization/deserialization (Bincode)
+//!   - One-way serialization (URL-encoded)
+//!
+//! Run:
+//!   cargo run -p hitbox-backend --example key_format_usage
+//!
+//! Expected output:
+//!   Shows original key, serialized formats, and roundtrip verification.
+
 use hitbox_backend::CacheKeyFormat;
 use hitbox_core::CacheKey;
 
