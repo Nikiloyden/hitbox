@@ -408,7 +408,10 @@ mod tests {
     #[tokio::test]
     async fn test_write_and_read() {
         let temp_dir = TempDir::new().unwrap();
-        let backend = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
 
         let key = CacheKey::from_str("test-key", "1");
         let value = CacheValue::new(
@@ -429,7 +432,10 @@ mod tests {
     #[tokio::test]
     async fn test_delete() {
         let temp_dir = TempDir::new().unwrap();
-        let backend = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
 
         let key = CacheKey::from_str("delete-key", "1");
         let value = CacheValue::new(
@@ -453,7 +459,10 @@ mod tests {
     #[tokio::test]
     async fn test_delete_missing() {
         let temp_dir = TempDir::new().unwrap();
-        let backend = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
 
         let key = CacheKey::from_str("nonexistent", "1");
         let status = backend.remove(&key).await.unwrap();
@@ -463,7 +472,10 @@ mod tests {
     #[tokio::test]
     async fn test_read_nonexistent() {
         let temp_dir = TempDir::new().unwrap();
-        let backend = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
 
         let key = CacheKey::from_str("nonexistent-read", "1");
         let result = backend.read(&key).await.unwrap();
@@ -493,7 +505,10 @@ mod tests {
     #[tokio::test]
     async fn test_clone_shares_store() {
         let temp_dir = TempDir::new().unwrap();
-        let backend1 = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend1 = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
         let backend2 = backend1.clone();
 
         let key = CacheKey::from_str("shared-key", "1");
@@ -515,7 +530,10 @@ mod tests {
     #[tokio::test]
     async fn test_per_key_ttl() {
         let temp_dir = TempDir::new().unwrap();
-        let backend = FeOxDbBackend::builder().path(temp_dir.path()).build().unwrap();
+        let backend = FeOxDbBackend::builder()
+            .path(temp_dir.path())
+            .build()
+            .unwrap();
 
         let now = Utc::now();
         let expire_1h = now + chrono::Duration::hours(1);
@@ -532,8 +550,16 @@ mod tests {
         backend.write(&key2, value2).await.unwrap();
 
         // Read and verify TTLs are preserved
-        let read1 = backend.read(&key1).await.unwrap().expect("key1 should exist");
-        let read2 = backend.read(&key2).await.unwrap().expect("key2 should exist");
+        let read1 = backend
+            .read(&key1)
+            .await
+            .unwrap()
+            .expect("key1 should exist");
+        let read2 = backend
+            .read(&key2)
+            .await
+            .unwrap()
+            .expect("key2 should exist");
 
         // Expire times should be approximately equal (within 1 second tolerance)
         let tolerance = chrono::Duration::seconds(1);
@@ -580,7 +606,10 @@ mod tests {
         );
 
         let result = backend.write(&key, value).await;
-        assert!(result.is_err(), "Write should fail when exceeding memory limit");
+        assert!(
+            result.is_err(),
+            "Write should fail when exceeding memory limit"
+        );
     }
 
     #[tokio::test]
@@ -641,14 +670,14 @@ mod tests {
         }
 
         // Reopen and verify data persisted
-        let backend = FeOxDbBackend::builder()
-            .path(&db_path)
-            .build()
-            .unwrap();
+        let backend = FeOxDbBackend::builder().path(&db_path).build().unwrap();
 
         let key = CacheKey::from_str("persist-key", "1");
         let result = backend.read(&key).await.unwrap();
-        assert!(result.is_some(), "Data should persist after flush and reopen");
+        assert!(
+            result.is_some(),
+            "Data should persist after flush and reopen"
+        );
         assert_eq!(result.unwrap().data().as_ref(), b"persist-value");
     }
 
@@ -704,10 +733,7 @@ mod tests {
         }
 
         // Some writes should persist, but not all (disk fills up)
-        assert!(
-            persisted_count > 0,
-            "At least some chunks should persist"
-        );
+        assert!(persisted_count > 0, "At least some chunks should persist");
         assert!(
             persisted_count < num_chunks,
             "Not all chunks should persist when exceeding file size limit. \
@@ -716,5 +742,4 @@ mod tests {
             num_chunks
         );
     }
-
 }
