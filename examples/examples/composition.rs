@@ -60,7 +60,7 @@ async fn main() {
     // L2: FeOxDB (file-based)
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let feoxdb = FeOxDbBackend::builder()
-        .path(temp_dir.path().to_string_lossy().to_string())
+        .path(temp_dir.path())
         .build()
         .expect("Failed to open FeOxDB");
 
