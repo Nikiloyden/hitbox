@@ -225,6 +225,28 @@ impl Context for CacheContext {
     }
 }
 
+/// Extension trait for enriching responses with cache status information.
+///
+/// This trait provides a protocol-agnostic way to attach cache status
+/// metadata to responses. Each protocol (HTTP, gRPC, etc.) implements
+/// this trait with its own configuration type.
+///
+/// # Example
+///
+/// ```ignore
+/// use hitbox_core::{CacheStatus, CacheStatusExt};
+///
+/// // For HTTP responses (implemented in hitbox-http)
+/// response.cache_status(CacheStatus::Hit, &header_name);
+/// ```
+pub trait CacheStatusExt {
+    /// Configuration type for applying cache status (e.g., header name for HTTP).
+    type Config;
+
+    /// Applies cache status information to the response.
+    fn cache_status(&mut self, status: CacheStatus, config: &Self::Config);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

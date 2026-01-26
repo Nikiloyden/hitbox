@@ -2,4 +2,6 @@
 //!
 //! Re-exported from `hitbox-core`.
 
-pub use hitbox_core::{BoxContext, CacheContext, CacheStatus, Context, ResponseSource};
+pub use hitbox_core::{
+    BoxContext, CacheContext, CacheStatus, CacheStatusExt, Context, ResponseSource,
+};
