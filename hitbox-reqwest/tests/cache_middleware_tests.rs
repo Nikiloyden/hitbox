@@ -22,7 +22,7 @@ async fn test_cache_miss_then_hit() {
         .mount(&mock_server)
         .await;
 
-    let backend = MokaBackend::builder(100).build();
+    let backend = MokaBackend::builder().max_entries(100).build();
     let config_yaml = r#"
     request:
     - Method: GET
@@ -81,7 +81,7 @@ async fn test_response_integrity() {
         .mount(&mock_server)
         .await;
 
-    let backend = MokaBackend::builder(100).build();
+    let backend = MokaBackend::builder().max_entries(100).build();
     let config_yaml = r#"
     request:
     - Method: GET
@@ -156,7 +156,7 @@ async fn test_body_limit_exceeded_returns_full_body() {
         .mount(&mock_server)
         .await;
 
-    let backend = MokaBackend::builder(100).build();
+    let backend = MokaBackend::builder().max_entries(100).build();
 
     // Configure body limit of 100 bytes
     let config_yaml = r#"

@@ -10,7 +10,7 @@
 //! use hitbox_moka::MokaBackend;
 //!
 //! let cache_layer = Cache::builder()
-//!     .backend(MokaBackend::builder(1000).build())
+//!     .backend(MokaBackend::builder().max_entries(1000).build())
 //!     .build();
 //! ```
 //!
@@ -55,7 +55,7 @@ use crate::service::CacheService;
 /// use hitbox_moka::MokaBackend;
 ///
 /// let cache_layer = Cache::builder()
-///     .backend(MokaBackend::builder(1000).build())
+///     .backend(MokaBackend::builder().max_entries(1000).build())
 ///     .build();
 /// ```
 ///
@@ -118,7 +118,7 @@ impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
     /// use hitbox_moka::MokaBackend;
     ///
     /// let cache_layer = Cache::builder()
-    ///     .backend(MokaBackend::builder(1000).build())
+    ///     .backend(MokaBackend::builder().max_entries(1000).build())
     ///     .build();
     /// ```
     pub fn builder()
@@ -150,7 +150,7 @@ impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
 /// use hitbox_moka::MokaBackend;
 ///
 /// let layer = Cache::builder()
-///     .backend(MokaBackend::builder(1000).build())
+///     .backend(MokaBackend::builder().max_entries(1000).build())
 ///     .build();
 /// ```
 ///
@@ -178,7 +178,7 @@ impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
 /// # let _: Endpoint<Empty<Bytes>, Empty<Bytes>> = config;
 ///
 /// let layer = Cache::builder()
-///     .backend(MokaBackend::builder(10_000).build())
+///     .backend(MokaBackend::builder().max_entries(10_000).build())
 ///     .config(config)
 ///     .cache_status_header(HeaderName::from_static("x-custom-cache"))
 ///     .build();
@@ -234,7 +234,7 @@ where
     /// use hitbox_moka::MokaBackend;
     ///
     /// let layer = Cache::builder()
-    ///     .backend(MokaBackend::builder(1000).build())
+    ///     .backend(MokaBackend::builder().max_entries(1000).build())
     ///     .build();
     /// ```
     pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C, CM, O> {
@@ -276,7 +276,7 @@ where
     /// # let _: Endpoint<Empty<Bytes>, Empty<Bytes>> = config;
     ///
     /// let layer = Cache::builder()
-    ///     .backend(MokaBackend::builder(1000).build())
+    ///     .backend(MokaBackend::builder().max_entries(1000).build())
     ///     .config(config)
     ///     .build();
     /// ```
@@ -348,7 +348,7 @@ where
     /// use http::header::HeaderName;
     ///
     /// let layer = Cache::builder()
-    ///     .backend(MokaBackend::builder(1000).build())
+    ///     .backend(MokaBackend::builder().max_entries(1000).build())
     ///     .cache_status_header(HeaderName::from_static("x-custom-cache"))
     ///     .build();
     /// ```

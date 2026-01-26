@@ -223,10 +223,10 @@ where
 
                 let cache_value: CacheValue<Raw> = serializable.into();
 
-                if let Some(expire_time) = cache_value.expire() {
-                    if expire_time < Utc::now() {
-                        return Ok(None);
-                    }
+                if let Some(expire_time) = cache_value.expire()
+                    && expire_time < Utc::now()
+                {
+                    return Ok(None);
                 }
 
                 Ok(Some(cache_value))

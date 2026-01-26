@@ -52,11 +52,17 @@ async fn main() {
         .init();
 
     // L1: Moka (in-memory)
-    let moka = MokaBackend::builder(1024 * 1024).label("moka").build();
+    let moka = MokaBackend::builder()
+        .max_entries(1024 * 1024)
+        .label("moka")
+        .build();
 
     // L2: FeOxDB (file-based)
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let feoxdb = FeOxDbBackend::open(temp_dir.path()).expect("Failed to open FeOxDB");
+    let feoxdb = FeOxDbBackend::builder()
+        .path(temp_dir.path().to_string_lossy().to_string())
+        .build()
+        .expect("Failed to open FeOxDB");
 
     // L3: Redis (distributed)
     let redis = RedisBackend::builder()

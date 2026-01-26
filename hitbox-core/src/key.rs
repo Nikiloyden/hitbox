@@ -73,11 +73,15 @@ use std::sync::Arc;
 
 /// Inner structure containing the actual cache key data.
 /// Wrapped in Arc for cheap cloning.
-#[derive(Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, serde::Serialize)]
 struct CacheKeyInner {
     parts: Vec<KeyPart>,
     version: u32,
     prefix: SmolStr,
+    /// Precalculated size of heap-allocated string content.
+    /// Only counts strings >23 bytes (SmolStr's inline threshold).
+    #[serde(skip)]
+    content_size: usize,
 }
 
 /// A cache key identifying a cached entry.
@@ -111,8 +115,8 @@ struct CacheKeyInner {
 /// assert_eq!(key.version(), 1);
 /// assert_eq!(format!("{}", key), "api:v1:method=GET&path=/users/123");
 /// ```
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(from = "CacheKeyInner", into = "CacheKeyInner")]
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(into = "CacheKeyInner")]
 pub struct CacheKey {
     inner: Arc<CacheKeyInner>,
 }
@@ -132,14 +136,6 @@ impl Hash for CacheKey {
     }
 }
 
-impl From<CacheKeyInner> for CacheKey {
-    fn from(inner: CacheKeyInner) -> Self {
-        CacheKey {
-            inner: Arc::new(inner),
-        }
-    }
-}
-
 impl From<CacheKey> for CacheKeyInner {
     fn from(key: CacheKey) -> Self {
         // Try to unwrap Arc, or clone if shared
@@ -153,7 +149,24 @@ impl Clone for CacheKeyInner {
             parts: self.parts.clone(),
             version: self.version,
             prefix: self.prefix.clone(),
+            content_size: self.content_size,
         }
+    }
+}
+
+impl CacheKeyInner {
+    /// Calculate the size of heap-allocated string content.
+    ///
+    /// SmolStr stores strings ≤23 bytes inline (already counted in struct size).
+    /// Only strings >23 bytes allocate on heap and need additional counting.
+    fn calculate_content_size(prefix: &SmolStr, parts: &[KeyPart]) -> usize {
+        let heap_size = |len: usize| len.saturating_sub(23);
+
+        heap_size(prefix.len())
+            + parts
+                .iter()
+                .map(|p| heap_size(p.key().len()) + p.value().map_or(0, |v| heap_size(v.len())))
+                .sum::<usize>()
     }
 }
 
@@ -234,11 +247,15 @@ impl<'de> View<'de> for CacheKeyDecoder<'de> {
 impl<'de> Decoder<'de, CacheKey> for CacheKeyDecoder<'de> {
     fn decode(&mut self) -> CacheKey {
         let prefix_str: &str = self.prefix.decode();
+        let prefix = SmolStr::new(prefix_str);
+        let parts: Vec<KeyPart> = self.parts.decode();
+        let content_size = CacheKeyInner::calculate_content_size(&prefix, &parts);
         CacheKey {
             inner: Arc::new(CacheKeyInner {
-                parts: self.parts.decode(),
+                parts,
                 version: self.version.decode(),
-                prefix: SmolStr::new(prefix_str),
+                prefix,
+                content_size,
             }),
         }
     }
@@ -260,6 +277,27 @@ impl CacheKey {
         &self.inner.prefix
     }
 
+    /// Returns the estimated memory usage of this cache key in bytes.
+    ///
+    /// This includes:
+    /// - Arc heap allocation (control block + CacheKeyInner)
+    /// - Vec heap allocation (KeyPart elements)
+    /// - SmolStr heap allocations (strings >23 bytes)
+    pub fn memory_size(&self) -> usize {
+        use std::mem::size_of;
+
+        // Arc heap allocation: strong count + weak count + data
+        let arc_overhead = 2 * size_of::<usize>() + size_of::<CacheKeyInner>();
+
+        // Vec heap allocation: each KeyPart element
+        let vec_overhead = self.inner.parts.len() * size_of::<KeyPart>();
+
+        // SmolStr heap allocations: only strings >23 bytes
+        let heap_strings = self.inner.content_size;
+
+        arc_overhead + vec_overhead + heap_strings
+    }
+
     /// Creates a new cache key with the given components.
     ///
     /// # Arguments
@@ -268,11 +306,14 @@ impl CacheKey {
     /// * `version` - Version number for cache invalidation
     /// * `parts` - List of key-value parts
     pub fn new(prefix: impl Into<SmolStr>, version: u32, parts: Vec<KeyPart>) -> Self {
+        let prefix = prefix.into();
+        let content_size = CacheKeyInner::calculate_content_size(&prefix, &parts);
         CacheKey {
             inner: Arc::new(CacheKeyInner {
                 parts,
                 version,
-                prefix: prefix.into(),
+                prefix,
+                content_size,
             }),
         }
     }
@@ -281,11 +322,15 @@ impl CacheKey {
     ///
     /// The prefix is empty and version is 0.
     pub fn from_str(key: &str, value: &str) -> Self {
+        let prefix = SmolStr::default();
+        let parts = vec![KeyPart::new(key, Some(value))];
+        let content_size = CacheKeyInner::calculate_content_size(&prefix, &parts);
         CacheKey {
             inner: Arc::new(CacheKeyInner {
-                parts: vec![KeyPart::new(key, Some(value))],
+                parts,
                 version: 0,
-                prefix: SmolStr::default(),
+                prefix,
+                content_size,
             }),
         }
     }
@@ -294,14 +339,18 @@ impl CacheKey {
     ///
     /// The prefix is empty and version is 0.
     pub fn from_slice(parts: &[(&str, Option<&str>)]) -> Self {
+        let prefix = SmolStr::default();
+        let parts: Vec<KeyPart> = parts
+            .iter()
+            .map(|(key, value)| KeyPart::new(key, *value))
+            .collect();
+        let content_size = CacheKeyInner::calculate_content_size(&prefix, &parts);
         CacheKey {
             inner: Arc::new(CacheKeyInner {
-                parts: parts
-                    .iter()
-                    .map(|(key, value)| KeyPart::new(key, *value))
-                    .collect(),
+                parts,
                 version: 0,
-                prefix: SmolStr::default(),
+                prefix,
+                content_size,
             }),
         }
     }
@@ -496,13 +545,16 @@ impl<T> KeyParts<T> {
     ///
     /// The returned cache key has an empty prefix and version 0.
     pub fn into_cache_key(self) -> (T, CacheKey) {
+        let prefix = SmolStr::default();
+        let content_size = CacheKeyInner::calculate_content_size(&prefix, &self.parts);
         (
             self.subject,
             CacheKey {
                 inner: Arc::new(CacheKeyInner {
                     version: 0,
-                    prefix: SmolStr::default(),
+                    prefix,
                     parts: self.parts,
+                    content_size,
                 }),
             },
         )

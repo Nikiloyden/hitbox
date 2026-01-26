@@ -269,7 +269,8 @@ async fn main() {
     for (size_name, size_bytes) in &payload_sizes {
         let response = generate_response(*size_bytes).await;
         let backend = Arc::new(
-            MokaBackend::builder(10000)
+            MokaBackend::builder()
+                .max_entries(10000)
                 .value_format(BincodeFormat)
                 .compressor(PassthroughCompressor)
                 .build(),

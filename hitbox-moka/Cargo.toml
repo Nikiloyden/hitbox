@@ -1,14 +1,21 @@
 [package]
 name = "hitbox-moka"
 version = "0.1.0"
-edition = "2024"
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license = "MIT"
+repository.workspace = true
+categories.workspace = true
+description = "In-memory cache backend for Hitbox using Moka."
 
 [features]
 default = []
+metrics = ["dep:metrics", "dep:lazy_static"]
 
 [dependencies]
+metrics = { workspace = true, optional = true }
+lazy_static = { workspace = true, optional = true }
 hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }
 hitbox = { path = "../hitbox", version = "0.1.0" }
 hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
@@ -21,6 +28,7 @@ chrono = { workspace = true, features = ["clock"] }
 smol_str = { workspace = true }
 
 [dev-dependencies]
+bytes = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true, features = [
     "time",

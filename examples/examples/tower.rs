@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     // Create Moka in-memory cache backend
-    let backend = MokaBackend::builder(10_000).build();
+    let backend = MokaBackend::builder().max_entries(10_000).build();
 
     // Cache configuration for all cacheable endpoints
     // - Only cache GET requests

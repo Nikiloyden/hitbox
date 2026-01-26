@@ -204,7 +204,7 @@ async fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
-    let memory_backend = MokaBackend::builder(1024 * 1024).build();
+    let memory_backend = MokaBackend::builder().max_entries(1024 * 1024).build();
 
     // Cache config for task list endpoint
     // Cache key includes: pagination params
