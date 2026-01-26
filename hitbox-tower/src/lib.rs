@@ -6,8 +6,11 @@
 //!
 //! # When to Use This Crate
 //!
-//! Use `hitbox-tower` when you have a Tower-based HTTP server (e.g., Axum, Hyper)
-//! and want to add caching as middleware.
+//! Use `hitbox-tower` when you have a Tower-based HTTP service and want to add
+//! caching. This works for both:
+//!
+//! - **Server-side**: Wrap handlers in Axum, Hyper, or other Tower-based servers
+//! - **Client-side**: Wrap HTTP clients like `hyper-util::Client` for response caching
 //!
 //! # Core Concepts
 //!
@@ -166,17 +169,23 @@
 //!
 //! For complete, runnable examples see the `examples/` directory:
 //!
+//! **Server-side caching:**
 //! - **[tower.rs]** — Plain Tower service with Hyper server
 //! - **[axum.rs]** — Axum web framework with per-route caching
+//!
+//! **Client-side caching:**
+//! - **[hyper_client.rs]** — Hyper client with response caching
 //!
 //! Run with:
 //! ```text
 //! cargo run -p hitbox-examples --example tower
 //! cargo run -p hitbox-examples --example axum
+//! cargo run -p hitbox-examples --example hyper_client
 //! ```
 //!
 //! [tower.rs]: https://github.com/hit-box/hitbox/blob/main/examples/examples/tower.rs
 //! [axum.rs]: https://github.com/hit-box/hitbox/blob/main/examples/examples/axum.rs
+//! [hyper_client.rs]: https://github.com/hit-box/hitbox/blob/main/examples/examples/hyper_client.rs
 //!
 //! # Feature Flags
 //!
