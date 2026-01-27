@@ -11,3 +11,7 @@ tarpaulin-report.html
 .DS_Store
 .vscode
 .claude
+
+# Local development
+.context/
+docs/
