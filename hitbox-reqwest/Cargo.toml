@@ -28,7 +28,7 @@ docs = ["dep:hitbox-moka", "dep:hitbox-redis", "dep:hitbox-feoxdb"]
 [dependencies]
 hitbox = { path = "../hitbox", version = "0.1" }
 hitbox-core = { path = "../hitbox-core", version = "0.2" }
-hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.2" }
 hitbox-http = { path = "../hitbox-http", version = "0.1" }
 
 # Optional dependencies for documentation links
