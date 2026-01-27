@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-configuration"
-version = "0.2.0"
+version = "0.1.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -11,13 +11,13 @@ description = "Configuration support for Hitbox caching framework"
 keywords = ["cache", "configuration", "yaml", "hitbox", "tower"]
 
 [dependencies]
-hitbox = { path = "../hitbox/", version = "0.2" }
-hitbox-core = { path = "../hitbox-core/", version = "0.2" }
-hitbox-http = { path = "../hitbox-http/", version = "0.2" }
-hitbox-backend = { path = "../hitbox-backend/", version = "0.2" }
-hitbox-moka = { path = "../hitbox-moka/", version = "0.2", optional = true }
-hitbox-feoxdb = { path = "../hitbox-feoxdb/", version = "0.2", optional = true }
-hitbox-redis = { path = "../hitbox-redis/", version = "0.2", optional = true }
+hitbox = { path = "../hitbox/", version = "0.1" }
+hitbox-core = { path = "../hitbox-core/", version = "0.1" }
+hitbox-http = { path = "../hitbox-http/", version = "0.1" }
+hitbox-backend = { path = "../hitbox-backend/", version = "0.1" }
+hitbox-moka = { path = "../hitbox-moka/", version = "0.1", optional = true }
+hitbox-feoxdb = { path = "../hitbox-feoxdb/", version = "0.1", optional = true }
+hitbox-redis = { path = "../hitbox-redis/", version = "0.1", optional = true }
 http = { workspace = true }
 hyper = { workspace = true }
 async-trait = { workspace = true }
@@ -45,5 +45,5 @@ rkyv_format = ["dep:rkyv", "hitbox-backend/rkyv_format"]
 pretty_assertions = "1.4"
 tokio = { workspace = true, features = ["test-util", "macros"] }
 bytes = { workspace = true }
-hitbox = { path = "../hitbox", version = "0.2" }
+hitbox = { path = "../hitbox", version = "0.1" }
 http-body-util = { workspace = true }

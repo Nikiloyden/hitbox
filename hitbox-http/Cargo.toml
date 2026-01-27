@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-http"
-version = "0.2.0"
+version = "0.1.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -24,8 +24,8 @@ async-trait = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
 http-body-util = { workspace = true }
-hitbox = { path = "../hitbox", version = "0.2" }
-hitbox-backend = { path = "../hitbox-backend", version = "0.2", default-features = false }
+hitbox = { path = "../hitbox", version = "0.1" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1", default-features = false }
 bytes = { workspace = true }
 chrono = { workspace = true }
 hyper = { workspace = true }
@@ -57,8 +57,8 @@ default = []
 rkyv_format = ["dep:rkyv", "hitbox/rkyv_format", "hitbox-backend/rkyv_format"]
 
 [dev-dependencies]
-hitbox-core = { path = "../hitbox-core", version = "0.2" }
-hitbox-configuration = { path = "../hitbox-configuration", version = "0.2" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
+hitbox-configuration = { path = "../hitbox-configuration", version = "0.1" }
 bincode = { version = "2", features = ["serde"] }
 tokio = { workspace = true, features = [
     "test-util",

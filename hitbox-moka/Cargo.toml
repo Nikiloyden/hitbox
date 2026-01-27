@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-moka"
-version = "0.2.0"
+version = "0.1.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -17,9 +17,9 @@ metrics = ["dep:metrics", "dep:lazy_static"]
 [dependencies]
 metrics = { workspace = true, optional = true }
 lazy_static = { workspace = true, optional = true }
-hitbox-backend = { path = "../hitbox-backend", version = "0.2.0" }
-hitbox = { path = "../hitbox", version = "0.2.0" }
-hitbox-core = { path = "../hitbox-core", version = "0.2.0" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox = { path = "../hitbox", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }

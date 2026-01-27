@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-backend"
-version = "0.2.0"
+version = "0.1.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["cache", "tower", "async", "cache-backend", "hitbox"]
 
 [dependencies]
-hitbox-core = { path = "../hitbox-core", version = "0.2.0" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 async-trait = { workspace = true }
 futures = { workspace = true, features = ["async-await"] }
 chrono = { workspace = true, features = ["serde"] }
