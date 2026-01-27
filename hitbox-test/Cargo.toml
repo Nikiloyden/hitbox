@@ -19,7 +19,7 @@ keywords = ["cache", "tower", "async", "http", "hitbox"]
 
 [dependencies]
 hitbox = { path = "../hitbox", version = "0.1" }
-hitbox-core = { path = "../hitbox-core", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.2" }
 hitbox-http = { path = "../hitbox-http", version = "0.1" }
 hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
 hitbox-moka = { path = "../hitbox-moka", version = "0.1" }

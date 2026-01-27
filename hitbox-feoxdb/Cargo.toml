@@ -14,7 +14,7 @@ keywords = ["cache", "backend", "feoxdb", "embedded", "hitbox"]
 [dependencies]
 # Hitbox dependencies
 hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
-hitbox-core = { path = "../hitbox-core", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.2" }
 
 # FeOxDB - Pure Rust embedded DB with TTL
 feoxdb = "0.5"

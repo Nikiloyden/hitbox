@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["cache", "async", "cache-backend", "hitbox", "tokio"]
 
 [dependencies]
-hitbox-core = { path = "../hitbox-core", version = "0.1", features = [] }
+hitbox-core = { path = "../hitbox-core", version = "0.2", features = [] }
 hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
 serde = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
