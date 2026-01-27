@@ -49,7 +49,7 @@
 //! [`Extractor`]: hitbox::Extractor
 //! [`KeyPart`]: hitbox::KeyPart
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use hitbox::{Extractor, KeyParts};
@@ -111,7 +111,7 @@ impl<ResBody> NeutralExtractor<ResBody> {
 #[async_trait]
 impl<ResBody> Extractor for NeutralExtractor<ResBody>
 where
-    ResBody: hyper::body::Body + Send + 'static + Debug,
+    ResBody: hyper::body::Body + Send + 'static,
     ResBody::Error: Send,
 {
     type Subject = CacheableHttpRequest<ResBody>;

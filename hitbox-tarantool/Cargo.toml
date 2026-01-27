@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-tarantool"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
     "Evgeniy <ea@lowit.ru>",
     "Belousov Max <mail@singulared.space>",
@@ -15,8 +15,8 @@ categories = ["caching", "asynchronous"]
 keywords = ["cache", "async", "cache-backend", "hitbox", "tarantool"]
 
 [dependencies]
-hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }
-hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.2.0" }
+hitbox-core = { path = "../hitbox-core", version = "0.2.0" }
 async-trait = "0.1"
 serde = "1"
 rusty_tarantool = "0.3.0"

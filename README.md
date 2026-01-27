@@ -124,7 +124,8 @@ Backends store cached data. Each backend implements the `Backend` trait with `re
 
 ```rust
 // Moka (in-memory)
-let moka = MokaBackend::builder(10_000)
+let moka = MokaBackend::builder()
+    .max_entries(10_000)
     .value_format(BincodeFormat)
     .compressor(ZstdCompressor::default())
     .build();
@@ -214,6 +215,8 @@ Hitbox provides a complete HTTP implementation in `hitbox-http`—use it as a re
 ## HTTP Predicates
 
 HTTP Predicates control what gets cached. Request predicates filter incoming requests by method, path, headers, query parameters, and body. Response predicates filter upstream responses by status code, headers, and body. Both support operations like equality, existence, list matching, containment, and regex. Body predicates additionally support size limits and JQ expressions for JSON filtering. Combine predicates with AND (chaining), OR, and NOT logic.
+
+**Tip:** Use `Operation::Limit { bytes: N }` on response body to prevent caching large responses (e.g., file downloads). This avoids cache bloat without reading the entire body.
 
 **Code example**
 
@@ -345,9 +348,9 @@ At the same time, Hitbox is not just an abstract foundation. It already provides
 
 ```toml
 [dependencies]
-hitbox = { version = "0.1", features = ["moka"] }
-hitbox-tower = "0.1"
-hitbox-configuration = "0.1"
+hitbox = { version = "0.2", features = ["moka"] }
+hitbox-tower = "0.2"
+hitbox-configuration = "0.2"
 ```
 
 ### Basic Usage
@@ -365,7 +368,7 @@ async fn get_users() -> &'static str { "users list" }
 async fn get_user(Path(id): Path<String>) -> String { format!("user {id}") }
 
 // Create backend
-let backend = MokaBackend::builder(10_000).build();
+let backend = MokaBackend::builder().max_entries(10_000).build();
 
 // Users list - long TTL (60s)
 let users_config = Endpoint::builder()

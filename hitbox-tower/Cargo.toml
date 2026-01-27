@@ -1,6 +1,6 @@
 [package]
 name = "hitbox-tower"
-version = "0.1.0"
+version = "0.2.0"
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -18,11 +18,11 @@ keywords = ["cache", "tower", "async", "http", "hitbox"]
 
 [dependencies]
 tower = { workspace = true }
-hitbox = { path = "../hitbox", version = "0.1" }
-hitbox-core = { path = "../hitbox-core", version = "0.1" }
-hitbox-http = { path = "../hitbox-http", version = "0.1" }
-hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
-hitbox-moka = { path = "../hitbox-moka", version = "0.1" }
+hitbox = { path = "../hitbox", version = "0.2" }
+hitbox-core = { path = "../hitbox-core", version = "0.2" }
+hitbox-http = { path = "../hitbox-http", version = "0.2" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.2" }
+hitbox-moka = { path = "../hitbox-moka", version = "0.2" }
 hyper = { workspace = true }
 tracing = { workspace = true }
 http = { workspace = true }

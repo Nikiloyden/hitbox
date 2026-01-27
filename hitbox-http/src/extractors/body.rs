@@ -386,7 +386,7 @@ fn extract_regex_parts(
 impl<ReqBody, E> Extractor for Body<E>
 where
     ReqBody: HttpBody + Send + 'static,
-    ReqBody::Error: Debug + Send,
+    ReqBody::Error: Send,
     ReqBody::Data: Send,
     E: Extractor<Subject = CacheableHttpRequest<ReqBody>> + Send + Sync,
 {

@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-01-27
+### Changed
+- Complete rewrite with protocol-agnostic core
+- Migrated from actix to tokio/tower ecosystem
+
 ## [0.1.0] - 2021-05-29
 ### Added
 - Initial release

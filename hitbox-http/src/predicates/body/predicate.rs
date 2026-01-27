@@ -2,8 +2,6 @@
 //!
 //! Provides [`Body`] predicate for matching request or response bodies.
 
-use std::fmt::Debug;
-
 use async_trait::async_trait;
 use hitbox::Neutral;
 use hitbox::predicate::{Predicate, PredicateResult};
@@ -104,7 +102,7 @@ where
     P::Subject: CacheableSubject + Send,
     <P::Subject as CacheableSubject>::Body: Send + Unpin + 'static,
     <P::Subject as CacheableSubject>::Parts: Send,
-    <<P::Subject as CacheableSubject>::Body as HttpBody>::Error: Debug + Send,
+    <<P::Subject as CacheableSubject>::Body as HttpBody>::Error: Send,
     <<P::Subject as CacheableSubject>::Body as HttpBody>::Data: Send,
 {
     type Subject = P::Subject;

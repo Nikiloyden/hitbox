@@ -7,7 +7,7 @@
 use hitbox::concurrency::ConcurrencyManager;
 use hitbox::config::CacheConfig;
 use hitbox_core::{DisabledOffload, Offload};
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 
 use hitbox::{backend::CacheBackend, fsm::CacheFuture};
 use hitbox_http::{BufferedBody, CacheableHttpRequest, CacheableHttpResponse};
@@ -107,14 +107,12 @@ where
     C: CacheConfig<CacheableHttpRequest<ReqBody>, CacheableHttpResponse<ResBody>>,
     CM: ConcurrencyManager<Result<CacheableHttpResponse<ResBody>, S::Error>> + Clone + 'static,
     O: Offload<'static> + Clone,
-    // debug bounds
-    ReqBody: Debug + HttpBody + Send + 'static,
+    ReqBody: HttpBody + Send + 'static,
     ReqBody::Error: Send,
-    // Body: From<ReqBody>,
     ResBody: HttpBody + Send + 'static,
-    ResBody::Error: Debug + Send,
+    ResBody::Error: Send,
     ResBody::Data: Send,
-    S::Error: Debug + Send,
+    S::Error: Send,
 {
     type Response = Response<BufferedBody<ResBody>>;
     type Error = S::Error;
