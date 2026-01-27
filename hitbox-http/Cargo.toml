@@ -24,7 +24,7 @@ async-trait = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
 http-body-util = { workspace = true }
-hitbox = { path = "../hitbox", version = "0.1" }
+hitbox = { path = "../hitbox", version = "0.2" }
 hitbox-backend = { path = "../hitbox-backend", version = "0.2", default-features = false }
 bytes = { workspace = true }
 chrono = { workspace = true }

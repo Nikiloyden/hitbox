@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["cache", "configuration", "yaml", "hitbox", "tower"]
 
 [dependencies]
-hitbox = { path = "../hitbox/", version = "0.1" }
+hitbox = { path = "../hitbox/", version = "0.2" }
 hitbox-core = { path = "../hitbox-core/", version = "0.2" }
 hitbox-http = { path = "../hitbox-http/", version = "0.1" }
 hitbox-backend = { path = "../hitbox-backend/", version = "0.2" }
@@ -46,5 +46,5 @@ rkyv_format = ["dep:rkyv", "hitbox-backend/rkyv_format"]
 pretty_assertions = "1.4"
 tokio = { workspace = true, features = ["test-util", "macros"] }
 bytes = { workspace = true }
-hitbox = { path = "../hitbox", version = "0.1" }
+hitbox = { path = "../hitbox", version = "0.2" }
 http-body-util = { workspace = true }
