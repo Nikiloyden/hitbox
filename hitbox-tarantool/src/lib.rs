@@ -1,5 +1,5 @@
-//! hitbox [Backend] implementation for Tarantool.
-//! [Backend]: hitbox_backend::Backend
+#![doc = include_str!("../README.md")]
+
 pub mod backend;
 
 #[doc(inline)]

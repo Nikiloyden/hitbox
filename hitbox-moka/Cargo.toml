@@ -8,6 +8,7 @@ rust-version.workspace = true
 repository.workspace = true
 categories.workspace = true
 description = "In-memory cache backend for Hitbox using Moka."
+readme = "README.md"
 keywords = ["cache", "moka", "async", "in-memory", "hitbox"]
 
 [features]
