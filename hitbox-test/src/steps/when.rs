@@ -103,12 +103,13 @@ async fn concurrent_requests(
 
     // Build the cache layer with concurrency manager for dogpile prevention
     let concurrency_manager: BroadcastConcurrencyManager<_> = BroadcastConcurrencyManager::new();
+    let config = world.config.build();
 
     // Create a single TestServer and wrap in Arc for sharing
     let server = if let Some(manager) = &world.offload_manager {
         let cache = Cache::builder()
             .backend(world.backend.clone())
-            .config(world.config.clone())
+            .config(config)
             .concurrency_manager(concurrency_manager)
             .offload(manager.clone())
             .build();
@@ -117,7 +118,7 @@ async fn concurrent_requests(
     } else {
         let cache = Cache::builder()
             .backend(world.backend.clone())
-            .config(world.config.clone())
+            .config(config)
             .concurrency_manager(concurrency_manager)
             .build();
         let router = app(world.handler_state.clone()).layer(cache);
