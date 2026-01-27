@@ -1,6 +1,12 @@
 //! Integration tests for CacheMiddleware using wiremock.
 
-use hitbox_configuration::ConfigEndpoint;
+use std::time::Duration;
+
+use hitbox::policy::PolicyConfig;
+use hitbox::{Config, Neutral};
+use hitbox_http::extractors::path::PathExtractor;
+use hitbox_http::extractors::Method as MethodExtractor;
+use hitbox_http::predicates::request::Method as MethodPredicate;
 use hitbox_moka::MokaBackend;
 use hitbox_reqwest::{CacheMiddleware, NoopConcurrencyManager};
 use reqwest::Client;
@@ -23,21 +29,13 @@ async fn test_cache_miss_then_hit() {
         .await;
 
     let backend = MokaBackend::builder().max_entries(100).build();
-    let config_yaml = r#"
-    request:
-    - Method: GET
-    extractors:
-    - Method: {}
-    - Path: "/{path}*"
-    policy:
-      Enabled:
-        ttl: 60s
-    "#;
 
-    let config = serde_saphyr::from_str::<ConfigEndpoint>(config_yaml)
-        .unwrap()
-        .into_endpoint()
-        .unwrap();
+    let config = Config::builder()
+        .request_predicate(MethodPredicate::new(http::Method::GET).unwrap())
+        .response_predicate(Neutral::new())
+        .extractor(MethodExtractor::new().path("/{path}*"))
+        .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
+        .build();
 
     let middleware = CacheMiddleware::builder()
         .backend(backend)
@@ -82,21 +80,13 @@ async fn test_response_integrity() {
         .await;
 
     let backend = MokaBackend::builder().max_entries(100).build();
-    let config_yaml = r#"
-    request:
-    - Method: GET
-    extractors:
-    - Method: {}
-    - Path: "/{path}*"
-    policy:
-      Enabled:
-        ttl: 60s
-    "#;
 
-    let config = serde_saphyr::from_str::<ConfigEndpoint>(config_yaml)
-        .unwrap()
-        .into_endpoint()
-        .unwrap();
+    let config = Config::builder()
+        .request_predicate(MethodPredicate::new(http::Method::GET).unwrap())
+        .response_predicate(Neutral::new())
+        .extractor(MethodExtractor::new().path("/{path}*"))
+        .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
+        .build();
 
     let middleware = CacheMiddleware::builder()
         .backend(backend)
@@ -144,6 +134,8 @@ async fn test_response_integrity() {
 /// Test 3: Body limit exceeded - body > limit not cached, but full body returned
 #[tokio::test]
 async fn test_body_limit_exceeded_returns_full_body() {
+    use hitbox_http::predicates::body::{Body as BodyPredicate, Operation as BodyOperation};
+
     let mock_server = MockServer::start().await;
 
     // Create a body larger than the limit (200 bytes > 100 byte limit)
@@ -158,24 +150,13 @@ async fn test_body_limit_exceeded_returns_full_body() {
 
     let backend = MokaBackend::builder().max_entries(100).build();
 
-    // Configure body limit of 100 bytes
-    let config_yaml = r#"
-    request:
-    - Method: GET
-    response:
-    - Body:
-        limit: 100
-    extractors:
-    - Path: "/{path}*"
-    policy:
-      Enabled:
-        ttl: 60s
-    "#;
-
-    let config = serde_saphyr::from_str::<ConfigEndpoint>(config_yaml)
-        .unwrap()
-        .into_endpoint()
-        .unwrap();
+    // Configure body limit of 100 bytes using response predicate
+    let config = Config::builder()
+        .request_predicate(MethodPredicate::new(http::Method::GET).unwrap())
+        .response_predicate(BodyPredicate::new(BodyOperation::Limit { bytes: 100 }))
+        .extractor(MethodExtractor::new().path("/{path}*"))
+        .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
+        .build();
 
     let middleware = CacheMiddleware::builder()
         .backend(backend)
