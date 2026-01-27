@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 mod app;
 pub mod backend;
 pub mod cache_key;
