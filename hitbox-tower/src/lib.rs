@@ -37,65 +37,26 @@
 //!
 //! # Quick Start
 //!
-//! ## Minimal Setup (Default Configuration)
-//!
-//! The simplest way to add caching uses [`HttpEndpoint`] defaults, which cache
-//! all requests with a 5-second TTL:
-//!
-//! ```
+//! ```ignore
+//! use std::time::Duration;
+//! use hitbox::Config;
+//! use hitbox::policy::PolicyConfig;
 //! use hitbox_tower::Cache;
 //! use hitbox_moka::MokaBackend;
+//! use hitbox_http::extractors::Method;
+//! use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 //! use tower::{ServiceBuilder, service_fn};
 //!
-//! # use std::convert::Infallible;
-//! # use bytes::Bytes;
-//! # use http_body_util::Full;
-//! // Create in-memory cache with 1000 entry capacity
+//! // 1. Create backend
 //! let backend = MokaBackend::builder().max_entries(1000).build();
 //!
-//! // Build the cache layer with defaults
-//! let cache_layer = Cache::builder()
-//!     .backend(backend)
-//!     .build();
-//!
-//! // Apply to a Tower service
-//! let service = ServiceBuilder::new()
-//!     .layer(cache_layer)
-//!     .service(service_fn(|_req: http::Request<Full<Bytes>>| async {
-//!         Ok::<_, Infallible>(http::Response::new(Full::new(Bytes::from("Hello"))))
-//!     }));
-//! ```
-//!
-//! ## Custom Configuration
-//!
-//! For production use, configure predicates, extractors, and TTL:
-//!
-//! ```
-//! use std::time::Duration;
-//! use hitbox_tower::Cache;
-//! use hitbox_moka::MokaBackend;
-//! use hitbox_configuration::Endpoint;
-//! use hitbox::policy::PolicyConfig;
-//! use hitbox_http::{
-//!     extractors::{Method as MethodExtractor, path::PathExtractor},
-//!     predicates::request::Method,
-//! };
-//!
-//! # use bytes::Bytes;
-//! # use http_body_util::Empty;
-//! // 1. Create backend
-//! let backend = MokaBackend::builder().max_entries(10_000).build();
-//!
 //! // 2. Configure caching behavior
-//! let config = Endpoint::builder()
-//!     // Only cache GET requests
-//!     .request_predicate(Method::new(http::Method::GET).unwrap())
-//!     // Build cache key from method and path
-//!     .extractor(MethodExtractor::new().path("/{path}*"))
-//!     // Cache for 5 minutes
-//!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(300)).build())
+//! let config = Config::builder()
+//!     .request_predicate(NeutralRequestPredicate::new())
+//!     .response_predicate(NeutralResponsePredicate::new())
+//!     .extractor(Method::new())
+//!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
 //!     .build();
-//! # let _: Endpoint<Empty<Bytes>, Empty<Bytes>> = config;
 //!
 //! // 3. Build the cache layer
 //! let cache_layer = Cache::builder()
@@ -104,12 +65,10 @@
 //!     .build();
 //!
 //! // 4. Apply to a Tower service
-//! # use std::convert::Infallible;
-//! use tower::{ServiceBuilder, service_fn};
 //! let service = ServiceBuilder::new()
 //!     .layer(cache_layer)
-//!     .service(service_fn(|_req: http::Request<Empty<Bytes>>| async {
-//!         Ok::<_, Infallible>(http::Response::new(Empty::<Bytes>::new()))
+//!     .service(service_fn(|_req| async {
+//!         Ok::<_, std::convert::Infallible>(http::Response::new("Hello"))
 //!     }));
 //! ```
 //!
@@ -124,18 +83,7 @@
 //! | `STALE` | Stale cache entry served (background refresh may occur) |
 //!
 //! The default header name is `x-cache-status`. Customize it with
-//! [`CacheBuilder::cache_status_header`]:
-//!
-//! ```
-//! use hitbox_tower::Cache;
-//! use hitbox_moka::MokaBackend;
-//! use http::header::HeaderName;
-//!
-//! let cache_layer = Cache::builder()
-//!     .backend(MokaBackend::builder().max_entries(1000).build())
-//!     .cache_status_header(HeaderName::from_static("x-custom-cache"))
-//!     .build();
-//! ```
+//! [`CacheBuilder::cache_status_header`].
 //!
 //! # Main Types
 //!
@@ -145,8 +93,6 @@
 //! | [`CacheBuilder`] | Fluent builder for configuring the cache layer |
 //! | [`service::CacheService`] | The Tower `Service` that performs caching |
 //! | [`TowerUpstream`] | Adapter bridging Tower services to Hitbox's upstream interface |
-//! | [`HttpEndpoint`] | Default configuration (caches everything) |
-//! | [`Endpoint`] | Custom configuration with predicates and extractors |
 //!
 //! # Re-exports
 //!
@@ -154,8 +100,7 @@
 //!
 //! - [`http::Method`], [`http::StatusCode`] — HTTP types for predicates
 //! - [`CacheConfig`] — Trait for cache configuration
-//! - [`Endpoint`], [`ConfigEndpoint`] — Configuration types from `hitbox-configuration`
-//! - [`HttpEndpoint`] — Default HTTP configuration from `hitbox-http`
+//! - [`Config`] — Generic cache configuration struct
 //!
 //! For predicates and extractors, import from [`hitbox_http`]:
 //!
@@ -205,7 +150,7 @@ pub mod upstream;
 
 pub use ::http::{Method, StatusCode};
 pub use hitbox::config::CacheConfig;
-pub use hitbox_configuration::{ConfigEndpoint, Endpoint};
-pub use hitbox_http::{DEFAULT_CACHE_STATUS_HEADER, HttpEndpoint};
-pub use layer::{Cache, CacheBuilder};
+pub use hitbox::{Config, ConfigBuilder};
+pub use hitbox_http::DEFAULT_CACHE_STATUS_HEADER;
+pub use layer::{Cache, CacheBuilder, NotSet};
 pub use upstream::TowerUpstream;

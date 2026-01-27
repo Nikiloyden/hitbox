@@ -145,7 +145,6 @@
 //! - [`CacheableHttpRequest`]: Wraps an HTTP request for cache evaluation.
 //! - [`CacheableHttpResponse`]: Wraps an HTTP response for cache storage.
 //! - [`SerializableHttpResponse`]: Serialized form of a response for cache backends.
-//! - [`HttpEndpoint`]: Default configuration for HTTP caching.
 //!
 //! # Feature Flags
 //!
@@ -160,7 +159,6 @@
 pub mod body;
 mod cache_status;
 mod cacheable;
-mod config;
 pub mod extractors;
 pub mod predicates;
 pub mod query;
@@ -170,6 +168,5 @@ mod response;
 pub use body::{BufferedBody, CollectExactResult, PartialBufferedBody, Remaining};
 pub use cache_status::DEFAULT_CACHE_STATUS_HEADER;
 pub use cacheable::CacheableSubject;
-pub use config::HttpEndpoint;
 pub use request::CacheableHttpRequest;
 pub use response::{CacheableHttpResponse, SerializableHttpResponse};

@@ -40,12 +40,15 @@
 use std::time::Duration;
 
 use axum::{Router, routing::get};
+use hitbox::Config;
 use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox::policy::PolicyConfig;
-use hitbox_configuration::Endpoint;
 use hitbox_http::{
     extractors::{Method as MethodExtractor, path::PathExtractor},
-    predicates::request::{Method as RequestMethod, PathPredicate},
+    predicates::{
+        NeutralResponsePredicate,
+        request::{Method as RequestMethod, PathPredicate},
+    },
 };
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
@@ -182,12 +185,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Request predicate: GET method + path "/"
     // Extractor: method + path "/"
     // Policy: TTL 60s, stale 30s
-    let root_config = Endpoint::builder()
+    let root_config = Config::builder()
         .request_predicate(
             RequestMethod::new(http::Method::GET)
                 .unwrap()
                 .path("/".to_string()),
         )
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new().path("/"))
         .policy(
             PolicyConfig::builder()
@@ -201,12 +205,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Request predicate: GET method + path "/greet/{name}"
     // Extractor: method + path "/greet/{name}"
     // Policy: TTL 10s, stale 5s
-    let greet_config = Endpoint::builder()
+    let greet_config = Config::builder()
         .request_predicate(
             RequestMethod::new(http::Method::GET)
                 .unwrap()
                 .path("/greet/{name}".to_string()),
         )
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new().path("/greet/{name}"))
         .policy(
             PolicyConfig::builder()
@@ -219,13 +224,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Health check - caching disabled
     // Request predicate: GET method + path "/health"
     // Policy: Disabled
-    let health_config = Endpoint::builder()
+    let health_config = Config::builder()
         .request_predicate(
-            //request_predicate().method(GET).path("/health").query(Query::new().eq("cache", "true"))
             RequestMethod::new(http::Method::GET)
                 .unwrap()
                 .path("/health".to_string()),
         )
+        .response_predicate(NeutralResponsePredicate::new())
+        .extractor(MethodExtractor::new().path("/health"))
         .policy(PolicyConfig::disabled())
         .build();
 

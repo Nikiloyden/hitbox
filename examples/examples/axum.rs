@@ -36,9 +36,9 @@ use axum::{
     routing::get,
 };
 
+use hitbox::Config;
 use hitbox::policy::PolicyConfig;
 use hitbox::predicate::PredicateExt;
-use hitbox_configuration::Endpoint;
 use hitbox_http::{
     extractors::{
         Method as MethodExtractor, path::PathExtractor,
@@ -208,7 +208,7 @@ async fn main() {
 
     // Cache config for task list endpoint
     // Cache key includes: pagination params
-    let list_config = Endpoint::builder()
+    let list_config = Config::builder()
         .request_predicate(
             // Skip cache if Cache-Control: no-cache (RFC 9111)
             RequestHeader::new(HeaderOperation::Contains(
@@ -236,7 +236,7 @@ async fn main() {
 
     // Cache config for task details endpoint
     // Cache key includes: task_id from path
-    let details_config = Endpoint::builder()
+    let details_config = Config::builder()
         .request_predicate(
             // Skip cache if Cache-Control: no-cache (RFC 9111)
             RequestHeader::new(HeaderOperation::Contains(

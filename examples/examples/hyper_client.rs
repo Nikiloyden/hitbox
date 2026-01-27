@@ -23,9 +23,10 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use tower::{Service, ServiceBuilder, ServiceExt as _};
 
+use hitbox::Config;
 use hitbox::policy::PolicyConfig;
-use hitbox_configuration::Endpoint;
 use hitbox_http::extractors::Method as MethodExtractor;
+use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
 
@@ -42,7 +43,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let backend = MokaBackend::builder().max_entries(100).build();
 
     // Configure caching: cache all requests, 60 second TTL
-    let config = Endpoint::builder()
+    // Request body: Full<Bytes> (what we send)
+    // Response body: Incoming (what hyper client receives)
+    let config = Config::builder()
+        .request_predicate(NeutralRequestPredicate::new())
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new())
         .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
         .build();

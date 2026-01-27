@@ -5,12 +5,25 @@
 //!
 //! # Examples
 //!
-//! ```
+//! ```ignore
+//! use std::time::Duration;
+//! use hitbox::Config;
+//! use hitbox::policy::PolicyConfig;
 //! use hitbox_tower::Cache;
 //! use hitbox_moka::MokaBackend;
+//! use hitbox_http::extractors::Method;
+//! use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
+//!
+//! let config = Config::builder()
+//!     .request_predicate(NeutralRequestPredicate::new())
+//!     .response_predicate(NeutralResponsePredicate::new())
+//!     .extractor(Method::new())
+//!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
+//!     .build();
 //!
 //! let cache_layer = Cache::builder()
 //!     .backend(MokaBackend::builder().max_entries(1000).build())
+//!     .config(config)
 //!     .build();
 //! ```
 //!
@@ -21,12 +34,14 @@ use std::sync::Arc;
 use hitbox::backend::CacheBackend;
 use hitbox::concurrency::NoopConcurrencyManager;
 use hitbox_core::DisabledOffload;
-use hitbox_http::{DEFAULT_CACHE_STATUS_HEADER, HttpEndpoint};
-use hitbox_moka::MokaBackend;
+use hitbox_http::DEFAULT_CACHE_STATUS_HEADER;
 use http::header::HeaderName;
 use tower::Layer;
 
 use crate::service::CacheService;
+
+/// Marker type for unset builder fields.
+pub struct NotSet;
 
 /// Tower [`Layer`] that adds HTTP caching to a service.
 ///
@@ -40,7 +55,7 @@ use crate::service::CacheService;
 /// * `B` - Cache backend (e.g., [`MokaBackend`], `RedisBackend`). Must implement
 ///   [`CacheBackend`].
 /// * `C` - Configuration providing predicates, extractors, and policy. Use
-///   [`HttpEndpoint`] for defaults or [`Endpoint`] for custom configuration.
+///   [`hitbox::Config`] to build custom configuration.
 /// * `CM` - Concurrency manager for dogpile prevention. Use [`NoopConcurrencyManager`]
 ///   to disable or [`BroadcastConcurrencyManager`] to enable.
 /// * `O` - Offload strategy for background revalidation. Use [`DisabledOffload`]
@@ -50,20 +65,26 @@ use crate::service::CacheService;
 ///
 /// Create with the builder pattern:
 ///
-/// ```
+/// ```ignore
 /// use hitbox_tower::Cache;
 /// use hitbox_moka::MokaBackend;
+/// use hitbox::Config;
+///
+/// let config = Config::builder()
+///     .request_predicate(...)
+///     .response_predicate(...)
+///     .extractor(...)
+///     .build();
 ///
 /// let cache_layer = Cache::builder()
 ///     .backend(MokaBackend::builder().max_entries(1000).build())
+///     .config(config)
 ///     .build();
 /// ```
 ///
 /// [`Layer`]: tower::Layer
 /// [`MokaBackend`]: hitbox_moka::MokaBackend
 /// [`CacheBackend`]: hitbox::backend::CacheBackend
-/// [`HttpEndpoint`]: hitbox_http::HttpEndpoint
-/// [`Endpoint`]: hitbox_configuration::Endpoint
 /// [`NoopConcurrencyManager`]: hitbox::concurrency::NoopConcurrencyManager
 /// [`BroadcastConcurrencyManager`]: hitbox::concurrency::BroadcastConcurrencyManager
 /// [`DisabledOffload`]: hitbox_core::DisabledOffload
@@ -101,36 +122,39 @@ where
     }
 }
 
-impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
-    /// Creates a new [`CacheBuilder`] with default configuration.
+impl Cache<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
+    /// Creates a new [`CacheBuilder`].
     ///
-    /// The builder starts with:
-    /// - No backend (must be set before calling [`build()`](CacheBuilder::build))
-    /// - [`HttpEndpoint`] configuration (caches all requests)
-    /// - [`NoopConcurrencyManager`] (no dogpile prevention)
-    /// - [`DisabledOffload`] (synchronous revalidation)
-    /// - `x-cache-status` header name
+    /// Both [`backend()`](CacheBuilder::backend) and [`config()`](CacheBuilder::config)
+    /// must be called before [`build()`](CacheBuilder::build).
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
+    /// use hitbox::Config;
+    ///
+    /// let config = Config::builder()
+    ///     .request_predicate(...)
+    ///     .response_predicate(...)
+    ///     .extractor(...)
+    ///     .build();
     ///
     /// let cache_layer = Cache::builder()
     ///     .backend(MokaBackend::builder().max_entries(1000).build())
+    ///     .config(config)
     ///     .build();
     /// ```
-    pub fn builder()
-    -> CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
+    pub fn builder() -> CacheBuilder<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
         CacheBuilder::new()
     }
 }
 
 /// Fluent builder for constructing a [`Cache`] layer.
 ///
-/// Use [`Cache::builder()`] to create a new builder. The only required method
-/// is [`backend()`](Self::backend) — all other settings have sensible defaults.
+/// Use [`Cache::builder()`] to create a new builder. Both [`backend()`](Self::backend)
+/// and [`config()`](Self::config) must be called before [`build()`](Self::build).
 ///
 /// # Type Parameters
 ///
@@ -143,39 +167,22 @@ impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
 ///
 /// # Examples
 ///
-/// Minimal configuration:
-///
-/// ```
-/// use hitbox_tower::Cache;
-/// use hitbox_moka::MokaBackend;
-///
-/// let layer = Cache::builder()
-///     .backend(MokaBackend::builder().max_entries(1000).build())
-///     .build();
-/// ```
-///
-/// Full configuration:
-///
-/// ```
+/// ```ignore
 /// use std::time::Duration;
 /// use hitbox_tower::Cache;
 /// use hitbox_moka::MokaBackend;
-/// use hitbox_configuration::Endpoint;
+/// use hitbox::Config;
 /// use hitbox::policy::PolicyConfig;
-/// use hitbox_http::{
-///     extractors::{Method as MethodExtractor, path::PathExtractor},
-///     predicates::request::Method,
-/// };
+/// use hitbox_http::extractors::Method;
+/// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 /// use http::header::HeaderName;
 ///
-/// # use bytes::Bytes;
-/// # use http_body_util::Empty;
-/// let config = Endpoint::builder()
-///     .request_predicate(Method::new(http::Method::GET).unwrap())
-///     .extractor(MethodExtractor::new().path("/{path}*"))
+/// let config = Config::builder()
+///     .request_predicate(NeutralRequestPredicate::new())
+///     .response_predicate(NeutralResponsePredicate::new())
+///     .extractor(Method::new())
 ///     .policy(PolicyConfig::builder().ttl(Duration::from_secs(300)).build())
 ///     .build();
-/// # let _: Endpoint<Empty<Bytes>, Empty<Bytes>> = config;
 ///
 /// let layer = Cache::builder()
 ///     .backend(MokaBackend::builder().max_entries(10_000).build())
@@ -183,26 +190,22 @@ impl Cache<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
 ///     .cache_status_header(HeaderName::from_static("x-custom-cache"))
 ///     .build();
 /// ```
-///
-/// # Panics
-///
-/// [`build()`](Self::build) panics if no backend was set.
 pub struct CacheBuilder<B, C, CM, O = DisabledOffload> {
-    backend: Option<B>,
+    backend: B,
     configuration: C,
     offload: O,
     concurrency_manager: CM,
     cache_status_header: Option<HeaderName>,
 }
 
-impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
-    /// Creates a new builder with default settings.
+impl CacheBuilder<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
+    /// Creates a new builder.
     ///
     /// Prefer using [`Cache::builder()`] instead of calling this directly.
     pub fn new() -> Self {
         Self {
-            backend: None,
-            configuration: HttpEndpoint::default(),
+            backend: NotSet,
+            configuration: NotSet,
             offload: DisabledOffload,
             concurrency_manager: NoopConcurrencyManager,
             cache_status_header: None,
@@ -210,36 +213,32 @@ impl CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOff
     }
 }
 
-impl Default for CacheBuilder<MokaBackend, HttpEndpoint, NoopConcurrencyManager, DisabledOffload> {
+impl Default for CacheBuilder<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<B, C, CM, O> CacheBuilder<B, C, CM, O>
-where
-    B: CacheBackend,
-{
+impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     /// Sets the cache backend for storing responses.
     ///
-    /// This is the only required builder method. Common backends:
+    /// Common backends:
     ///
     /// - [`MokaBackend`] — In-memory cache
     /// - `RedisBackend` — Distributed cache via Redis
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
     ///
-    /// let layer = Cache::builder()
-    ///     .backend(MokaBackend::builder().max_entries(1000).build())
-    ///     .build();
+    /// let builder = Cache::builder()
+    ///     .backend(MokaBackend::builder().max_entries(1000).build());
     /// ```
     pub fn backend<NB: CacheBackend>(self, backend: NB) -> CacheBuilder<NB, C, CM, O> {
         CacheBuilder {
-            backend: Some(backend),
+            backend,
             configuration: self.configuration,
             offload: self.offload,
             concurrency_manager: self.concurrency_manager,
@@ -249,40 +248,35 @@ where
 
     /// Sets the cache configuration with predicates, extractors, and policy.
     ///
-    /// Use [`Endpoint::builder()`] to create a custom configuration with:
+    /// Use [`Config::builder()`](hitbox::Config::builder) to create a configuration with:
     /// - Request predicates (which requests to cache)
     /// - Response predicates (which responses to cache)
     /// - Extractors (how to generate cache keys)
     /// - Policy (TTL, stale handling)
     ///
-    /// Defaults to [`HttpEndpoint`] which caches all requests with a 5-second TTL.
-    ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use std::time::Duration;
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
-    /// use hitbox_configuration::Endpoint;
+    /// use hitbox::Config;
     /// use hitbox::policy::PolicyConfig;
-    /// use hitbox_http::predicates::request::Method;
+    /// use hitbox_http::extractors::Method;
+    /// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
     ///
-    /// # use bytes::Bytes;
-    /// # use http_body_util::Empty;
-    /// let config = Endpoint::builder()
-    ///     .request_predicate(Method::new(http::Method::GET).unwrap())
+    /// let config = Config::builder()
+    ///     .request_predicate(NeutralRequestPredicate::new())
+    ///     .response_predicate(NeutralResponsePredicate::new())
+    ///     .extractor(Method::new())
     ///     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
     ///     .build();
-    /// # let _: Endpoint<Empty<Bytes>, Empty<Bytes>> = config;
     ///
     /// let layer = Cache::builder()
     ///     .backend(MokaBackend::builder().max_entries(1000).build())
     ///     .config(config)
     ///     .build();
     /// ```
-    ///
-    /// [`Endpoint::builder()`]: hitbox_configuration::Endpoint::builder
-    /// [`HttpEndpoint`]: hitbox_http::HttpEndpoint
     pub fn config<NC>(self, configuration: NC) -> CacheBuilder<B, NC, CM, O> {
         CacheBuilder {
             backend: self.backend,
@@ -342,34 +336,34 @@ where
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
     /// use http::header::HeaderName;
     ///
-    /// let layer = Cache::builder()
+    /// let builder = Cache::builder()
     ///     .backend(MokaBackend::builder().max_entries(1000).build())
-    ///     .cache_status_header(HeaderName::from_static("x-custom-cache"))
-    ///     .build();
+    ///     .cache_status_header(HeaderName::from_static("x-custom-cache"));
     /// ```
     pub fn cache_status_header(self, header_name: HeaderName) -> Self {
         CacheBuilder {
-            backend: self.backend,
-            configuration: self.configuration,
-            offload: self.offload,
-            concurrency_manager: self.concurrency_manager,
             cache_status_header: Some(header_name),
+            ..self
         }
     }
+}
 
+impl<B, C, CM, O> CacheBuilder<B, C, CM, O>
+where
+    B: CacheBackend,
+{
     /// Builds the [`Cache`] layer.
     ///
-    /// # Panics
-    ///
-    /// Panics if [`backend()`](Self::backend) was not called.
+    /// Both [`backend()`](Self::backend) and [`config()`](Self::config) must
+    /// be called before this method.
     pub fn build(self) -> Cache<B, C, CM, O> {
         Cache {
-            backend: Arc::new(self.backend.expect("Please add a cache backend")),
+            backend: Arc::new(self.backend),
             configuration: self.configuration,
             offload: self.offload,
             concurrency_manager: self.concurrency_manager,
