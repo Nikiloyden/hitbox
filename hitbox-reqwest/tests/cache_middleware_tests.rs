@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use hitbox::policy::PolicyConfig;
 use hitbox::{Config, Neutral};
-use hitbox_http::extractors::path::PathExtractor;
 use hitbox_http::extractors::Method as MethodExtractor;
+use hitbox_http::extractors::path::PathExtractor;
 use hitbox_http::predicates::request::Method as MethodPredicate;
 use hitbox_moka::MokaBackend;
 use hitbox_reqwest::{CacheMiddleware, NoopConcurrencyManager};
