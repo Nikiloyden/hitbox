@@ -37,7 +37,7 @@
 //!
 //! # Quick Start
 //!
-//! ```ignore
+//! ```
 //! use std::time::Duration;
 //! use hitbox::Config;
 //! use hitbox::policy::PolicyConfig;
@@ -46,6 +46,8 @@
 //! use hitbox_http::extractors::Method;
 //! use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 //! use tower::{ServiceBuilder, service_fn};
+//! # use http_body_util::Full;
+//! # type Body = Full<bytes::Bytes>;
 //!
 //! // 1. Create backend
 //! let backend = MokaBackend::builder().max_entries(1000).build();
@@ -57,6 +59,11 @@
 //!     .extractor(Method::new())
 //!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
 //!     .build();
+//! # let _: Config<
+//! #     NeutralRequestPredicate<Body>,
+//! #     NeutralResponsePredicate<Body>,
+//! #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+//! # > = config;
 //!
 //! // 3. Build the cache layer
 //! let cache_layer = Cache::builder()
@@ -67,8 +74,8 @@
 //! // 4. Apply to a Tower service
 //! let service = ServiceBuilder::new()
 //!     .layer(cache_layer)
-//!     .service(service_fn(|_req| async {
-//!         Ok::<_, std::convert::Infallible>(http::Response::new("Hello"))
+//!     .service(service_fn(|_req: http::Request<Body>| async {
+//!         Ok::<_, std::convert::Infallible>(http::Response::new(Body::new("Hello".into())))
 //!     }));
 //! ```
 //!

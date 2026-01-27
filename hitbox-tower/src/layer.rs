@@ -5,7 +5,7 @@
 //!
 //! # Examples
 //!
-//! ```ignore
+//! ```
 //! use std::time::Duration;
 //! use hitbox::Config;
 //! use hitbox::policy::PolicyConfig;
@@ -14,12 +14,19 @@
 //! use hitbox_http::extractors::Method;
 //! use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 //!
+//! # use http_body_util::Full;
+//! # type Body = Full<bytes::Bytes>;
 //! let config = Config::builder()
 //!     .request_predicate(NeutralRequestPredicate::new())
 //!     .response_predicate(NeutralResponsePredicate::new())
 //!     .extractor(Method::new())
 //!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
 //!     .build();
+//! # let _: Config<
+//! #     hitbox_http::predicates::NeutralRequestPredicate<Body>,
+//! #     hitbox_http::predicates::NeutralResponsePredicate<Body>,
+//! #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+//! # > = config;
 //!
 //! let cache_layer = Cache::builder()
 //!     .backend(MokaBackend::builder().max_entries(1000).build())
@@ -65,16 +72,25 @@ pub struct NotSet;
 ///
 /// Create with the builder pattern:
 ///
-/// ```ignore
+/// ```
 /// use hitbox_tower::Cache;
 /// use hitbox_moka::MokaBackend;
 /// use hitbox::Config;
+/// use hitbox_http::extractors::Method;
+/// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
+/// # use http_body_util::Full;
+/// # type Body = Full<bytes::Bytes>;
 ///
 /// let config = Config::builder()
-///     .request_predicate(...)
-///     .response_predicate(...)
-///     .extractor(...)
+///     .request_predicate(NeutralRequestPredicate::new())
+///     .response_predicate(NeutralResponsePredicate::new())
+///     .extractor(Method::new())
 ///     .build();
+/// # let _: Config<
+/// #     NeutralRequestPredicate<Body>,
+/// #     NeutralResponsePredicate<Body>,
+/// #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+/// # > = config;
 ///
 /// let cache_layer = Cache::builder()
 ///     .backend(MokaBackend::builder().max_entries(1000).build())
@@ -130,16 +146,25 @@ impl Cache<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
     /// use hitbox::Config;
+    /// use hitbox_http::extractors::Method;
+    /// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
+    /// # use http_body_util::Full;
+    /// # type Body = Full<bytes::Bytes>;
     ///
     /// let config = Config::builder()
-    ///     .request_predicate(...)
-    ///     .response_predicate(...)
-    ///     .extractor(...)
+    ///     .request_predicate(NeutralRequestPredicate::new())
+    ///     .response_predicate(NeutralResponsePredicate::new())
+    ///     .extractor(Method::new())
     ///     .build();
+    /// # let _: Config<
+    /// #     NeutralRequestPredicate<Body>,
+    /// #     NeutralResponsePredicate<Body>,
+    /// #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+    /// # > = config;
     ///
     /// let cache_layer = Cache::builder()
     ///     .backend(MokaBackend::builder().max_entries(1000).build())
@@ -167,7 +192,7 @@ impl Cache<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```
 /// use std::time::Duration;
 /// use hitbox_tower::Cache;
 /// use hitbox_moka::MokaBackend;
@@ -176,6 +201,8 @@ impl Cache<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
 /// use hitbox_http::extractors::Method;
 /// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 /// use http::header::HeaderName;
+/// # use http_body_util::Full;
+/// # type Body = Full<bytes::Bytes>;
 ///
 /// let config = Config::builder()
 ///     .request_predicate(NeutralRequestPredicate::new())
@@ -183,6 +210,11 @@ impl Cache<NotSet, NotSet, NoopConcurrencyManager, DisabledOffload> {
 ///     .extractor(Method::new())
 ///     .policy(PolicyConfig::builder().ttl(Duration::from_secs(300)).build())
 ///     .build();
+/// # let _: Config<
+/// #     NeutralRequestPredicate<Body>,
+/// #     NeutralResponsePredicate<Body>,
+/// #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+/// # > = config;
 ///
 /// let layer = Cache::builder()
 ///     .backend(MokaBackend::builder().max_entries(10_000).build())
@@ -229,7 +261,7 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
     ///
@@ -256,7 +288,7 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use std::time::Duration;
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
@@ -264,6 +296,8 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     /// use hitbox::policy::PolicyConfig;
     /// use hitbox_http::extractors::Method;
     /// use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
+    /// # use http_body_util::Full;
+    /// # type Body = Full<bytes::Bytes>;
     ///
     /// let config = Config::builder()
     ///     .request_predicate(NeutralRequestPredicate::new())
@@ -271,6 +305,11 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     ///     .extractor(Method::new())
     ///     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
     ///     .build();
+    /// # let _: Config<
+    /// #     NeutralRequestPredicate<Body>,
+    /// #     NeutralResponsePredicate<Body>,
+    /// #     Method<hitbox_http::extractors::NeutralExtractor<Body>>,
+    /// # > = config;
     ///
     /// let layer = Cache::builder()
     ///     .backend(MokaBackend::builder().max_entries(1000).build())
@@ -336,7 +375,7 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use hitbox_tower::Cache;
     /// use hitbox_moka::MokaBackend;
     /// use http::header::HeaderName;
