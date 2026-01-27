@@ -33,7 +33,7 @@ cluster = ["redis/cluster-async"]
 
 [dev-dependencies]
 # chrono = { workspace = true }
-hitbox-moka = { path = "../hitbox-moka", version = "0.1" }
+hitbox-moka = { path = "../hitbox-moka", version = "0.2" }
 tokio = { workspace = true, features = [
     "time",
     "macros",

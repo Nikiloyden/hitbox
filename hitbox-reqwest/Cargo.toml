@@ -32,7 +32,7 @@ hitbox-backend = { path = "../hitbox-backend", version = "0.2" }
 hitbox-http = { path = "../hitbox-http", version = "0.1" }
 
 # Optional dependencies for documentation links
-hitbox-moka = { path = "../hitbox-moka", version = "0.1", optional = true }
+hitbox-moka = { path = "../hitbox-moka", version = "0.2", optional = true }
 hitbox-redis = { path = "../hitbox-redis", version = "0.1", optional = true }
 hitbox-feoxdb = { path = "../hitbox-feoxdb", version = "0.1", optional = true }
 
@@ -46,7 +46,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-hitbox-moka = { path = "../hitbox-moka", version = "0.1" }
+hitbox-moka = { path = "../hitbox-moka", version = "0.2" }
 wiremock = "0.6"
 hitbox-configuration = { path = "../hitbox-configuration", version = "0.1" }
 serde_json = { workspace = true }
