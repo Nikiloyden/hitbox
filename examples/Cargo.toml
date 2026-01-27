@@ -26,7 +26,6 @@ hitbox-http = { path = "../hitbox-http" }
 hitbox-tower = { path = "../hitbox-tower" }
 hitbox-moka = { path = "../hitbox-moka" }
 hitbox-redis = { path = "../hitbox-redis" }
-hitbox-configuration = { path = "../hitbox-configuration" }
 hitbox-reqwest = { path = "../hitbox-reqwest" }
 hitbox-feoxdb = { path = "../hitbox-feoxdb" }
 

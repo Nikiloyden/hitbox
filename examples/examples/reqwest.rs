@@ -22,11 +22,11 @@
 
 use std::time::Duration;
 
+use hitbox::Config;
 use hitbox::policy::PolicyConfig;
-use hitbox_configuration::Endpoint;
 use hitbox_http::{
     extractors::{Method as MethodExtractor, path::PathExtractor},
-    predicates::request::Method as RequestMethod,
+    predicates::{NeutralResponsePredicate, request::Method as RequestMethod},
 };
 use hitbox_moka::MokaBackend;
 use hitbox_reqwest::CacheMiddleware;
@@ -47,8 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // - Only cache GET requests
     // - Cache key includes: method + path
     // - TTL: 60 seconds
-    let config = Endpoint::builder()
+    let config = Config::builder()
         .request_predicate(RequestMethod::new(http::Method::GET).unwrap())
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new().path("/{path}*"))
         .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
         .build();

@@ -13,7 +13,7 @@
 //! - **[Cache key extraction]** - Build cache keys from request components
 //! - **[Multiple backend support]** - Use [in-memory], [file storage], or [distributed] backends
 //! - **[Dogpile prevention]** - Optional concurrency control to prevent thundering herd
-//! - **Cache status headers** - Automatic `X-Cache-Status` header (HIT/MISS/STALE), configurable name
+//! - **Cache status headers** - Automatic `x-cache-status` header (HIT/MISS/STALE), configurable name
 //!
 //! [Request and response predicates]: hitbox_http::predicates
 //! [Cache key extraction]: hitbox_http::extractors
@@ -52,10 +52,10 @@
 //! use reqwest::Client;
 //! use reqwest_middleware::ClientBuilder;
 //! use hitbox_reqwest::CacheMiddleware;
-//! use hitbox_configuration::Endpoint;
+//! use hitbox::Config;
 //! use hitbox_http::{
 //!     extractors::{Method as MethodExtractor, path::PathExtractor},
-//!     predicates::request::Method,
+//!     predicates::{NeutralResponsePredicate, request::Method},
 //! };
 //! use hitbox::policy::PolicyConfig;
 //! use hitbox_moka::MokaBackend;
@@ -66,8 +66,9 @@
 //! let backend = MokaBackend::builder().max_entries(1000).build();
 //!
 //! // 2. Configure caching behavior
-//! let config = Endpoint::builder()
+//! let config = Config::builder()
 //!     .request_predicate(Method::new(http::Method::GET).unwrap())  // Only cache GET
+//!     .response_predicate(NeutralResponsePredicate::new())
 //!     .extractor(MethodExtractor::new().path("/{path}*"))          // Key from method+path
 //!     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
 //!     .build();
@@ -87,7 +88,7 @@
 //! let response = client.get("https://api.example.com/users").send().await?;
 //!
 //! // Check cache status via header
-//! let cache_status = response.headers().get("X-Cache-Status");
+//! let cache_status = response.headers().get("x-cache-status");
 //! // Returns "MISS" on first request, "HIT" on subsequent requests
 //! # Ok(())
 //! # }
@@ -95,7 +96,7 @@
 //!
 //! # Response Headers
 //!
-//! The middleware adds a cache status header to every response (default: `X-Cache-Status`):
+//! The middleware adds a cache status header to every response (default: `x-cache-status`):
 //!
 //! | Value   | Meaning |
 //! |---------|---------|
@@ -111,8 +112,8 @@
 //! This crate re-exports commonly used types for convenience:
 //!
 //! - From [`hitbox_http`]: [`CacheableHttpRequest`], [`CacheableHttpResponse`],
-//!   [`HttpEndpoint`], [`predicates`], [`extractors`]
-//! - From [`hitbox`]: [`CacheConfig`], [`PolicyConfig`], concurrency managers
+//!   [`predicates`], [`extractors`]
+//! - From [`hitbox`]: [`Config`], [`CacheConfig`], [`PolicyConfig`], concurrency managers
 //! - From [`hitbox_core`]: [`DisabledOffload`]
 //!
 //! # Caveats
@@ -132,13 +133,13 @@
 mod middleware;
 mod upstream;
 
-pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder};
+pub use middleware::{CacheMiddleware, CacheMiddlewareBuilder, NotSet};
 pub use upstream::ReqwestUpstream;
 
 // Re-export hitbox-http types for convenience
 pub use hitbox_http::{
     BufferedBody, CacheableHttpRequest, CacheableHttpResponse, DEFAULT_CACHE_STATUS_HEADER,
-    HttpEndpoint, SerializableHttpResponse, extractors, predicates,
+    SerializableHttpResponse, extractors, predicates,
 };
 
 /// Re-export reqwest body type for convenience in type annotations
@@ -147,6 +148,7 @@ pub use reqwest::Body as ReqwestBody;
 // Re-export common types
 pub use hitbox::config::CacheConfig;
 pub use hitbox::policy::PolicyConfig;
+pub use hitbox::{Config, ConfigBuilder};
 pub use hitbox_core::DisabledOffload;
 
 // Re-export concurrency types

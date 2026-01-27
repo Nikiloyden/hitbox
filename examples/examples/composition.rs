@@ -29,12 +29,13 @@
 use std::time::Duration;
 
 use axum::{Router, routing::get};
+use hitbox::Config;
 use hitbox::offload::OffloadManager;
 use hitbox::policy::PolicyConfig;
 use hitbox_backend::composition::{Compose, policy::RefillPolicy};
-use hitbox_configuration::Endpoint;
 use hitbox_feoxdb::FeOxDbBackend;
 use hitbox_http::extractors::{Method as MethodExtractor, path::PathExtractor};
+use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 use hitbox_moka::MokaBackend;
 use hitbox_redis::{ConnectionMode, RedisBackend};
 use hitbox_tower::Cache;
@@ -84,7 +85,9 @@ async fn main() {
         .label("cache")
         .refill(RefillPolicy::Always);
 
-    let config = Endpoint::builder()
+    let config = Config::builder()
+        .request_predicate(NeutralRequestPredicate::new())
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new().path("/"))
         .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
         .build();

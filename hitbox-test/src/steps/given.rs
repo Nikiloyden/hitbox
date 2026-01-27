@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::core::{HitboxWorld, StepExt};
+use crate::core::{BoxExtractor, HitboxWorld, StepExt};
 use crate::handler_state::HandlerName;
 use hitbox::offload::OffloadManager;
-use hitbox_configuration::{Request, RequestExtractor, Response, extractors::Extractor};
+use hitbox_configuration::{Request, Response, extractors::Extractor};
 use hitbox_http::extractors::NeutralExtractor;
 
 use anyhow::{Error, anyhow};
@@ -33,7 +33,7 @@ async fn request_predicates(world: &mut HitboxWorld, step: &Step) -> Result<(), 
     )?;
     let predicates = config.into_predicates()?;
 
-    world.config.request_predicates = Arc::new(predicates);
+    world.config.request_predicate = Arc::new(predicates);
     Ok(())
 }
 
@@ -45,7 +45,7 @@ async fn response_predicates(world: &mut HitboxWorld, step: &Step) -> Result<(),
             .as_str(),
     )?;
     let predicates = config.into_predicates()?;
-    world.config.response_predicates = Arc::new(predicates);
+    world.config.response_predicate = Arc::new(predicates);
     Ok(())
 }
 
@@ -59,10 +59,10 @@ async fn key_extractors(world: &mut HitboxWorld, step: &Step) -> Result<(), Erro
             .as_str(),
     )?;
     let extractors = config.0.into_iter().rev().try_rfold(
-        Box::new(NeutralExtractor::<axum::body::Body>::new()) as RequestExtractor<_>,
+        Box::new(NeutralExtractor::<axum::body::Body>::new()) as BoxExtractor,
         |inner, item| item.into_extractors(inner),
     )?;
-    world.config.extractors = Arc::new(extractors);
+    world.config.extractor = Arc::new(extractors);
     Ok(())
 }
 

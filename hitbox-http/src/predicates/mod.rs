@@ -69,14 +69,14 @@ pub mod request;
 pub mod response;
 pub mod version;
 
-/// Internal type: a neutral predicate for HTTP requests that always returns `Cacheable`.
+/// A neutral predicate for HTTP requests that always returns `Cacheable`.
 ///
-/// Used internally by [`HttpEndpoint`](crate::HttpEndpoint). Users should start
-/// predicate chains with concrete types like [`request::Method`] or [`request::Header`].
+/// Use this when you want to cache all requests regardless of their properties,
+/// or as a starting point for predicate chains with `PredicateExt`.
 pub type NeutralRequestPredicate<ReqBody> = Neutral<CacheableHttpRequest<ReqBody>>;
 
-/// Internal type: a neutral predicate for HTTP responses that always returns `Cacheable`.
+/// A neutral predicate for HTTP responses that always returns `Cacheable`.
 ///
-/// Used internally by [`HttpEndpoint`](crate::HttpEndpoint). Users should start
-/// predicate chains with concrete types like [`response::StatusCode`] or [`response::Header`].
+/// Use this when you want to cache all responses regardless of their properties,
+/// or as a starting point for predicate chains with `PredicateExt`.
 pub type NeutralResponsePredicate<ResBody> = Neutral<CacheableHttpResponse<ResBody>>;

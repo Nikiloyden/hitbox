@@ -56,6 +56,7 @@ pub mod config;
 pub mod context;
 pub mod offload;
 
+pub use config::{CacheConfig, Config, ConfigBuilder, NotSet};
 pub use context::{BoxContext, CacheContext, CacheStatus, CacheStatusExt, Context, ResponseSource};
 pub mod policy;
 

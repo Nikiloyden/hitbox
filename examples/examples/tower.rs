@@ -29,11 +29,11 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use bytes::Bytes;
+use hitbox::Config;
 use hitbox::policy::PolicyConfig;
-use hitbox_configuration::Endpoint;
 use hitbox_http::{
     extractors::{Method as MethodExtractor, path::PathExtractor},
-    predicates::request::Method as RequestMethod,
+    predicates::{NeutralResponsePredicate, request::Method as RequestMethod},
 };
 use hitbox_moka::MokaBackend;
 use hitbox_tower::Cache;
@@ -118,8 +118,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // - Only cache GET requests
     // - Cache key includes: method + path
     // - TTL: 30 seconds
-    let cache_config = Endpoint::builder()
+    let cache_config = Config::builder()
         .request_predicate(RequestMethod::new(http::Method::GET).unwrap())
+        .response_predicate(NeutralResponsePredicate::new())
         .extractor(MethodExtractor::new().path("/{path}*"))
         .policy(PolicyConfig::builder().ttl(Duration::from_secs(30)).build())
         .build();

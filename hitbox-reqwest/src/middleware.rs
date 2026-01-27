@@ -17,7 +17,6 @@ use hitbox::fsm::CacheFuture;
 use hitbox_core::DisabledOffload;
 use hitbox_http::{
     BufferedBody, CacheableHttpRequest, CacheableHttpResponse, DEFAULT_CACHE_STATUS_HEADER,
-    HttpEndpoint,
 };
 use http::Extensions;
 use http::header::HeaderName;
@@ -25,6 +24,9 @@ use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next, Result};
 
 use crate::upstream::{ReqwestUpstream, buffered_body_to_reqwest};
+
+/// Marker type for unset builder fields.
+pub struct NotSet;
 
 /// Cache middleware for reqwest-middleware.
 ///
@@ -61,11 +63,15 @@ impl<B, C, CM> CacheMiddleware<B, C, CM> {
     }
 }
 
-impl CacheMiddleware<(), HttpEndpoint, NoopConcurrencyManager> {
+impl CacheMiddleware<NotSet, NotSet, NoopConcurrencyManager> {
     /// Creates a new builder for constructing cache middleware.
     ///
+    /// Both [`backend()`](CacheMiddlewareBuilder::backend) and
+    /// [`config()`](CacheMiddlewareBuilder::config) must be called
+    /// before [`build()`](CacheMiddlewareBuilder::build).
+    ///
     /// See the [crate-level documentation](crate) for usage examples.
-    pub fn builder() -> CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+    pub fn builder() -> CacheMiddlewareBuilder<NotSet, NotSet, NoopConcurrencyManager> {
         CacheMiddlewareBuilder::new()
     }
 }
@@ -171,26 +177,25 @@ where
 /// Builder for constructing [`CacheMiddleware`] with a fluent API.
 ///
 /// Obtained via [`CacheMiddleware::builder()`].
+/// Both [`backend()`](Self::backend) and [`config()`](Self::config)
+/// must be called before [`build()`](Self::build).
+///
 /// See the [crate-level documentation](crate) for usage examples.
 pub struct CacheMiddlewareBuilder<B, C, CM> {
-    backend: Option<Arc<B>>,
+    backend: B,
     configuration: C,
     concurrency_manager: CM,
     cache_status_header: Option<HeaderName>,
 }
 
 impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
-    /// Sets the cache backend (**required**).
-    ///
-    /// # Panics
-    ///
-    /// [`build()`](Self::build) will panic if backend is not set.
-    pub fn backend<NB>(self, backend: NB) -> CacheMiddlewareBuilder<NB, C, CM>
+    /// Sets the cache backend.
+    pub fn backend<NB>(self, backend: NB) -> CacheMiddlewareBuilder<Arc<NB>, C, CM>
     where
         NB: CacheBackend,
     {
         CacheMiddlewareBuilder {
-            backend: Some(Arc::new(backend)),
+            backend: Arc::new(backend),
             configuration: self.configuration,
             concurrency_manager: self.concurrency_manager,
             cache_status_header: self.cache_status_header,
@@ -199,7 +204,7 @@ impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
 
     /// Sets the cache configuration.
     ///
-    /// Defaults to [`HttpEndpoint::default()`](hitbox_http::HttpEndpoint::default) if not called.
+    /// Use [`Config::builder()`](hitbox::Config::builder) to create a configuration.
     pub fn config<NC>(self, configuration: NC) -> CacheMiddlewareBuilder<B, NC, CM> {
         CacheMiddlewareBuilder {
             backend: self.backend,
@@ -232,21 +237,23 @@ impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
     /// Defaults to `x-cache-status` if not set.
     pub fn cache_status_header(self, header_name: HeaderName) -> Self {
         CacheMiddlewareBuilder {
-            backend: self.backend,
-            configuration: self.configuration,
-            concurrency_manager: self.concurrency_manager,
             cache_status_header: Some(header_name),
+            ..self
         }
     }
+}
 
+impl<B, C, CM> CacheMiddlewareBuilder<Arc<B>, C, CM>
+where
+    B: CacheBackend,
+{
     /// Builds the cache middleware.
     ///
-    /// # Panics
-    ///
-    /// Panics if [`backend()`](Self::backend) was not called.
+    /// Both [`backend()`](Self::backend) and [`config()`](Self::config) must
+    /// be called before this method.
     pub fn build(self) -> CacheMiddleware<B, C, CM> {
         CacheMiddleware {
-            backend: self.backend.expect("backend is required"),
+            backend: self.backend,
             configuration: self.configuration,
             concurrency_manager: self.concurrency_manager,
             cache_status_header: self
@@ -256,19 +263,19 @@ impl<B, C, CM> CacheMiddlewareBuilder<B, C, CM> {
     }
 }
 
-impl CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+impl CacheMiddlewareBuilder<NotSet, NotSet, NoopConcurrencyManager> {
     /// Creates a new builder. Equivalent to [`CacheMiddleware::builder()`].
     pub fn new() -> Self {
         Self {
-            backend: None,
-            configuration: HttpEndpoint::default(),
+            backend: NotSet,
+            configuration: NotSet,
             concurrency_manager: NoopConcurrencyManager,
             cache_status_header: None,
         }
     }
 }
 
-impl Default for CacheMiddlewareBuilder<(), HttpEndpoint, NoopConcurrencyManager> {
+impl Default for CacheMiddlewareBuilder<NotSet, NotSet, NoopConcurrencyManager> {
     fn default() -> Self {
         Self::new()
     }

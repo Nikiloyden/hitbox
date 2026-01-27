@@ -1,17 +1,24 @@
 use crate::app::app;
 use crate::handler_state::HandlerState;
 use crate::mock_backend::MockBackend;
+use hitbox::Config;
 use hitbox::concurrency::BroadcastConcurrencyManager;
 use hitbox::offload::OffloadManager;
-use hitbox_configuration::Endpoint;
+use hitbox::policy::PolicyConfig;
+use hitbox_http::CacheableHttpRequest;
+use hitbox_http::CacheableHttpResponse;
+use hitbox_http::extractors::NeutralExtractor;
+use hitbox_http::predicates::{NeutralRequestPredicate, NeutralResponsePredicate};
 use hitbox_tower::Cache;
 use std::fmt::Debug;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Error;
 use axum_test::{TestResponse, TestServer};
 use cucumber::World;
 use cucumber::gherkin::Step;
+use hitbox::{Extractor, Predicate};
 use hurl::http::{Body, RequestSpec};
 
 #[derive(Debug, Default)]
@@ -20,9 +27,75 @@ pub struct State {
     pub responses: Vec<TestResponse>,
 }
 
+pub type BoxRequestPredicate =
+    Box<dyn Predicate<Subject = CacheableHttpRequest<axum::body::Body>> + Send + Sync>;
+pub type BoxResponsePredicate =
+    Box<dyn Predicate<Subject = CacheableHttpResponse<axum::body::Body>> + Send + Sync>;
+pub type BoxExtractor =
+    Box<dyn Extractor<Subject = CacheableHttpRequest<axum::body::Body>> + Send + Sync>;
+
+/// Holds cache configuration components that can be modified by test steps.
+pub struct TestConfig {
+    pub request_predicate: Arc<BoxRequestPredicate>,
+    pub response_predicate: Arc<BoxResponsePredicate>,
+    pub extractor: Arc<BoxExtractor>,
+    pub policy: PolicyConfig,
+}
+
+impl std::fmt::Debug for TestConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestConfig")
+            .field("request_predicate", &"...")
+            .field("response_predicate", &"...")
+            .field("extractor", &"...")
+            .field("policy", &self.policy)
+            .finish()
+    }
+}
+
+impl Clone for TestConfig {
+    fn clone(&self) -> Self {
+        Self {
+            request_predicate: Arc::clone(&self.request_predicate),
+            response_predicate: Arc::clone(&self.response_predicate),
+            extractor: Arc::clone(&self.extractor),
+            policy: self.policy.clone(),
+        }
+    }
+}
+
+impl Default for TestConfig {
+    fn default() -> Self {
+        let request_predicate: BoxRequestPredicate =
+            Box::new(NeutralRequestPredicate::<axum::body::Body>::new());
+        let response_predicate: BoxResponsePredicate =
+            Box::new(NeutralResponsePredicate::<axum::body::Body>::new());
+        let extractor: BoxExtractor = Box::new(NeutralExtractor::<axum::body::Body>::new());
+        Self {
+            request_predicate: Arc::new(request_predicate),
+            response_predicate: Arc::new(response_predicate),
+            extractor: Arc::new(extractor),
+            policy: PolicyConfig::default(),
+        }
+    }
+}
+
+impl TestConfig {
+    pub fn build(
+        &self,
+    ) -> Config<Arc<BoxRequestPredicate>, Arc<BoxResponsePredicate>, Arc<BoxExtractor>> {
+        Config::builder()
+            .request_predicate(Arc::clone(&self.request_predicate))
+            .response_predicate(Arc::clone(&self.response_predicate))
+            .extractor(Arc::clone(&self.extractor))
+            .policy(self.policy.clone())
+            .build()
+    }
+}
+
 #[derive(Debug, World)]
 pub struct HitboxWorld {
-    pub config: Endpoint<axum::body::Body, axum::body::Body>,
+    pub config: TestConfig,
     pub state: State,
     pub backend: MockBackend,
     #[world(default)]
@@ -46,11 +119,12 @@ impl HitboxWorld {
     pub async fn execute_request(&mut self, request_spec: &RequestSpec) -> Result<(), Error> {
         let concurrency_manager: BroadcastConcurrencyManager<_> =
             BroadcastConcurrencyManager::new();
+        let config = self.config.build();
 
         let server = if let Some(manager) = &self.offload_manager {
             let cache = Cache::builder()
                 .backend(self.backend.clone())
-                .config(self.config.clone())
+                .config(config)
                 .concurrency_manager(concurrency_manager)
                 .offload(manager.clone())
                 .build();
@@ -59,7 +133,7 @@ impl HitboxWorld {
         } else {
             let cache = Cache::builder()
                 .backend(self.backend.clone())
-                .config(self.config.clone())
+                .config(config)
                 .concurrency_manager(concurrency_manager)
                 .build();
             let router = app(self.handler_state.clone()).layer(cache);
