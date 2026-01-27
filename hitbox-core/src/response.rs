@@ -28,6 +28,8 @@
 
 use std::fmt::Debug;
 use std::future::Future;
+
+const POLL_AFTER_READY_ERROR: &str = "ResultIntoCachedFuture can't be polled after finishing";
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -199,9 +201,9 @@ where
                 CachePolicy::Cacheable(res) => CachePolicy::Cacheable(res),
                 CachePolicy::NonCacheable(res) => CachePolicy::NonCacheable(Ok(res)),
             }),
-            ResultIntoCachedProj::Err(e) => {
-                Poll::Ready(CachePolicy::NonCacheable(Err(e.take().unwrap())))
-            }
+            ResultIntoCachedProj::Err(e) => Poll::Ready(CachePolicy::NonCacheable(Err(e
+                .take()
+                .expect(POLL_AFTER_READY_ERROR)))),
         }
     }
 }

@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use hitbox::predicate::PredicateResult;
 use hyper::body::Body as HttpBody;
 
@@ -127,7 +125,6 @@ impl Operation {
     where
         B: HttpBody + Unpin,
         B::Data: Send,
-        B::Error: Debug,
     {
         match self {
             Operation::Limit { bytes } => {

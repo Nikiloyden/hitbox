@@ -6,6 +6,7 @@ license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+publish = false
 categories = [
     "caching",
     "asynchronous",

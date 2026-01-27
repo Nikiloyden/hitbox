@@ -9,7 +9,6 @@
 //!
 //! [`Upstream`]: hitbox_core::Upstream
 
-use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -56,7 +55,6 @@ impl<F, ResBody, E> Future for TowerUpstreamFuture<F, ResBody, E>
 where
     F: Future<Output = Result<Response<ResBody>, E>>,
     ResBody: HttpBody,
-    E: Debug,
 {
     type Output = Result<CacheableHttpResponse<ResBody>, E>;
 
@@ -118,7 +116,7 @@ where
         + Send
         + 'static,
     S::Future: Send,
-    S::Error: Debug + Send,
+    S::Error: Send,
     ReqBody: HttpBody + Send + 'static,
     ReqBody::Error: Send,
     ResBody: HttpBody + Send + 'static,

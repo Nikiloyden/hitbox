@@ -343,8 +343,7 @@ pub struct SerializableHttpResponse {
 impl<ResBody> CacheableResponse for CacheableHttpResponse<ResBody>
 where
     ResBody: HttpBody + Send + 'static,
-    // debug bounds
-    ResBody::Error: Debug + Send,
+    ResBody::Error: Send,
     ResBody::Data: Send,
 {
     type Cached = SerializableHttpResponse;

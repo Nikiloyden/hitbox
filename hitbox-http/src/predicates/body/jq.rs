@@ -137,7 +137,6 @@ impl JqOperation {
     where
         B: HttpBody + Unpin,
         B::Data: Send,
-        B::Error: Debug,
     {
         // Collect the full body to parse as JSON
         let body_bytes = match body.collect().await {

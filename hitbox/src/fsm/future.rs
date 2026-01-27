@@ -4,7 +4,6 @@
 //! with cache context indicating hit/miss/stale status and response source.
 
 use std::{
-    fmt::Debug,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -206,9 +205,6 @@ where
     E: Extractor<Subject = Req> + Send + Sync + 'static,
     C: ConcurrencyManager<Res> + 'static,
     O: Offload<'offload>,
-    // Debug bounds
-    Req: Debug,
-    Res::Cached: Debug,
 {
     type Output = (Res, CacheContext);
 

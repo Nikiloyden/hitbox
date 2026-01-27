@@ -3,8 +3,6 @@
 //! Provides [`PlainOperation`] for matching raw body bytes using equality,
 //! prefix/suffix checks, substring search, and regular expressions.
 
-use std::fmt::Debug;
-
 use bytes::{Buf, Bytes, BytesMut};
 use hitbox::predicate::PredicateResult;
 use http_body_util::BodyExt;
@@ -19,7 +17,6 @@ use crate::{BufferedBody, PartialBufferedBody, Remaining};
 async fn streaming_search<B>(body: BufferedBody<B>, pattern: &[u8]) -> (bool, BufferedBody<B>)
 where
     B: HttpBody + Unpin,
-    B::Error: Debug,
     B::Data: Send,
 {
     if pattern.is_empty() {
@@ -70,7 +67,6 @@ async fn streaming_search_body<B>(
 ) -> (bool, BufferedBody<B>)
 where
     B: HttpBody + Unpin,
-    B::Error: Debug,
     B::Data: Send,
 {
     let mut buffer = BytesMut::new();
@@ -196,7 +192,6 @@ impl PlainOperation {
     where
         B: HttpBody + Unpin,
         B::Data: Send,
-        B::Error: Debug,
     {
         match self {
             PlainOperation::Starts(prefix) => {

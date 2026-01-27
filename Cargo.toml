@@ -72,5 +72,3 @@ smallbox = "0.8"
 hurl = { git = "https://github.com/hit-box/hurl.git", branch = "master" }
 hurl_core = { git = "https://github.com/hit-box/hurl.git", branch = "master" }
 
-[patch.crates-io]
-moka = { git = "https://github.com/hit-box/moka.git", branch = "main" }

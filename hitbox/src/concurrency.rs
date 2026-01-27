@@ -162,7 +162,7 @@ where
 impl<Res> ConcurrencyManager<Res> for BroadcastConcurrencyManager<Res>
 where
     Res: CacheableResponse + Send + 'static,
-    Res::Cached: Send + Sync + Clone + Debug + 'static,
+    Res::Cached: Send + Sync + Clone + 'static,
 {
     fn check(
         &self,

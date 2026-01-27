@@ -8,7 +8,6 @@
 //!
 //! [`CacheService::call`]: crate::service::CacheService
 
-use std::fmt::Debug;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -67,7 +66,6 @@ impl<F, ResBody, E> Future for CacheServiceFuture<F, ResBody, E>
 where
     F: Future<Output = (Result<CacheableHttpResponse<ResBody>, E>, CacheContext)>,
     ResBody: hyper::body::Body,
-    E: Debug,
 {
     type Output = Result<Response<BufferedBody<ResBody>>, E>;
 

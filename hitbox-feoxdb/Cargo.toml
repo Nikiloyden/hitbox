@@ -9,12 +9,12 @@ repository.workspace = true
 categories.workspace = true
 description = "FeOxDB backend for Hitbox cache with per-key TTL support"
 readme = "README.md"
-keywords = ["cache", "backend", "feoxdb", "embedded"]
+keywords = ["cache", "backend", "feoxdb", "embedded", "hitbox"]
 
 [dependencies]
 # Hitbox dependencies
-hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }
-hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 
 # FeOxDB - Pure Rust embedded DB with TTL
 feoxdb = "0.5"

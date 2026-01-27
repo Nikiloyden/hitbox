@@ -9,10 +9,10 @@ repository.workspace = true
 categories.workspace = true
 description = "Backend trait for asynchronous caching framework in Rust."
 readme = "README.md"
-keywords = ["cache", "actix", "async", "cache-backend", "hitbox"]
+keywords = ["cache", "tower", "async", "cache-backend", "hitbox"]
 
 [dependencies]
-hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 async-trait = { workspace = true }
 futures = { workspace = true, features = ["async-await"] }
 chrono = { workspace = true, features = ["serde"] }

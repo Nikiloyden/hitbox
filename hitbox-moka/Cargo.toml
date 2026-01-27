@@ -9,6 +9,7 @@ repository.workspace = true
 categories.workspace = true
 description = "In-memory cache backend for Hitbox using Moka."
 readme = "README.md"
+keywords = ["cache", "moka", "async", "in-memory", "hitbox"]
 
 [features]
 default = []
@@ -17,9 +18,9 @@ metrics = ["dep:metrics", "dep:lazy_static"]
 [dependencies]
 metrics = { workspace = true, optional = true }
 lazy_static = { workspace = true, optional = true }
-hitbox-backend = { path = "../hitbox-backend", version = "0.1.0" }
-hitbox = { path = "../hitbox", version = "0.1.0" }
-hitbox-core = { path = "../hitbox-core", version = "0.1.0" }
+hitbox-backend = { path = "../hitbox-backend", version = "0.1" }
+hitbox = { path = "../hitbox", version = "0.1" }
+hitbox-core = { path = "../hitbox-core", version = "0.1" }
 async-trait = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
