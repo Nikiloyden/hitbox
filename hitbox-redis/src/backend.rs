@@ -736,8 +736,8 @@ where
     /// | Compressor | Ratio | Speed | Feature flag |
     /// |------------|-------|-------|--------------|
     /// | [`PassthroughCompressor`] | None | Fastest | — |
-    /// | [`GzipCompressor`](hitbox_backend::GzipCompressor) | Good | Medium | `gzip` |
-    /// | [`ZstdCompressor`](hitbox_backend::ZstdCompressor) | Best | Fast | `zstd` |
+    /// | [`GzipCompressor`] | Good | Medium | `gzip` |
+    /// | [`ZstdCompressor`] | Best | Fast | `zstd` |
     ///
     /// # When to Use Compression
     ///
@@ -747,6 +747,8 @@ where
     /// - Using Redis persistence (RDB/AOF)
     ///
     /// [`PassthroughCompressor`]: hitbox_backend::PassthroughCompressor
+    /// [`GzipCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.GzipCompressor.html
+    /// [`ZstdCompressor`]: https://docs.rs/hitbox-backend/latest/hitbox_backend/struct.ZstdCompressor.html
     pub fn compressor<NewC>(self, compressor: NewC) -> RedisBackendBuilder<S, NewC>
     where
         NewC: Compressor,

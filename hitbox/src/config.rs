@@ -1,10 +1,18 @@
+//! Cache configuration trait and type aliases.
+//!
+//! `CacheConfig` unifies request filtering, response filtering, key extraction,
+//! and TTL policy into a single configuration object per endpoint.
+
 use std::sync::Arc;
 
 use crate::Extractor;
 use crate::policy::PolicyConfig;
 use crate::predicate::Predicate;
 
+/// Boxed predicate for dynamic dispatch.
 pub type BoxPredicate<R> = Box<dyn Predicate<Subject = R> + Send + Sync>;
+
+/// Boxed extractor for dynamic dispatch.
 pub type BoxExtractor<Req> = Box<dyn Extractor<Subject = Req> + Send + Sync>;
 
 /// Trait for cache configuration.
@@ -12,13 +20,20 @@ pub type BoxExtractor<Req> = Box<dyn Extractor<Subject = Req> + Send + Sync>;
 /// Provides predicates for determining cacheability, extractors for generating
 /// cache keys, and policy for TTL/staleness behavior.
 pub trait CacheConfig<Req, Res> {
+    /// Predicate type for filtering requests.
     type RequestPredicate: Predicate<Subject = Req> + Send + Sync + 'static;
+    /// Predicate type for filtering responses.
     type ResponsePredicate: Predicate<Subject = Res> + Send + Sync + 'static;
+    /// Extractor type for generating cache keys.
     type Extractor: Extractor<Subject = Req> + Send + Sync + 'static;
 
+    /// Returns predicates that decide if a request should be cached.
     fn request_predicates(&self) -> Self::RequestPredicate;
+    /// Returns predicates that decide if a response should be cached.
     fn response_predicates(&self) -> Self::ResponsePredicate;
+    /// Returns extractors that generate cache keys from requests.
     fn extractors(&self) -> Self::Extractor;
+    /// Returns TTL and behavior policy for cached entries.
     fn policy(&self) -> &PolicyConfig;
 }
 
