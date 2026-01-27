@@ -224,8 +224,8 @@ impl<B, C, CM, O> CacheBuilder<B, C, CM, O> {
     ///
     /// Common backends:
     ///
-    /// - [`MokaBackend`] — In-memory cache
-    /// - `RedisBackend` — Distributed cache via Redis
+    /// - `MokaBackend` — In-memory cache (from `hitbox-moka`)
+    /// - `RedisBackend` — Distributed cache via Redis (from `hitbox-redis`)
     ///
     /// # Examples
     ///

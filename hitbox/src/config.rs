@@ -30,18 +30,28 @@ pub trait CacheConfig<Req, Res> {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use hitbox::Config;
+/// ```
+/// use hitbox::{Config, Extractor, KeyParts};
 /// use hitbox::policy::PolicyConfig;
-/// use hitbox_http::predicates::request::Method;
-/// use hitbox_http::extractors::Method as MethodExtractor;
+/// use hitbox::predicate::Neutral;
 /// use std::time::Duration;
+/// #
+/// # struct FixedKeyExtractor;
+/// # #[async_trait::async_trait]
+/// # impl Extractor for FixedKeyExtractor {
+/// #     type Subject = String;
+/// #     async fn get(&self, subject: Self::Subject) -> KeyParts<Self::Subject> {
+/// #         KeyParts::new(subject)
+/// #     }
+/// # }
 ///
 /// let config = Config::builder()
-///     .request_predicate(Method::get())
-///     .extractor(MethodExtractor::new().path("/api/*"))
+///     .request_predicate(Neutral::<String>::new())
+///     .response_predicate(Neutral::<String>::new())
+///     .extractor(FixedKeyExtractor)
 ///     .policy(PolicyConfig::builder().ttl(Duration::from_secs(60)).build())
 ///     .build();
+/// # let _: Config<Neutral<String>, Neutral<String>, FixedKeyExtractor> = config;
 /// ```
 pub struct Config<ReqPred, ResPred, Ext> {
     request_predicate: Arc<ReqPred>,
