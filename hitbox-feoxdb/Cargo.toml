@@ -8,7 +8,7 @@ rust-version.workspace = true
 repository.workspace = true
 categories.workspace = true
 description = "FeOxDB backend for Hitbox cache with per-key TTL support"
-keywords = ["cache", "backend", "feoxdb", "embedded"]
+keywords = ["cache", "backend", "feoxdb", "embedded", "hitbox"]
 
 [dependencies]
 # Hitbox dependencies

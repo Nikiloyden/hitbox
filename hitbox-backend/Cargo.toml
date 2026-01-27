@@ -9,7 +9,7 @@ repository.workspace = true
 categories.workspace = true
 description = "Backend trait for asynchronous caching framework in Rust."
 readme = "README.md"
-keywords = ["cache", "actix", "async", "cache-backend", "hitbox"]
+keywords = ["cache", "tower", "async", "cache-backend", "hitbox"]
 
 [dependencies]
 hitbox-core = { path = "../hitbox-core", version = "0.2.0" }
