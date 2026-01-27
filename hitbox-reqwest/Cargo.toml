@@ -13,6 +13,7 @@ categories = [
     "web-programming",
 ]
 description = "Hitbox cache integration for reqwest HTTP client via reqwest-middleware"
+readme = "README.md"
 keywords = ["cache", "reqwest", "async", "http", "hitbox", "middleware"]
 
 [package.metadata.docs.rs]

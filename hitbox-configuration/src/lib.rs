@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 pub use predicates::{request::Request, response::Response};
 
 pub mod backend;
