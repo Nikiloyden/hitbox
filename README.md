@@ -12,11 +12,136 @@ There are two common approaches to caching frameworks. The first is a low-level 
 
 While Hitbox is designed for large, high-load projects, it works equally well for small and simple ones. The configuration complexity scales with your project: simple projects need only simple settings.
 
-- [Features](#features)
 - [Motivation](#motivation)
 - [Quick Start](#quick-start)
+- [Features](#features)
 - [Project Structure](#project-structure)
+- [Benchmarks](#benchmarks)
 - [License](#license)
+
+## Motivation
+
+Every real-world system brings a combination of shared challenges and unique constraints. We tried using existing caching frameworks for our services, but each time they failed to fully match our requirements. As a result, we repeatedly ended up building custom caching mechanisms from scratch instead of relying on ready-made solutions.
+
+Hitbox was created to break this cycle.
+
+We think of Hitbox not as a library, but as a platform for caching, designed from day one to be easily extensible without enforcing a single backend, protocol, or caching strategy. New storage backends, new protocols such as GraphQL or even the PostgreSQL protocol, as well as new serialization or compression strategies, are expected use cases - not special exceptions. You simply implement the required traits and go for it. Hitbox is built to be hacked, extended, bent, and reshaped.
+
+A key principle of Hitbox is that every new integration automatically inherits the full set of advanced optimizations we built through real-world experience: dogpile-effect prevention, composable multi-layer caching (L1/L2/L3), offload caching, and more. Instead of re-implementing these mechanisms for every project, they come for free with the platform.
+
+At the same time, Hitbox is not just an abstract foundation. It already provides a production-ready HTTP caching implementation based on [tower::Service](https://docs.rs/tower/latest/tower/trait.Service.html), covering the most common use case out of the box while also serving as a reference implementation for building additional integrations.
+
+---
+
+## Quick Start
+
+### Cargo.toml
+
+```toml
+[package]
+name = "hitbox-example"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+hitbox = "0.2"
+hitbox-http = "0.2"
+hitbox-moka = "0.2"
+hitbox-tower = "0.2"
+http = "1"
+```
+
+### Basic Usage
+
+```rust
+use std::time::Duration;
+
+use axum::{Router, extract::Path, routing::get};
+use hitbox::policy::PolicyConfig;
+use hitbox::{Config, Neutral};
+use hitbox_http::extractors::Method as MethodExtractor;
+use hitbox_http::extractors::path::PathExtractor;
+use hitbox_http::predicates::request::Method;
+use hitbox_http::predicates::response::{StatusClass, StatusCodePredicate};
+use hitbox_moka::MokaBackend;
+use hitbox_tower::Cache;
+
+async fn get_users() -> &'static str {
+    "users list"
+}
+async fn get_user(Path(id): Path<String>) -> String {
+    format!("user {id}")
+}
+
+#[tokio::main]
+async fn main() {
+    // Create backend
+    let backend = MokaBackend::builder().max_entries(10_000).build();
+
+    // Users list - long TTL (60s)
+    let users_config = Config::builder()
+        .request_predicate(Method::new(http::Method::GET).unwrap())
+        .response_predicate(Neutral::new().status_code_class(StatusClass::Success))
+        .extractor(MethodExtractor::new().path("/api/users"))
+        .policy(
+            PolicyConfig::builder()
+                .ttl(Duration::from_secs(60))
+                .stale(Duration::from_secs(30))
+                .build(),
+        )
+        .build();
+
+    // Single user - short TTL (10s)
+    let user_config = Config::builder()
+        .request_predicate(Method::new(http::Method::GET).unwrap())
+        .response_predicate(Neutral::new().status_code_class(StatusClass::Success))
+
+        .extractor(MethodExtractor::new().path("/api/users/{id}"))
+        .policy(
+            PolicyConfig::builder()
+                .ttl(Duration::from_secs(10))
+                .stale(Duration::from_secs(5))
+                .build(),
+        )
+        .build();
+
+    // Build cache layers
+    let users_cache = Cache::builder()
+        .backend(backend.clone())
+        .config(users_config)
+        .build();
+
+    let user_cache = Cache::builder()
+        .backend(backend)
+        .config(user_config)
+        .build();
+
+    // Router with per-route cache layers
+    let app = Router::new()
+        .route("/api/users", get(get_users).layer(users_cache))
+        .route("/api/users/{id}", get(get_user).layer(user_cache));
+
+
+    println!("Starting server on http://localhost:3000");
+    println!("Try:");
+    println!("  curl -v http://localhost:3000/api/users");
+    println!("  curl -v http://localhost:3000/api/users/42");
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+```
+
+### What's Next
+
+- [Predicates](https://docs.rs/hitbox-http/latest/hitbox_http/#request-predicates) - Control what gets cached
+- [Stale Cache](#stale-cache) - Configure TTL and background revalidation
+- [Composable Backends](#composable-backends) - Add Redis as L2
+- [Examples](./examples) - More complete examples
+
+---
 
 ## Features
 
@@ -326,94 +451,6 @@ policy:
 
 Change caching rules at runtime - no recompilation needed.
 
----
-
-## Motivation
-
-Every real-world system brings a combination of shared challenges and unique constraints. We tried using existing caching frameworks for our services, but each time they failed to fully match our requirements. As a result, we repeatedly ended up building custom caching mechanisms from scratch instead of relying on ready-made solutions.
-
-Hitbox was created to break this cycle.
-
-We think of Hitbox not as a library, but as a platform for caching, designed from day one to be easily extensible without enforcing a single backend, protocol, or caching strategy. New storage backends, new protocols such as GraphQL or even the PostgreSQL protocol, as well as new serialization or compression strategies, are expected use cases - not special exceptions. You simply implement the required traits and go for it. Hitbox is built to be hacked, extended, bent, and reshaped.
-
-A key principle of Hitbox is that every new integration automatically inherits the full set of advanced optimizations we built through real-world experience: dogpile-effect prevention, composable multi-layer caching (L1/L2/L3), offload caching, and more. Instead of re-implementing these mechanisms for every project, they come for free with the platform.
-
-At the same time, Hitbox is not just an abstract foundation. It already provides a production-ready HTTP caching implementation based on [tower::Service](https://docs.rs/tower/latest/tower/trait.Service.html), covering the most common use case out of the box while also serving as a reference implementation for building additional integrations.
-
----
-
-## Quick Start
-
-### Installation
-
-```toml
-[dependencies]
-hitbox = { version = "0.2", features = ["moka"] }
-hitbox-tower = "0.2"
-hitbox-configuration = "0.2"
-```
-
-### Basic Usage
-
-```rust
-use std::time::Duration;
-use axum::{Router, routing::get, extract::Path};
-use hitbox::policy::PolicyConfig;
-use hitbox_configuration::Endpoint;
-use hitbox_moka::MokaBackend;
-use hitbox_tower::Cache;
-
-// Handlers
-async fn get_users() -> &'static str { "users list" }
-async fn get_user(Path(id): Path<String>) -> String { format!("user {id}") }
-
-// Create backend
-let backend = MokaBackend::builder().max_entries(10_000).build();
-
-// Users list - long TTL (60s)
-let users_config = Endpoint::builder()
-    .policy(
-        PolicyConfig::builder()
-            .ttl(Duration::from_secs(60))
-            .stale(Duration::from_secs(30))
-            .build()
-    )
-    .build();
-
-// Single user - short TTL (10s)
-let user_config = Endpoint::builder()
-    .policy(
-        PolicyConfig::builder()
-            .ttl(Duration::from_secs(10))
-            .stale(Duration::from_secs(5))
-            .build()
-    )
-    .build();
-
-// Build cache layers
-let users_cache = Cache::builder()
-    .backend(backend.clone())
-    .config(users_config)
-    .build();
-
-let user_cache = Cache::builder()
-    .backend(backend)
-    .config(user_config)
-    .build();
-
-// Router with per-route cache layers
-let app = Router::new()
-    .route("/api/users", get(get_users).layer(users_cache))
-    .route("/api/users/{id}", get(get_user).layer(user_cache));
-```
-
-### What's Next
-
-- [Predicates](#predicates) - Control what gets cached
-- [Stale Cache](#stale-cache) - Configure TTL and background revalidation
-- [Composable Backends](#composable-backends) - Add Redis as L2
-- [Examples](./examples) - More complete examples
-
 ## Project Structure
 
 | Crate | Description |
@@ -428,6 +465,150 @@ let app = Router::new()
 | `hitbox-redis` | Distributed backend using Redis |
 | `hitbox-feoxdb` | Embedded persistent backend using FeOxDB |
 | `hitbox-reqwest` | Client-side caching for [reqwest](https://github.com/seanmonstar/reqwest) via reqwest-middleware |
+
+## Benchmarks
+
+These benchmarks help you understand the performance characteristics of Hitbox and make informed decisions about configuration. All micro-benchmarks use [Criterion.rs](https://github.com/bheisler/criterion.rs) with 100 samples.
+
+### Is Hitbox Worth It?
+
+**Worst case (100% cache misses):** Hitbox adds only **~20 µs** (microseconds, not milliseconds) overhead per request. This is negligible for most services.
+
+**With cache hits:** Even if your handler is trivial (just returning static JSON with no I/O or CPU-heavy operations), cache hits are faster because they skip response serialization. Reading pre-serialized bytes from cache (~2 µs) is faster than serializing a struct to JSON every time.
+
+**With slow upstreams:** The improvement scales with your upstream latency.
+
+**Load test (50ms simulated backend latency):**
+
+| Metric | Without Cache | With Hitbox | Improvement |
+|--------|---------------|-------------|-------------|
+| Throughput | 970 req/s | 167,270 req/s | **172x** |
+| Avg Latency | 51.6 ms | 0.295 ms | **175x** |
+| p99 Latency | 52.7 ms | 0.917 ms | **57x** |
+
+The slower your upstream, the bigger the win from caching.
+
+### What Latency Does Hitbox Add?
+
+**On cache HIT:** Hitbox *replaces* your upstream latency with just ~10-12 µs — this is a win.
+
+**On cache MISS:** Hitbox *adds* ~20 µs overhead on top of your upstream latency.
+
+The exact overhead depends on your predicates, extractors, and backend choice. Here's a typical breakdown:
+
+| Component | Latency Added |
+|-----------|---------------|
+| Predicate evaluation (method + path + 2 headers) | ~1.3 µs |
+| Cache key extraction | ~5.5 µs |
+| Backend read (Moka, 5KB response) | ~2 µs |
+| **Total overhead** | **~10-12 µs** |
+
+For comparison: localhost Redis adds ~150 µs, same-datacenter Redis adds ~20 ms, and a database query adds 1-500 ms.
+
+**Predicate latency by type:**
+
+| Predicate Type | Latency |
+|----------------|---------|
+| Method match | 520 ns |
+| Path match | 570 ns |
+| Header check | 540 ns |
+| Query parameter | 1.9 µs |
+| 7-predicate chain | 3.3 µs |
+| JQ body predicate | 25-65 µs |
+
+**Optimization tip:** Predicates short-circuit on failure (628 ns). Place likely-to-fail predicates first to exit early.
+
+**When Hitbox overhead matters:**
+- If your upstream is < 100 µs (rare), caching may not help
+- If using JQ body predicates, add ~25-65 µs to the overhead
+- If your response is > 100KB, serialization becomes the bottleneck (see format selection below)
+
+### Which Backend Should I Choose?
+
+| Choose | When | Latency (5KB) | Trade-off |
+|--------|------|---------------|-----------|
+| **Moka** | Single instance, maximum speed | ~2 µs | No persistence, no sharing |
+| **Moka + Redis** | Multiple instances, need consistency | ~2 µs hit, ~150 µs refill | Best of both worlds |
+| **Redis** | Distributed cache, shared state | ~160 µs | Network latency |
+| **FeOxDB** | Persistence without Redis | ~50 µs | Local only |
+
+**Backend latency comparison:**
+
+| Backend | 1KB Read | 100KB Read | Best For |
+|---------|----------|------------|----------|
+| Moka | 1.4 µs | 58 µs | Hot path, single instance |
+| FeOxDB | 51 µs | 196 µs | Persistent local cache |
+| Redis | 174 µs | 328 µs | Distributed, shared cache |
+
+*Note: Redis benchmarks were run with localhost. Your network latency will vary depending on your deployment (same datacenter, cross-region, etc.).*
+
+### Which Serialization Format Should I Choose?
+
+| Choose | When | Read (5KB) | Write (5KB) |
+|--------|------|------------|-------------|
+| **Bincode** | Default choice, balanced performance | 1.8 µs | 4.9 µs |
+| **Rkyv** | Read-heavy, large payloads | 1.1 µs | 4.9 µs |
+| **RON** | Debugging, human-readable | 3.0 µs | 3.9 µs |
+
+**Performance at scale (1MB payload):**
+
+| Format | Read | Write | Notes |
+|--------|------|-------|-------|
+| Rkyv | 166 µs | 301 µs | Zero-copy deserialization shines |
+| Bincode | 197 µs | 215 µs | Fastest writes |
+| RON | 308 µs | 2.21 ms | Human-readable, good for debugging |
+
+*Note: JSON format is also supported but ~300x slower on reads — not recommended for production. Use RON instead if you need human-readable cache values for debugging.*
+
+### Should I Use Backend Composition (L1/L2)?
+
+Composition adds overhead but provides benefits like local caching with distributed backup:
+
+| Configuration | Read (5KB) | Write (5KB) | Use Case |
+|---------------|------------|-------------|----------|
+| Moka only | 1.9 µs | 4.0 µs | Single server |
+| Moka + Redis (2-tier) | 3.2 µs | 7.5 µs | Multi-server with local cache |
+| 3-tier | 5.0 µs | 11.9 µs | Complex hierarchies |
+
+**Each tier adds ~3-4 µs** for small payloads. For large payloads, serialization dominates.
+
+### Cache Key Format
+
+Cache keys can be serialized as Bitcode (compact) or UrlEncoded (readable):
+
+| Key Complexity | Bitcode | UrlEncoded | Savings |
+|----------------|---------|------------|---------|
+| Simple (method + path) | 32 bytes | 50 bytes | 36% |
+| Complex (9 parts) | 302 bytes | 345 bytes | 12% |
+
+Bitcode is the default. Use UrlEncoded if you need to inspect keys in Redis.
+
+### Running Benchmarks
+
+```bash
+# Micro-benchmarks
+cargo bench -p hitbox-test
+cargo bench -p hitbox-http
+cargo bench -p hitbox-backend
+
+# With Rkyv format
+cargo bench -p hitbox-test --features rkyv_format
+
+# Load test (requires oha: cargo install oha)
+cargo bench -p hitbox-test --bench load_test --features rkyv_format -- --duration 10 --connections 50 --sleep 50
+```
+
+### Benchmark Environment
+
+| Component | Details |
+|-----------|---------|
+| CPU | Intel Core i9-13900H (10 cores, 20 threads) |
+| RAM | 64 GB DDR5-4800 |
+| Disk | NVMe SSD (Micron 2400) |
+| OS | Linux |
+| Rust | 1.91.1 |
+
+*Your absolute numbers may vary, but ratios between options should be similar.*
 
 ## License
 

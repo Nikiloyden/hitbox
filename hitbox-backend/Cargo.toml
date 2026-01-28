@@ -67,3 +67,7 @@ smol_str = { workspace = true }
 chrono = { workspace = true }
 serial_test = "3.2"
 futures = { workspace = true }
+
+[[bench]]
+name = "key_size"
+harness = false
