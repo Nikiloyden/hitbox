@@ -287,7 +287,7 @@ Since Hitbox is built on tower, it integrates as a standard layer without framew
 
 Since Hitbox is built on Tower, the same `hitbox-tower` Cache layer works for both server-side handlers and client-side hyper requests. For Reqwest, use `hitbox-reqwest` with `reqwest-middleware`.
 
-## YAML Configuration
+## YAML Configuration (TBA)
 
 Define your entire caching setup in a configuration file:
 
